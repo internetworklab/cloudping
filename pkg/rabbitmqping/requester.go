@@ -14,30 +14,20 @@ import (
 	"github.com/google/uuid"
 )
 
-// RabbitMQPinger is also an implementation of the Pinger interface
-type RabbitMQPinger struct {
-	From       string
+type RabbitMQRemoteCaller struct {
 	RoutingKey string
-	PingCfg    pkgsimpleping.PingConfiguration
 }
 
-func (rbmqPinger *RabbitMQPinger) Ping(ctx context.Context) <-chan pkgpinger.PingEvent {
+type RBMQCallUpdate struct {
+	Err     error
+	Message []byte
+}
 
-	evChan := make(chan pkgpinger.PingEvent)
-
-	metadata := map[string]string{
-		pkgpinger.MetadataRabbitMQRoutingKey: rbmqPinger.RoutingKey,
-		pkgpinger.MetadataKeyFrom:            rbmqPinger.From,
-	}
+func (rbmqRemoteCaller *RabbitMQRemoteCaller) Call(ctx context.Context, msgBody []byte) <-chan RBMQCallUpdate {
+	evChan := make(chan RBMQCallUpdate)
 
 	respondWithError := func(err error) {
-		log.Println("RabbitMQPinger error:", err)
-		ev := pkgpinger.PingEvent{
-			Type:     pkgpinger.PingEventTypeError,
-			Error:    err,
-			Metadata: metadata,
-		}
-		evChan <- ev
+		evChan <- RBMQCallUpdate{Err: err}
 	}
 
 	go func() {
@@ -86,26 +76,15 @@ func (rbmqPinger *RabbitMQPinger) Ping(ctx context.Context) <-chan pkgpinger.Pin
 			return
 		}
 
-		msgBody, err := json.Marshal(rbmqPinger.PingCfg)
-		if err != nil {
-			respondWithError(fmt.Errorf("failed to marshal the ping configuration within RabbitMQPinger: %w", err))
-			return
-		}
-
 		corrId := uuid.New().String()
-
-		ctx, cancel := context.WithTimeout(ctx, rbmqPinger.PingCfg.Timeout)
-		defer cancel()
-
 		msgId := uuid.New().String()
-
 		exchgName := ""
 
 		err = ch.PublishWithContext(ctx,
-			exchgName,             // exchange
-			rbmqPinger.RoutingKey, // routing key
-			false,                 // mandatory
-			false,                 // immediate
+			exchgName,                   // exchange
+			rbmqRemoteCaller.RoutingKey, // routing key
+			false,                       // mandatory
+			false,                       // immediate
 			amqp.Publishing{
 				ContentType:   "application/json",
 				CorrelationId: corrId,
@@ -114,31 +93,88 @@ func (rbmqPinger *RabbitMQPinger) Ping(ctx context.Context) <-chan pkgpinger.Pin
 				MessageId:     msgId,
 			},
 		)
-
-		log.Println("Published a message", "exchg", exchgName, "routing_key", rbmqPinger.RoutingKey, "correlation_id", corrId, "message_id", msgId, "reply_to", q.Name)
-
 		if err != nil {
 			respondWithError(fmt.Errorf("failed to publish the message to the RabbitMQ exchange: %w", err))
 			return
 		}
 
+		log.Println("Published a message", "exchg", exchgName, "routing_key", rbmqRemoteCaller.RoutingKey, "correlation_id", corrId, "message_id", msgId, "reply_to", q.Name)
+
 		for msg := range msgs {
 			log.Println("Received a message", "exchg", msg.Exchange, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId, "message_id", msg.MessageId)
-			if msg.CorrelationId == corrId {
-				if len(msg.Body) == 0 {
-					// A nill message body signals the end of the message stream
-					break
-				}
-
-				var pingEvent pkgpinger.PingEvent
-				err := json.Unmarshal(msg.Body, &pingEvent)
-				if err != nil {
-					respondWithError(fmt.Errorf("failed to unmarshal the message: %w", err))
-					continue
-				}
-				pingEvent.Metadata = metadata
-				evChan <- pingEvent
+			if msg.CorrelationId != corrId {
+				log.Println("Received a message with a different correlation id", "exchg", msg.Exchange, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId, "message_id", msg.MessageId)
+				continue
 			}
+
+			if len(msg.Body) == 0 {
+				// A nill message body signals the end of the message stream
+				break
+			}
+
+			evChan <- RBMQCallUpdate{Message: msg.Body}
+		}
+	}()
+
+	return evChan
+}
+
+// RabbitMQPinger is also an implementation of the Pinger interface
+type RabbitMQPinger struct {
+	From             string
+	PingCfg          pkgsimpleping.PingConfiguration
+	RBMQRemoteCaller *RabbitMQRemoteCaller
+}
+
+func (rbmqPinger *RabbitMQPinger) Ping(ctx context.Context) <-chan pkgpinger.PingEvent {
+	caller := rbmqPinger.RBMQRemoteCaller
+
+	evChan := make(chan pkgpinger.PingEvent)
+
+	metadata := map[string]string{
+		pkgpinger.MetadataKeyFrom: rbmqPinger.From,
+	}
+
+	respondWithError := func(err error) {
+		log.Println("RabbitMQPinger error:", err)
+		ev := pkgpinger.PingEvent{
+			Type:     pkgpinger.PingEventTypeError,
+			Error:    err,
+			Metadata: metadata,
+		}
+		evChan <- ev
+	}
+
+	go func() {
+		defer close(evChan)
+
+		if caller == nil {
+			respondWithError(fmt.Errorf("the RabbitMQ remote caller is not set within RabbitMQPinger"))
+			return
+		}
+
+		msgBody, err := json.Marshal(rbmqPinger.PingCfg)
+		if err != nil {
+			respondWithError(fmt.Errorf("failed to marshal the ping configuration within RabbitMQPinger: %w", err))
+			return
+		}
+		ctx, cancel := context.WithTimeout(ctx, rbmqPinger.PingCfg.Timeout)
+		defer cancel()
+		for msg := range caller.Call(ctx, msgBody) {
+			if msg.Err != nil {
+				respondWithError(fmt.Errorf("received an error from underlying RPC call: %w", msg.Err))
+				return
+			}
+
+			var pingEvent pkgpinger.PingEvent
+			err := json.Unmarshal(msg.Message, &pingEvent)
+			if err != nil {
+				respondWithError(fmt.Errorf("failed to unmarshal the message: %w", err))
+				continue
+			}
+
+			pingEvent.Metadata = metadata
+			evChan <- pingEvent
 		}
 	}()
 
