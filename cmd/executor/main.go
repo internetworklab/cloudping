@@ -1,17 +1,32 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
+
+	pkgsimpleping "example.com/rbmq-demo/pkg/simpleping"
+	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
+func tryFlush(w http.ResponseWriter) {
+	// The default HTTP/1.x and HTTP/2 ResponseWriter implementations support Flusher,
+	// but ResponseWriter wrappers may not.
+	// Handlers should always test for this ability at runtime.
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func main() {
-	// 清理可能存在的旧 socket 文件
 	socketPath := "/var/run/myserver.sock"
 
 	listener, err := net.Listen("unix", socketPath)
@@ -25,7 +40,51 @@ func main() {
 		muxer := http.NewServeMux()
 		muxer.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Hello, World!"))
+			respEncoder := json.NewEncoder(w)
+			destination := r.URL.Query().Get("destination")
+			pingCfg := &pkgsimpleping.PingConfiguration{
+				Destination: destination,
+				Count:       3,
+				Timeout:     30 * time.Second,
+				Interval:    1 * time.Second,
+			}
+			if count := r.URL.Query().Get("count"); count != "" {
+				countInt, err := strconv.Atoi(count)
+				if err != nil {
+					respEncoder.Encode(pkgutils.ErrorResponse{Error: err.Error()})
+					return
+				}
+				pingCfg.Count = countInt
+			}
+			if timeout := r.URL.Query().Get("timeout"); timeout != "" {
+				timeoutInt, err := strconv.Atoi(timeout)
+				if err != nil {
+					respEncoder.Encode(pkgutils.ErrorResponse{Error: err.Error()})
+					return
+				}
+				pingCfg.Timeout = time.Duration(timeoutInt) * time.Second
+			}
+			if interval := r.URL.Query().Get("interval"); interval != "" {
+				intervalInt, err := strconv.Atoi(interval)
+				if err != nil {
+					respEncoder.Encode(pkgutils.ErrorResponse{Error: err.Error()})
+					return
+				}
+				pingCfg.Interval = time.Duration(intervalInt) * time.Second
+			}
+
+			pinger := pkgsimpleping.NewSimplePinger(pingCfg)
+
+			pingEvents := pinger.Ping(context.TODO())
+			for ev := range pingEvents {
+				err := respEncoder.Encode(ev)
+				if err != nil {
+					respEncoder.Encode(pkgutils.ErrorResponse{Error: err.Error()})
+					tryFlush(w)
+					break
+				}
+				tryFlush(w)
+			}
 		})
 
 		server := http.Server{

@@ -14,6 +14,7 @@ import (
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
 	pkgrabbitmqping "example.com/rbmq-demo/pkg/rabbitmqping"
 	pkgsimpleping "example.com/rbmq-demo/pkg/simpleping"
+	pkgutils "example.com/rbmq-demo/pkg/utils"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -76,12 +77,9 @@ func getRoutingKey(connRegistry *pkgconnreg.ConnRegistry, from string) *string {
 	return &f
 }
 
-func respondError(w http.ResponseWriter, err error, status int) {
-	w.WriteHeader(status)
-	type errorResponse struct {
-		Error string `json:"error"`
-	}
-	respbytes, err := json.Marshal(errorResponse{Error: err.Error()})
+func RespondError(w http.ResponseWriter, err error, status int) {
+
+	respbytes, err := json.Marshal(pkgutils.ErrorResponse{Error: err.Error()})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -99,12 +97,12 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	// Parse the request body
 	var form PingTaskApplicationForm
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		respondError(w, fmt.Errorf("failed to parse request body: %w", err), http.StatusBadRequest)
+		RespondError(w, fmt.Errorf("failed to parse request body: %w", err), http.StatusBadRequest)
 		return
 	}
 
 	if len(form.Targets) == 0 {
-		respondError(w, fmt.Errorf("no targets specified"), http.StatusBadRequest)
+		RespondError(w, fmt.Errorf("no targets specified"), http.StatusBadRequest)
 		return
 	}
 	// use simple ping
@@ -163,7 +161,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(pingers) == 0 {
-		respondError(w, fmt.Errorf("no pingers to start"), http.StatusInternalServerError)
+		RespondError(w, fmt.Errorf("no pingers to start"), http.StatusInternalServerError)
 		return
 	}
 
@@ -175,7 +173,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	for ev := range eventCh {
 		if err := encoder.Encode(ev); err != nil {
 			log.Printf("Failed to encode event: %v", err)
-			respondError(w, fmt.Errorf("failed to encode event: %w", err), http.StatusInternalServerError)
+			RespondError(w, fmt.Errorf("failed to encode event: %w", err), http.StatusInternalServerError)
 			return
 		}
 		// Flush the response to send immediately
