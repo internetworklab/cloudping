@@ -268,7 +268,7 @@ func NewSimpleRemotePinger(spec RemotePingerSpec, cfg *PingConfiguration, from s
 		// Use a dummy HTTP URL; host is ignored by custom transport
 		full = &url.URL{
 			Scheme: "http",
-			Host:   "unix",
+			Host:   "localhost",
 			Path:   requestPath,
 		}
 	case "http", "https":
