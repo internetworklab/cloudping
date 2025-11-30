@@ -1,1 +1,12 @@
 bin/
+
+# Node.js dependencies - NEVER commit these!
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
