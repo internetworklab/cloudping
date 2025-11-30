@@ -19,6 +19,7 @@ import {
   IconButton,
   Tooltip,
   TableContainer,
+  Autocomplete,
 } from "@mui/material";
 import {
   CSSProperties,
@@ -362,13 +363,25 @@ export default function Home() {
               </Button>
             </Box>
             <Box sx={{ marginTop: 2 }}>
-              <TextField
-                variant="standard"
-                placeholder="Sources, separated by comma"
+              <Autocomplete
                 fullWidth
-                label="Sources"
-                value={sourcesInput}
-                onChange={(e) => setSourcesInput(e.target.value)}
+                value={sourcesInput
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter((s) => s.length > 0)}
+                onChange={(_, value) => setSourcesInput(value.join(","))}
+                multiple
+                options={fakeSources}
+                defaultValue={fakeSources}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="standard"
+                    label="Sources"
+                    placeholder="Sources, separated by comma"
+                  />
+                )}
+                disableCloseOnSelect
               />
             </Box>
             <Box sx={{ marginTop: 2 }}>
