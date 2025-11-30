@@ -19,7 +19,7 @@ import {
   IconButton,
   Tooltip,
 } from "@mui/material";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { CSSProperties, Fragment, useEffect, useMemo, useState } from "react";
 import CloseIcon from "@mui/icons-material/CloseOutlined";
 
 type PingSample = {
@@ -317,11 +317,32 @@ export default function Home() {
   }, []);
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>(fakeTasks);
 
+  let containerStyles: CSSProperties[] = [
+    {
+      position: "relative",
+      left: 0,
+      top: 0,
+      height: "100vh",
+      width: "100vw",
+      overflow: "auto",
+    },
+  ];
+
+  let headerCardStyles: CSSProperties[] = [
+    { padding: 2, display: "flex", flexDirection: "column", gap: 2 },
+  ];
+
+  if (onGoingTasks.length === 0) {
+    containerStyles = [
+      ...containerStyles,
+      { display: "flex", justifyContent: "center", alignItems: "center" },
+    ];
+    headerCardStyles = [...headerCardStyles, { width: "80%" }];
+  }
+
   return (
-    <Fragment>
-      <Box
-        sx={{ padding: 2, display: "flex", flexDirection: "column", gap: 2 }}
-      >
+    <Box sx={containerStyles}>
+      <Box sx={headerCardStyles}>
         <Card>
           <CardContent>
             <Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -411,6 +432,6 @@ export default function Home() {
           setOpenTaskConfirmDialog(false);
         }}
       />
-    </Fragment>
+    </Box>
   );
 }
