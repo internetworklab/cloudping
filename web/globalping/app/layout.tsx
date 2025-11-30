@@ -2,12 +2,7 @@
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import {
-  CssBaseline,
-  createTheme,
-  ThemeProvider,
-  useMediaQuery,
-} from "@mui/material";
+import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +28,20 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 16,
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 16,
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
         },
       },
     },

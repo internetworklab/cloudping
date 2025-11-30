@@ -256,12 +256,28 @@ function TaskConfirmDialog(props: {
 }) {
   const { open, pendingTask, onConfirm, onCancel } = props;
 
-  return (
-    <Fragment>
-      <Dialog open={open} onClose={onCancel}>
+  if (pendingTask.sources.length === 0 || pendingTask.targets.length === 0) {
+    return (
+      <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
         <DialogTitle>Confirm Task</DialogTitle>
         <DialogContent>
-          <Typography>Sources: {pendingTask.sources.join(", ")}</Typography>
+          At least one source and one target are required.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onCancel}>Confirm</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Fragment>
+      <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
+        <DialogTitle>Confirm Task</DialogTitle>
+        <DialogContent>
+          <Typography gutterBottom>
+            Sources: {pendingTask.sources.join(", ")}
+          </Typography>
           <Typography>Targets: {pendingTask.targets.join(", ")}</Typography>
         </DialogContent>
         <DialogActions>
@@ -294,7 +310,7 @@ export default function Home() {
       {
         sources: fakeSources,
         targets: fakeTargets,
-        taskId: "1",
+        taskId: "0",
         stream: generateFakePingSampleStream(fakeSources, fakeTargets),
       },
     ] as PendingTask[];
@@ -310,7 +326,30 @@ export default function Home() {
           <CardContent>
             <Box sx={{ display: "flex", justifyContent: "space-between" }}>
               <Typography variant="h6">GlobalPing</Typography>
-              <Button>Add Task</Button>
+              <Button
+                onClick={() => {
+                  const srcs = sourcesInput
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter((s) => s.length > 0);
+                  const tgts = targetsInput
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter((t) => t.length > 0);
+                  setPendingTask({
+                    sources: srcs,
+                    targets: tgts,
+                    taskId: onGoingTasks.length.toString(),
+                    stream:
+                      srcs.length + tgts.length > 0
+                        ? generateFakePingSampleStream(srcs, tgts)
+                        : undefined,
+                  });
+                  setOpenTaskConfirmDialog(true);
+                }}
+              >
+                Add Task
+              </Button>
             </Box>
             <Box sx={{ marginTop: 2 }}>
               <TextField
@@ -368,7 +407,8 @@ export default function Home() {
           setOpenTaskConfirmDialog(false);
         }}
         onConfirm={() => {
-          window.alert("Task confirmed");
+          setOnGoingTasks([...onGoingTasks, pendingTask]);
+          setOpenTaskConfirmDialog(false);
         }}
       />
     </Fragment>
