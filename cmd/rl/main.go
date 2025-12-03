@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	N := 3000
+	N := 500
 	dataChan := make(chan interface{})
 	// generator goroutine, generating mock samples at death speed
 	go func() {
@@ -40,11 +40,16 @@ func main() {
 	previousTimestamp := time.Now()
 	for {
 		select {
-		case <-nullChan:
+		case _, ok :=<-nullChan:
+			if !ok {
+				fmt.Println("No more null records")
+				goto for_end
+			}
 			continue
 		case record, ok := <-recorderChan:
 			if !ok {
-				break
+				fmt.Println("No more records")
+				goto for_end
 			}
 			timeDelta := record.Timestamp.Sub(previousTimestamp)
 			if timeDelta.Milliseconds() <= 100 {
@@ -57,5 +62,5 @@ func main() {
 			previousTimestamp = record.Timestamp
 		}
 	}
-
+	for_end:
 }
