@@ -83,17 +83,18 @@ func main() {
 					wg.Done()
 					continue
 				}
-				log.Println("C1: speed", record1.String(), time.Now().Format(time.RFC3339Nano))
+				log.Println("C1: speed", record1.String(), time.Now().Format(time.RFC3339Nano), "counter", record1.Counter)
 			case record2, ok := <-speedchan2:
 				if !ok {
 					wg.Done()
 					continue
 				}
-				log.Println("C2: speed", record2.String(), time.Now().Format(time.RFC3339Nano))
+				log.Println("C2: speed", record2.String(), time.Now().Format(time.RFC3339Nano), "counter", record2.Counter)
 			}
 		}
 	}()
 
 	wg.Wait()
+	log.Println("wg done")
 	cancelMeter()
 }

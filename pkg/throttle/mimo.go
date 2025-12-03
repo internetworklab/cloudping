@@ -3,6 +3,7 @@ package throttle
 import (
 	"context"
 	"fmt"
+	"log"
 	"regexp"
 	"sync"
 )
@@ -87,13 +88,15 @@ func NewMIMOScheduler(throttleCfg TokenBasedThrottleConfig, smootherCfg BurstSmo
 	return mimoSched
 }
 
-func (sched *MIMOScheduler) collectWrappedPktsFromLink(head *MIMOInputSourceNode) []wrappedpacket {
+// returns:
+// (the packets collected, the node stopped)
+func (sched *MIMOScheduler) collectWrappedPktFromLink(head *MIMOInputSourceNode) (*wrappedpacket, *MIMOInputSourceNode) {
 	if head == nil {
-		return nil
+		return nil, nil
 	}
 
-	result := make([]wrappedpacket, 0)
 	currentNext := head
+
 	for {
 		select {
 		case pkt, ok := <-currentNext.InputChan:
@@ -113,10 +116,7 @@ func (sched *MIMOScheduler) collectWrappedPktsFromLink(head *MIMOInputSourceNode
 					<-evObj.Result
 				}()
 			} else {
-				result = append(result, wrappedpacket{
-					label:  currentNext.Label,
-					packet: pkt,
-				})
+				return &wrappedpacket{label: currentNext.Label, packet: pkt}, currentNext
 			}
 		default:
 			// noop, simply for making the operation non-blocking
@@ -127,7 +127,7 @@ func (sched *MIMOScheduler) collectWrappedPktsFromLink(head *MIMOInputSourceNode
 			break
 		}
 	}
-	return result
+	return nil, nil
 }
 
 func insertNode(head *MIMOInputSourceNode, newNode *MIMOInputSourceNode) *MIMOInputSourceNode {
@@ -182,7 +182,6 @@ func (mimoSched *MIMOScheduler) AddInput(inputChan <-chan interface{}, label str
 	res := <-evObj.Result
 
 	go func() {
-		defer close(newNode.InputChan)
 		for pkt := range inputChan {
 			newNode.InputChan <- pkt
 			// go notify the hub that there is some new packet available
@@ -264,14 +263,16 @@ func (evObj *EventObject) handleSourceDrained(sched *MIMOScheduler) error {
 }
 
 func (evObj *EventObject) handleNewPktAvailable(sched *MIMOScheduler) error {
-	wrappedPkts := sched.collectWrappedPktsFromLink(sched.sourceChain)
+	wrappedPkt, lastNode := sched.collectWrappedPktFromLink(sched.sourceChain)
+	sched.sourceChain = lastNode
 
-	go func() {
-		// avoid blocking in the critical path
-		for _, wrappedPkt := range wrappedPkts {
-			sched.muxedDataChan <- wrappedPkt
-		}
-	}()
+	if wrappedPkt != nil {
+		go func() {
+			fmt.Printf("[DBG] sending packet: %+v\n", wrappedPkt.packet)
+			sched.muxedDataChan <- *wrappedPkt
+		}()
+	}
+	sched.sourceChain = lastNode
 
 	return nil
 }
@@ -345,6 +346,7 @@ func (mimoSched *MIMOScheduler) Run(ctx context.Context) {
 				if !ok {
 					panic(fmt.Sprintf("Demuxer: Unexpected item type: %T", anywrappedItem))
 				}
+				fmt.Printf("[DBG] retrieved packet: %+v\n", wp.packet)
 
 				// Iterate over all active output bindings
 				mimoSched.outputBindings.Range(func(key, value interface{}) bool {
@@ -357,6 +359,7 @@ func (mimoSched *MIMOScheduler) Run(ctx context.Context) {
 						select {
 						case binding.OutputChan <- wp.packet:
 						default:
+							log.Println("[DBG] Output channel full (client is slow). Drop the packet and continue.")
 							// Output channel full (client is slow). Drop the packet and continue.
 						}
 					}
