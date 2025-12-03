@@ -26,8 +26,13 @@ func main() {
 	tbThrottle := pkgratelimit.NewTokenBasedThrottle(throttleConfig)
 	outChan := tbThrottle.Run(dataChan)
 
+	flattener := pkgratelimit.BurstFlattener{
+		LeastSampleInterval: 10 * time.Millisecond,
+	}
+	outChan = flattener.Run(outChan)
+
 	speedMeasurer := pkgratelimit.SpeedMeasurer{
-		RefreshInterval: 5 * time.Second,
+		RefreshInterval: 250 * time.Millisecond,
 	}
 
 	nullChan, recorderChan := speedMeasurer.Run(outChan)
