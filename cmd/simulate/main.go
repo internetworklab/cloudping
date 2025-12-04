@@ -62,7 +62,8 @@ func main() {
 			case <-ctx.Done():
 				return
 			case writeCh <- mockPacket:
-				// log.Printf("Sent ping request: %+v", mockPacket)
+				lastSeq++
+				log.Printf("Sent ping request: %+v", mockPacket)
 			}
 		}
 	}()

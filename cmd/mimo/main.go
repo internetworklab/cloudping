@@ -23,7 +23,7 @@ func generateData(N int, prefix string) chan interface{} {
 
 func main() {
 
-	N := 100
+	N := 100000
 	c1 := generateData(N, "A")
 	c2 := generateData(N, "B")
 	c3 := generateData(N, "C")
@@ -33,7 +33,7 @@ func main() {
 	}
 	throttleCfg := pkgratelimit.TokenBasedThrottleConfig{
 		RefreshInterval:       1 * time.Second,
-		TokenQuotaPerInterval: 100,
+		TokenQuotaPerInterval: 5,
 	}
 	mimoSched := pkgratelimit.NewMIMOScheduler(throttleCfg, smootherCfg)
 	ctx := context.Background()

@@ -267,9 +267,7 @@ func (evObj *EventObject) handleNewPktAvailable(sched *MIMOScheduler) error {
 	sched.sourceChain = lastNode
 
 	if wrappedPkt != nil {
-		go func() {
-			sched.muxedDataChan <- *wrappedPkt
-		}()
+		sched.muxedDataChan <- *wrappedPkt
 	}
 	sched.sourceChain = lastNode
 
