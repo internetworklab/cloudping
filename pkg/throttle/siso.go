@@ -1,5 +1,7 @@
 package throttle
 
+// SISO (Single-Input, Single-Output) Throttles
+
 import (
 	"context"
 	"fmt"

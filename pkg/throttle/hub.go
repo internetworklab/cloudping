@@ -1,5 +1,10 @@
 package throttle
 
+// It's a hub, shared by multiple users, each user access the hub through a proxy,
+// the hub throttles the traffic of user's write and read, and * all users are subjected
+// to the same quota zone * .
+// that is to say: max_speed( all users ) <= defined_shared_quota
+
 import (
 	"context"
 	"fmt"

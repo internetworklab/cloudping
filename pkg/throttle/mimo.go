@@ -1,5 +1,7 @@
 package throttle
 
+// MIMO (Multiple-Input, Multiple-Output) Throttles
+
 import (
 	"context"
 	"fmt"
