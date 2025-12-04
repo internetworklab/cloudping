@@ -8,7 +8,6 @@ package throttle
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 )
 
@@ -70,10 +69,9 @@ func NewICMPTransceiveHub(config *SharedThrottleHubConfig) *SharedThrottleHub {
 }
 
 func (hub *SharedThrottleHub) Run(ctx context.Context) {
-	log.Println("[DBG] the hub is started")
+
 	go func() {
 		defer close(hub.serviceChan)
-		defer log.Println("[DBG] the hub is stopped")
 
 		for {
 			requestCh := make(chan ServiceRequest)
@@ -121,7 +119,6 @@ type TestPacket struct {
 }
 
 func (hub *SharedThrottleHub) GetProxy() SharedThrottleProxy {
-	log.Println("[DBG] getting a new proxy")
 	requestCh := <-hub.serviceChan
 	defer close(requestCh)
 

@@ -43,7 +43,6 @@ func (tbThrottle *TokenBasedThrottle) Run(inChan <-chan interface{}) <-chan inte
 		ticker := time.NewTicker(tbThrottle.config.RefreshInterval)
 		defer ticker.Stop()
 		defer close(tokensChan)
-		defer fmt.Println("[DBG] A1 closed")
 
 		for {
 			select {
@@ -72,9 +71,6 @@ func (tbThrottle *TokenBasedThrottle) Run(inChan <-chan interface{}) <-chan inte
 			outChan <- item
 			quota--
 		}
-
-		fmt.Println("[DBG] A2 closed")
-
 	}()
 
 	return outChan
@@ -126,7 +122,6 @@ func (sm *SpeedMeasurer) Run(inChan <-chan interface{}) (<-chan interface{}, <-c
 
 	go func() {
 		defer close(speedRecordChan)
-		defer fmt.Println("[DBG] B1 closed")
 		ticker := time.NewTicker(sm.RefreshInterval)
 		for {
 			select {
@@ -154,7 +149,6 @@ func (sm *SpeedMeasurer) Run(inChan <-chan interface{}) (<-chan interface{}, <-c
 	go func() {
 		defer close(outChan)
 		defer cancel()
-		defer fmt.Println("[DBG] B2 closed")
 
 		for item := range inChan {
 			outChan <- item
@@ -178,7 +172,6 @@ func (bf *BurstSmoother) Run(inChan <-chan interface{}) <-chan interface{} {
 			time.Sleep(bf.LeastSampleInterval)
 			outChan <- item
 		}
-		fmt.Println("[DBG] C closed")
 	}()
 
 	return outChan
