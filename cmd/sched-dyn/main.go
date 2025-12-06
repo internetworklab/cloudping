@@ -14,67 +14,98 @@ import (
 )
 
 type Node struct {
-	Id            int
-	Name          string
-	InC           chan interface{}
-	Dead          bool
-	ItemsCopied   int
-	ScheduledTime float64
-	LifeSpan      float64
-	staging       chan interface{}
+	Id                int
+	Name              string
+	InC               chan interface{}
+	Dead              bool
+	ItemsCopied       int
+	ScheduledTime     float64
+	CurrentGeneration *int
+	BirthGeneration   int
+	staging           chan interface{}
+}
+
+func (nd *Node) GetAge() float64 {
+	return float64(*nd.CurrentGeneration - nd.BirthGeneration)
+}
+
+type DataTask struct {
+	Id      int
+	NodeRef *Node
+	Segment chan interface{}
+}
+
+func (dt *DataTask) Less(item btree.Item) bool {
+	if dataTaskItem, ok := item.(*DataTask); ok {
+		if dt.NodeRef.Id == dataTaskItem.NodeRef.Id {
+			return dt.Id < dataTaskItem.Id
+		}
+		return dt.NodeRef.Less(dataTaskItem.NodeRef)
+	}
+	panic("comparing data task with unexpected item type")
 }
 
 func (node *Node) PrintWithIdx(idx int) {
-	fmt.Printf("[%d] ID=%d, Name=%s, ScheduledTime=%f, LifeSpan=%f\n", idx, node.Id, node.Name, node.ScheduledTime, node.LifeSpan)
+	fmt.Printf("[%d] ID=%d, Name=%s, ScheduledTime=%f, Age=%f\n", idx, node.Id, node.Name, node.ScheduledTime, node.GetAge())
 }
 
 const defaultChannelBufferSize = 1024
 
-func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, ioTodoQueue *btree.BTree) {
+func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, taskQueue *btree.BTree) {
 	go func() {
-		nd.staging = make(chan interface{}, defaultChannelBufferSize)
+
 		defer close(nd.staging)
 		defer log.Printf("node %s is drained", nd.Name)
 
-		itemsLoaded := 0
-		for {
-			select {
-			case item, ok := <-nd.InC:
-				log.Printf("load into staging: %v", item)
-				if !ok {
-					return
+		toBeSendFragments := make(chan chan interface{})
+		taskSeq := 0
+		go func() {
+			defer close(toBeSendFragments)
+			for fragment := range toBeSendFragments {
+
+				// whenever there is a segment to be sent,
+				// create a data task and notify the event loop center
+				dataTask := &DataTask{
+					Id:      nd.Id*65536 + taskSeq,
+					NodeRef: nd,
+					Segment: fragment,
 				}
-				nd.staging <- item
+				taskQueue.ReplaceOrInsert(dataTask)
+				evObj := EVObject{
+					Type:    EVNewDataTask,
+					Payload: nil,
+					Result:  make(chan error),
+				}
+				evSubCh := <-evCh
+				evSubCh <- evObj
+				<-evObj.Result
+				taskSeq++
+			}
+		}()
+
+		staging := make(chan interface{}, defaultChannelBufferSize)
+		itemsLoaded := 0
+		for item := range nd.InC {
+			select {
+			case staging <- item:
 				itemsLoaded++
 			default:
-				if itemsLoaded > 0 {
-					itemsLoaded = 0
-					// todo: do not overwhelming the ev loop
-					if ioTodoQueue.Get(nd) == nil {
-						ioTodoQueue.ReplaceOrInsert(nd)
-
-						evRequestCh, ok := <-evCh
-						if !ok {
-							// service channel was closed
-							return
-						}
-						evObj := EVObject{
-							Type:    EVNodeDataAvailable,
-							Payload: nil,
-							Result:  make(chan error),
-						}
-						evRequestCh <- evObj
-						<-evObj.Result
-					}
-				}
+				toBeSendFragments <- staging
+				itemsLoaded = 0
+				staging = make(chan interface{}, defaultChannelBufferSize)
 			}
+		}
 
+		if itemsLoaded > 0 {
+			// flush the remaining items in buffer
+			itemsLoaded = 0
+			toBeSendFragments <- staging
 		}
 	}()
 }
 
 func (nd *Node) schedDensity() float64 {
-	return float64(nd.ScheduledTime) / float64(nd.LifeSpan)
+	return float64(nd.ScheduledTime) / math.Max(1.0, nd.GetAge())
 }
 
 func (n *Node) Less(item btree.Item) bool {
@@ -87,14 +118,14 @@ func (n *Node) Less(item btree.Item) bool {
 		return delta < 0
 
 	}
-	return false
+	panic("comparing node with unexpected item type")
 }
 
 type EVType string
 
 const (
-	EVNodeDataAvailable EVType = "node_data_available"
-	EVNodeAdded         EVType = "node_added"
+	EVNodeAdded   EVType = "node_added"
+	EVNewDataTask EVType = "new_data_task"
 )
 
 type EVObject struct {
@@ -155,12 +186,15 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mainQueue := btree.New(2)
+	taskQueue := btree.New(2)
 
 	outC := make(chan interface{})
 	evCh := make(chan chan EVObject)
 
 	allNodes := make(map[int]*Node)
+
+	var numEventsPassed *int = new(int)
+	*numEventsPassed = 0
 
 	go func() {
 		log.Println("evCenter started")
@@ -173,6 +207,8 @@ func main() {
 			case <-ctx.Done():
 				return
 			case evCh <- evRequestCh:
+				*numEventsPassed++
+
 				evRequest := <-evRequestCh
 				switch evRequest.Type {
 				case EVNodeAdded:
@@ -181,31 +217,31 @@ func main() {
 						panic("unexpected node type")
 					}
 					log.Printf("Added node %s to evCenter", newNode.Name)
-					newNode.RegisterDataEvent(evCh, mainQueue)
-				case EVNodeDataAvailable:
-					headNodeItem := mainQueue.DeleteMin()
-					if headNodeItem == nil {
-						panic("head node item shouldn't be nil")
+					newNode.RegisterDataEvent(evCh, taskQueue)
+				case EVNewDataTask:
+					headTaskItem := taskQueue.DeleteMin()
+					if headTaskItem == nil {
+						panic("head task item shouldn't be nil")
 					}
 
-					headNode, ok := headNodeItem.(*Node)
+					taskObject, ok := headTaskItem.(*DataTask)
 					if !ok {
-						panic("unexpected node type")
+						panic("unexpected task item type")
 					}
 
-					nrCopiedPreRun := headNode.ItemsCopied
-					<-headNode.Run(outC)
-					nrCopiedPostRun := headNode.ItemsCopied
-					scheduledTimeDelta := 1.0 / math.Max(1.0, float64(len(allNodes)))
+					// badness for running NodeRef.Run() in synchronous way:
+					// if the outC is slow, they would slow down the event loop as well.
+					nrCopiedPreRun := taskObject.NodeRef.ItemsCopied
+					<-taskObject.NodeRef.Run(outC)
+					nrCopiedPostRun := taskObject.NodeRef.ItemsCopied
 					if nrCopiedPostRun == nrCopiedPreRun {
 						// extra penalty for idling
-						headNode.ScheduledTime = headNode.ScheduledTime + scheduledTimeDelta
+						taskObject.NodeRef.ScheduledTime += 1.0
 					}
-					headNode.ScheduledTime = headNode.ScheduledTime + scheduledTimeDelta
-					headNode.LifeSpan = headNode.LifeSpan + 1.0
+					taskObject.NodeRef.ScheduledTime += 1.0
 
-					if headNode.Dead {
-						delete(allNodes, headNode.Id)
+					if taskObject.NodeRef.Dead {
+						delete(allNodes, taskObject.NodeRef.Id)
 					}
 				default:
 					panic(fmt.Sprintf("unknown event type: %s", evRequest.Type))
@@ -216,14 +252,32 @@ func main() {
 		}
 	}()
 
+	// consumer goroutine
+	go func() {
+		stat := make(map[string]int)
+		total := 0
+		for muxedItem := range outC {
+			fmt.Println("muxedItem: ", muxedItem)
+			stat[muxedItem.(string)]++
+			total++
+			if total%1000 == 0 {
+				for k, v := range stat {
+					fmt.Printf("%s: %d, %.2f%%\n", k, v, 100*float64(v)/float64(total))
+				}
+				stat = make(map[string]int)
+			}
+		}
+	}()
+
 	add := func(name string) *Node {
 		newNodeId := len(allNodes)
 		node := &Node{
-			Id:            newNodeId,
-			Name:          name,
-			ScheduledTime: 0.0,
-			LifeSpan:      1.0,
-			InC:           anonymousSource(ctx, name),
+			Id:                newNodeId,
+			Name:              name,
+			ScheduledTime:     0.0,
+			CurrentGeneration: numEventsPassed,
+			BirthGeneration:   *numEventsPassed,
+			InC:               anonymousSource(ctx, name),
 		}
 		allNodes[newNodeId] = node
 		return node
@@ -242,23 +296,6 @@ func main() {
 		evSubCh <- evObj
 		<-evObj.Result
 	}
-
-	// consumer goroutine
-	go func() {
-		stat := make(map[string]int)
-		total := 0
-		for muxedItem := range outC {
-			fmt.Println("muxedItem: ", muxedItem)
-			stat[muxedItem.(string)]++
-			total++
-			if total%1000 == 0 {
-				for k, v := range stat {
-					fmt.Printf("%s: %d, %.2f%%\n", k, v, 100*float64(v)/float64(total))
-				}
-				stat = make(map[string]int)
-			}
-		}
-	}()
 
 	nodeA := add("A")
 	nodeB := add("B")
