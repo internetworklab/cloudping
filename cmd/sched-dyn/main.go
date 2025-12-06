@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,12 +18,11 @@ type Node struct {
 	Id                int
 	Name              string
 	InC               chan interface{}
-	Dead              bool
 	ItemsCopied       int
 	ScheduledTime     float64
 	CurrentGeneration *int
 	BirthGeneration   int
-	staging           chan interface{}
+	Mux               sync.Mutex
 }
 
 func (nd *Node) GetAge() float64 {
@@ -53,8 +53,6 @@ const defaultChannelBufferSize = 1024
 
 func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, taskQueue *btree.BTree) {
 	go func() {
-
-		defer close(nd.staging)
 		defer log.Printf("node %s is drained", nd.Name)
 
 		toBeSendFragments := make(chan chan interface{})
@@ -135,27 +133,26 @@ type EVObject struct {
 }
 
 // the returning channel doesn't emit anything meaningful, it's simply for synchronization
-func (nd *Node) Run(outC chan<- interface{}) <-chan interface{} {
+func (nd *Node) Run(outC chan<- interface{}, taskObject *DataTask) <-chan interface{} {
 	runCh := make(chan interface{})
-	headNode := nd
+
 	go func() {
 		defer close(runCh)
-		defer log.Println("runCh closed", "node", headNode.Name)
+		defer log.Println("runCh closed", "node", taskObject.NodeRef.Name)
 
 		timeout := time.After(defaultTimeSlice)
 
 		for {
 			select {
 			case <-timeout:
-				log.Println("timeout", "node", headNode.Name)
+				log.Println("timeout", "node", taskObject.NodeRef.Name)
 				return
-			case item, ok := <-headNode.staging:
+			case item, ok := <-taskObject.Segment:
 				if !ok {
-					headNode.Dead = true
 					return
 				}
 				outC <- item
-				headNode.ItemsCopied = headNode.ItemsCopied + 1
+				taskObject.NodeRef.ItemsCopied++
 			default:
 				return
 			}
@@ -207,9 +204,11 @@ func main() {
 			case <-ctx.Done():
 				return
 			case evCh <- evRequestCh:
+				evRequest := <-evRequestCh
 				*numEventsPassed++
 
-				evRequest := <-evRequestCh
+				log.Printf("Event %s, Generation: %d", evRequest.Type, *numEventsPassed)
+
 				switch evRequest.Type {
 				case EVNodeAdded:
 					newNode, ok := evRequest.Payload.(*Node)
@@ -218,6 +217,7 @@ func main() {
 					}
 					log.Printf("Added node %s to evCenter", newNode.Name)
 					newNode.RegisterDataEvent(evCh, taskQueue)
+					evRequest.Result <- nil
 				case EVNewDataTask:
 					headTaskItem := taskQueue.DeleteMin()
 					if headTaskItem == nil {
@@ -229,20 +229,23 @@ func main() {
 						panic("unexpected task item type")
 					}
 
-					// badness for running NodeRef.Run() in synchronous way:
-					// if the outC is slow, they would slow down the event loop as well.
-					nrCopiedPreRun := taskObject.NodeRef.ItemsCopied
-					<-taskObject.NodeRef.Run(outC)
-					nrCopiedPostRun := taskObject.NodeRef.ItemsCopied
-					if nrCopiedPostRun == nrCopiedPreRun {
-						// extra penalty for idling
-						taskObject.NodeRef.ScheduledTime += 1.0
-					}
-					taskObject.NodeRef.ScheduledTime += 1.0
+					// go func() {
+						// log.Println("running task", taskObject.NodeRef.Name, "taskId", taskObject.Id)
+						// defer log.Println("task", taskObject.NodeRef.Name, "taskId", taskObject.Id, "finished")
 
-					if taskObject.NodeRef.Dead {
-						delete(allNodes, taskObject.NodeRef.Id)
-					}
+						// taskObject.NodeRef.Mux.Lock()
+						// defer taskObject.NodeRef.Mux.Unlock()
+
+						nrCopiedPreRun := taskObject.NodeRef.ItemsCopied
+						<-taskObject.NodeRef.Run(outC, taskObject)
+						nrCopiedPostRun := taskObject.NodeRef.ItemsCopied
+						if nrCopiedPostRun == nrCopiedPreRun {
+							// extra penalty for idling
+							taskObject.NodeRef.ScheduledTime += 1.0
+						}
+						taskObject.NodeRef.ScheduledTime += 1.0
+					// }()
+					evRequest.Result <- nil
 				default:
 					panic(fmt.Sprintf("unknown event type: %s", evRequest.Type))
 				}
@@ -257,7 +260,7 @@ func main() {
 		stat := make(map[string]int)
 		total := 0
 		for muxedItem := range outC {
-			fmt.Println("muxedItem: ", muxedItem)
+			// fmt.Println("muxedItem: ", muxedItem)
 			stat[muxedItem.(string)]++
 			total++
 			if total%1000 == 0 {
@@ -278,6 +281,7 @@ func main() {
 			CurrentGeneration: numEventsPassed,
 			BirthGeneration:   *numEventsPassed,
 			InC:               anonymousSource(ctx, name),
+			Mux:               sync.Mutex{},
 		}
 		allNodes[newNodeId] = node
 		return node
