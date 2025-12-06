@@ -16,52 +16,44 @@ import (
 
 type DataBlob struct {
 	BufferedChan chan interface{}
-	Size int
+	Size         int
 }
 
 type Node struct {
-	Id                int
-	Name              string
-	InC               chan interface{}
-	ItemsCopied       int
-	ScheduledTime     float64
-	CurrentGeneration *int
-	BirthGeneration   int
-	Mux               sync.Mutex
-	queuePending      chan interface{}
-}
-
-func (nd *Node) GetAge() float64 {
-	return float64(*nd.CurrentGeneration - nd.BirthGeneration)
-}
-
-func (node *Node) PrintWithIdx(idx int) {
-	fmt.Printf("[%d] ID=%d, Name=%s, ScheduledTime=%f, Age=%f\n", idx, node.Id, node.Name, node.ScheduledTime, node.GetAge())
+	Id            int
+	Name          string
+	InC           chan interface{}
+	ScheduledTime float64
+	Mux           sync.Mutex
+	queuePending  chan interface{}
 }
 
 const defaultChannelBufferSize = 1024
 
 func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, nodeQueue *btree.BTree) {
+	toBeSendFragments := make(chan DataBlob)
+	taskSeq := 0
+	go func() {
+		defer close(toBeSendFragments)
+		for dataBlob := range toBeSendFragments {
+
+			evSubCh := <-evCh
+			nd.queuePending <- struct{}{}
+			nodeQueue.ReplaceOrInsert(nd)
+			evObj := EVObject{
+				Type:    EVNewDataTask,
+				Payload: dataBlob,
+				Result:  make(chan error),
+			}
+
+			evSubCh <- evObj
+			<-evObj.Result
+			taskSeq++
+		}
+	}()
+
 	go func() {
 		defer log.Printf("node %s is drained", nd.Name)
-
-		toBeSendFragments := make(chan DataBlob)
-		taskSeq := 0
-		go func() {
-			defer close(toBeSendFragments)
-			for dataBlob := range toBeSendFragments {
-				nd.queuePending <- struct{}{}
-				evObj := EVObject{
-					Type:    EVNewDataTask,
-					Payload: dataBlob,
-					Result:  make(chan error),
-				}
-				evSubCh := <-evCh
-				evSubCh <- evObj
-				<-evObj.Result
-				taskSeq++
-			}
-		}()
 
 		staging := make(chan interface{}, defaultChannelBufferSize)
 		itemsLoaded := 0
@@ -72,7 +64,7 @@ func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, nodeQueue *btree.BT
 			default:
 				toBeSendFragments <- DataBlob{
 					BufferedChan: staging,
-					Size: itemsLoaded,
+					Size:         itemsLoaded,
 				}
 				itemsLoaded = 0
 				staging = make(chan interface{}, defaultChannelBufferSize)
@@ -84,27 +76,25 @@ func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, nodeQueue *btree.BT
 			itemsLoaded = 0
 			toBeSendFragments <- DataBlob{
 				BufferedChan: staging,
-				Size: itemsLoaded,
+				Size:         itemsLoaded,
 			}
 		}
 	}()
 }
 
-func (nd *Node) schedDensity() float64 {
-	return float64(nd.ScheduledTime) / math.Max(1.0, nd.GetAge())
-}
-
 func (n *Node) Less(item btree.Item) bool {
-	if nodeItem, ok := item.(*Node); ok {
+	if n == nil || item == nil {
+		return true
+	}
 
-		delta := n.schedDensity() - nodeItem.schedDensity()
-		if math.Abs(delta) < 0.01 {
+	if nodeItem, ok := item.(*Node); ok {
+		if math.Abs(n.ScheduledTime-nodeItem.ScheduledTime) < 0.01 {
 			return !(n.Id < nodeItem.Id)
 		}
-		return delta < 0
-
+		return n.ScheduledTime < nodeItem.ScheduledTime
 	}
-	panic("comparing node with unexpected item type")
+
+	panic(fmt.Sprintf("comparing node with unexpected item type: %T", item))
 }
 
 type EVType string
@@ -138,7 +128,6 @@ func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node, dataBlob DataBlob
 					return
 				}
 				outC <- item
-				nodeObject.ItemsCopied++
 			default:
 				return
 			}
@@ -177,8 +166,7 @@ func main() {
 
 	allNodes := make(map[int]*Node)
 
-	var numEventsPassed *int = new(int)
-	*numEventsPassed = 0
+	numEventsPassed := 0
 
 	go func() {
 		log.Println("evCenter started")
@@ -192,9 +180,9 @@ func main() {
 				return
 			case evCh <- evRequestCh:
 				evRequest := <-evRequestCh
-				*numEventsPassed++
+				numEventsPassed++
 
-				log.Printf("Event %s, Generation: %d", evRequest.Type, *numEventsPassed)
+				log.Printf("Event %s, Generation: %d", evRequest.Type, numEventsPassed)
 
 				switch evRequest.Type {
 				case EVNodeAdded:
@@ -221,26 +209,13 @@ func main() {
 						panic("payload of event is not a of type struct DataBlob")
 					}
 
-					go func() {
-						log.Println("running node", nodeObject.Name)
-						defer log.Println("node", nodeObject.Name, "finished")
-
-						nodeObject.Mux.Lock()
-						defer nodeObject.Mux.Unlock()
-
-						nrCopiedPreRun := nodeObject.ItemsCopied
-						<-nodeObject.Run(outC, nodeObject, dataBlob)
-						nrCopiedPostRun := nodeObject.ItemsCopied
-						if nrCopiedPostRun == nrCopiedPreRun {
-							// extra penalty for idling
-							nodeObject.ScheduledTime += 1.0
-						}
-						nodeObject.ScheduledTime += 1.0
-
-						// release the queue lock, to enable the node be re-queued again
-						<-nodeObject.queuePending
-					}()
+					<-nodeObject.Run(outC, nodeObject, dataBlob)
+					nodeObject.ScheduledTime += 1.0
 					evRequest.Result <- nil
+
+					// release the queue lock, to enable the node be re-queued again
+					<-nodeObject.queuePending
+
 				default:
 					panic(fmt.Sprintf("unknown event type: %s", evRequest.Type))
 				}
@@ -255,14 +230,12 @@ func main() {
 		stat := make(map[string]int)
 		total := 0
 		for muxedItem := range outC {
-			// fmt.Println("muxedItem: ", muxedItem)
 			stat[muxedItem.(string)]++
 			total++
 			if total%1000 == 0 {
 				for k, v := range stat {
 					fmt.Printf("%s: %d, %.2f%%\n", k, v, 100*float64(v)/float64(total))
 				}
-				stat = make(map[string]int)
 			}
 		}
 	}()
@@ -270,13 +243,10 @@ func main() {
 	add := func(name string) *Node {
 		newNodeId := len(allNodes)
 		node := &Node{
-			Id:                newNodeId,
-			Name:              name,
-			ScheduledTime:     0.0,
-			CurrentGeneration: numEventsPassed,
-			BirthGeneration:   *numEventsPassed,
-			InC:               anonymousSource(ctx, name),
-			Mux:               sync.Mutex{},
+			Id:   newNodeId,
+			Name: name,
+			InC:  anonymousSource(ctx, name),
+			Mux:  sync.Mutex{},
 
 			// the buffer size of this channel `queuePending` must be 1,
 			// to ensure that, for every moment, at most 1 node instance is in-queue
