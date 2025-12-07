@@ -165,6 +165,8 @@ func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node) <-chan int {
 				outC <- item
 				*itemsCopied = *itemsCopied + 1
 				nodeObject.CurrentDataBlob.Remaining--
+			default:
+				return
 			}
 		}
 	}()
@@ -253,9 +255,9 @@ func main() {
 		<-evObj.Result
 	}
 
-	aLim := 80000
-	bLim := 160000
-	cLim := 240000
+	aLim := 8000000
+	bLim := 16000000
+	cLim := 24000000
 
 	go func() {
 		log.Println("evCenter started")
