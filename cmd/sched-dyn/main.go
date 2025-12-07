@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,11 +19,12 @@ type DataBlob struct {
 }
 
 type Node struct {
-	Id            int
-	Name          string
-	InC           chan interface{}
-	ScheduledTime float64
-	queuePending  chan interface{}
+	Id             int
+	Name           string
+	InC            chan interface{}
+	ScheduledTime  float64
+	queuePending   chan interface{}
+	NumItemsCopied []int
 }
 
 const defaultChannelBufferSize = 1024
@@ -80,16 +81,24 @@ func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, nodeQueue *btree.BT
 	}()
 }
 
+func (nd *Node) TotalCopied() int {
+	sum := 0
+	for _, v := range nd.NumItemsCopied {
+		sum += v
+	}
+	return sum
+}
+
 func (n *Node) Less(item btree.Item) bool {
 	if n == nil || item == nil {
 		return true
 	}
 
 	if nodeItem, ok := item.(*Node); ok {
-		if math.Abs(n.ScheduledTime-nodeItem.ScheduledTime) < 0.01 {
+		if n.TotalCopied() == nodeItem.TotalCopied() {
 			return !(n.Id < nodeItem.Id)
 		}
-		return n.ScheduledTime < nodeItem.ScheduledTime
+		return n.TotalCopied() < nodeItem.TotalCopied()
 	}
 
 	panic(fmt.Sprintf("comparing node with unexpected item type: %T", item))
@@ -109,11 +118,17 @@ type EVObject struct {
 }
 
 // the returning channel doesn't emit anything meaningful, it's simply for synchronization
-func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node, dataBlob DataBlob) <-chan interface{} {
-	runCh := make(chan interface{})
+func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node, dataBlob DataBlob) <-chan int {
+	runCh := make(chan int)
+
+	var itemsCopied *int = new(int)
+	*itemsCopied = 0
 
 	go func() {
-		defer close(runCh)
+		defer func() {
+			n := *itemsCopied
+			runCh <- n
+		}()
 
 		timeout := time.After(defaultTimeSlice)
 
@@ -126,6 +141,7 @@ func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node, dataBlob DataBlob
 					return
 				}
 				outC <- item
+				*itemsCopied = *itemsCopied + 1
 			default:
 				return
 			}
@@ -134,15 +150,22 @@ func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node, dataBlob DataBlob
 	return runCh
 }
 
-func anonymousSource(ctx context.Context, content string) chan interface{} {
+func anonymousSource(ctx context.Context, content string, limit *int) chan interface{} {
 	outC := make(chan interface{})
+	numItemsCopied := 0
 	go func() {
+		defer close(outC)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				outC <- content
+				numItemsCopied++
+				if limit != nil && *limit > 0 && numItemsCopied >= *limit {
+					log.Printf("source %s reached limit %d, stopping", content, *limit)
+					return
+				}
 			}
 		}
 	}()
@@ -162,9 +185,57 @@ func main() {
 	outC := make(chan interface{})
 	evCh := make(chan chan EVObject)
 
-	allNodes := make(map[int]*Node)
+	var nodesCount *int = new(int)
+	*nodesCount = 0
 
-	numEventsPassed := 0
+	nodesCountMutex := new(sync.Mutex)
+
+	var numEventsPassed *int = new(int)
+	*numEventsPassed = 0
+
+	add := func(name string, limit *int) *Node {
+		nodesCountMutex.Lock()
+		defer nodesCountMutex.Unlock()
+
+		node := &Node{
+			Id:   *nodesCount,
+			Name: name,
+			InC:  anonymousSource(ctx, name, limit),
+
+			// the buffer size of this channel `queuePending` must be 1,
+			// to ensure that, for every moment, at most 1 node instance is in-queue
+			queuePending:   make(chan interface{}, 1),
+			NumItemsCopied: make([]int, 3),
+		}
+		node.NumItemsCopied[0] = 0
+		node.NumItemsCopied[1] = 0
+		node.NumItemsCopied[2] = 0
+
+		*nodesCount = *nodesCount + 1
+
+		return node
+	}
+
+	addToEvCenter := func(node *Node) {
+		evSubCh, ok := <-evCh
+		if !ok {
+			panic("evCh is closed")
+		}
+		evObj := EVObject{
+			Type:    EVNodeAdded,
+			Payload: node,
+			Result:  make(chan error),
+		}
+		evSubCh <- evObj
+		<-evObj.Result
+	}
+
+	aLim := 8000000
+	bLim := 16000000
+	cLim := 24000000
+	dLim := 32000000
+	eLim := 40000000
+	fLim := 48000000
 
 	go func() {
 		log.Println("evCenter started")
@@ -178,9 +249,34 @@ func main() {
 				return
 			case evCh <- evRequestCh:
 				evRequest := <-evRequestCh
-				numEventsPassed++
+				*numEventsPassed = *numEventsPassed + 1
 
-				log.Printf("Event %s, Generation: %d", evRequest.Type, numEventsPassed)
+				log.Printf("Event %s, Generation: %d", evRequest.Type, *numEventsPassed)
+
+				if *numEventsPassed == 8000 {
+					go func() {
+						newNode := add("D", &dLim)
+						log.Printf("reached %d generations, adding new node %s", *numEventsPassed, newNode.Name)
+						addToEvCenter(newNode)
+					}()
+
+				}
+
+				if *numEventsPassed == 16000 {
+					go func() {
+						newNode := add("E", &eLim)
+						log.Printf("reached %d generations, adding new node %s", *numEventsPassed, newNode.Name)
+						addToEvCenter(newNode)
+					}()
+				}
+
+				if *numEventsPassed == 24000 {
+					go func() {
+						newNode := add("F", &fLim)
+						log.Printf("reached %d generations, adding new node %s", *numEventsPassed, newNode.Name)
+						addToEvCenter(newNode)
+					}()
+				}
 
 				switch evRequest.Type {
 				case EVNodeAdded:
@@ -207,8 +303,11 @@ func main() {
 						panic("payload of event is not a of type struct DataBlob")
 					}
 
-					<-nodeObject.Run(outC, nodeObject, dataBlob)
+					itemsCopied := <-nodeObject.Run(outC, nodeObject, dataBlob)
 					nodeObject.ScheduledTime += 1.0
+					nodeObject.NumItemsCopied[0] = nodeObject.NumItemsCopied[1]
+					nodeObject.NumItemsCopied[1] = nodeObject.NumItemsCopied[2]
+					nodeObject.NumItemsCopied[2] = itemsCopied
 					evRequest.Result <- nil
 
 					// release the queue lock, to enable the node be re-queued again
@@ -238,38 +337,9 @@ func main() {
 		}
 	}()
 
-	add := func(name string) *Node {
-		newNodeId := len(allNodes)
-		node := &Node{
-			Id:   newNodeId,
-			Name: name,
-			InC:  anonymousSource(ctx, name),
-
-			// the buffer size of this channel `queuePending` must be 1,
-			// to ensure that, for every moment, at most 1 node instance is in-queue
-			queuePending: make(chan interface{}, 1),
-		}
-		allNodes[newNodeId] = node
-		return node
-	}
-
-	addToEvCenter := func(node *Node) {
-		evSubCh, ok := <-evCh
-		if !ok {
-			panic("evCh is closed")
-		}
-		evObj := EVObject{
-			Type:    EVNodeAdded,
-			Payload: node,
-			Result:  make(chan error),
-		}
-		evSubCh <- evObj
-		<-evObj.Result
-	}
-
-	nodeA := add("A")
-	nodeB := add("B")
-	nodeC := add("C")
+	nodeA := add("A", &aLim)
+	nodeB := add("B", &bLim)
+	nodeC := add("C", &cLim)
 
 	addToEvCenter(nodeA)
 	addToEvCenter(nodeB)
