@@ -58,7 +58,7 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	evCenter.Run(ctx)
+	errorChan := evCenter.Run(ctx)
 
 	outC := evCenter.GetOutput()
 
@@ -74,7 +74,7 @@ func main() {
 
 	// consumer goroutine
 	go func() {
-		stat := make(map[string]int)
+		stat := make(map[int]int)
 		var total *int = new(int)
 
 		go func() {
@@ -86,17 +86,17 @@ func main() {
 		}()
 
 		for muxedItem := range outC {
-			stat[muxedItem.(string)]++
+			stat[muxedItem.(int)]++
 			*total = *total + 1
 			if *total%1000 == 0 {
 				for k, v := range stat {
-					fmt.Printf("%s: %d, %.2f%%\n", k, v, 100*float64(v)/float64(*total))
+					fmt.Printf("%d: %d, %.2f%%\n", k, v, 100*float64(v)/float64(*total))
 				}
 			}
 			if *total == aLim+bLim+cLim {
 				fmt.Println("Final statistics:")
 				for k, v := range stat {
-					fmt.Printf("%s: %d, %.2f%%\n", k, v, 100*float64(v)/float64(*total))
+					fmt.Printf("%d: %d, %.2f%%\n", k, v, 100*float64(v)/float64(*total))
 				}
 			}
 		}
@@ -109,4 +109,11 @@ func main() {
 
 	sig := <-sigs
 	fmt.Println("signal received: ", sig, " exitting...")
+
+	cancel()
+
+	err, ok := <-errorChan
+	if ok && err != nil {
+		log.Fatalf("event loop error: %v", err)
+	}
 }

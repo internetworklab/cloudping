@@ -10,6 +10,7 @@ import (
 )
 
 const defaultTimeSlice time.Duration = 50 * time.Millisecond
+const defaultMaximumChunkSize = 1024
 
 type TimeSlicedEVLoopSched struct {
 	evCh            chan chan TSSchedEVObject
@@ -20,14 +21,16 @@ type TimeSlicedEVLoopSched struct {
 
 	// numbers of nodes added since the very beginning
 	// we use this field for generating unique node id
-	nodesAdded int
+	nodesAdded map[int]*TSSchedSourceNode
 
 	defaultTimeSlice *time.Duration
+	maximumChunkSize int
 }
 
 type TimeSlicedEVLoopSchedConfig struct {
 	DefaultTimeSlice *time.Duration
 	BTreeOrder       *int
+	MaximumChunkSize *int
 }
 
 func NewTimeSlicedEVLoopSched(config *TimeSlicedEVLoopSchedConfig) (*TimeSlicedEVLoopSched, error) {
@@ -36,11 +39,12 @@ func NewTimeSlicedEVLoopSched(config *TimeSlicedEVLoopSchedConfig) (*TimeSlicedE
 	}
 
 	sched := &TimeSlicedEVLoopSched{
-		evCh:            make(chan chan TSSchedEVObject),
-		config:          config,
-		outC:            make(chan interface{}),
-		numEventsPassed: new(int),
-		nodesAdded:      0,
+		evCh:             make(chan chan TSSchedEVObject),
+		config:           config,
+		outC:             make(chan interface{}),
+		numEventsPassed:  new(int),
+		nodesAdded:       make(map[int]*TSSchedSourceNode),
+		maximumChunkSize: defaultMaximumChunkSize,
 	}
 	btreeOrder := 2
 	if config.BTreeOrder != nil {
@@ -48,8 +52,8 @@ func NewTimeSlicedEVLoopSched(config *TimeSlicedEVLoopSchedConfig) (*TimeSlicedE
 			return nil, fmt.Errorf("btree order must be at least 2")
 		}
 		btreeOrder = *config.BTreeOrder
-		sched.nodeQueue = btree.New(btreeOrder)
 	}
+	sched.nodeQueue = btree.New(btreeOrder)
 	*(sched.numEventsPassed) = 0
 
 	tsUsed := defaultTimeSlice
@@ -58,7 +62,14 @@ func NewTimeSlicedEVLoopSched(config *TimeSlicedEVLoopSchedConfig) (*TimeSlicedE
 			return nil, fmt.Errorf("default time slice must be at least 10 milliseconds")
 		}
 		tsUsed = *config.DefaultTimeSlice
-		sched.defaultTimeSlice = &tsUsed
+	}
+	sched.defaultTimeSlice = &tsUsed
+
+	if config.MaximumChunkSize != nil {
+		if *config.MaximumChunkSize < 1 {
+			return nil, fmt.Errorf("maximum chunk size must be at least 1")
+		}
+		sched.maximumChunkSize = *config.MaximumChunkSize
 	}
 
 	return sched, nil
@@ -70,36 +81,33 @@ func (tsSched *TimeSlicedEVLoopSched) GetOutput() <-chan interface{} {
 
 func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 	errorChan := make(chan error)
-	outC := tsSched.outC
-	evCh := tsSched.evCh
 	numEventsPassed := tsSched.numEventsPassed
-	nodeQueue := tsSched.nodeQueue
 
 	go func() {
+		defer close(errorChan)
 		log.Println("Event loop is started")
 		defer log.Println("Event loop is stopped")
-		defer close(errorChan)
 
 		for {
 			evRequestCh := make(chan TSSchedEVObject)
 			select {
 			case <-ctx.Done():
+				log.Println("inside event loop, context is done or cancelled")
 				return
-			case evCh <- evRequestCh:
+			case tsSched.evCh <- evRequestCh:
 				evRequest := <-evRequestCh
 				*numEventsPassed = *numEventsPassed + 1
 
 				log.Printf("Event %s, Generation: %d", evRequest.Type, *numEventsPassed)
 
 				switch evRequest.Type {
-				case EVNewSource:
+				case TSSchedEVNewSource:
 					inputChan, ok := evRequest.Payload.(<-chan interface{})
 					if !ok {
 						panic("unexpected ev payload, it's not of a type of <-chan interface{}")
 					}
 
-					newNodeId := tsSched.nodesAdded
-					tsSched.nodesAdded++
+					newNodeId := len(tsSched.nodesAdded)
 					newNodeObject := &TSSchedSourceNode{
 						Id:              newNodeId,
 						InC:             inputChan,
@@ -108,21 +116,22 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 						NumItemsCopied:  make([]int, 3),
 						CurrentDataBlob: nil,
 					}
+					tsSched.nodesAdded[newNodeId] = newNodeObject
 					log.Printf("Added node %d to evCenter", newNodeId)
-					newNodeObject.RegisterDataEvent(evCh, nodeQueue)
+					newNodeObject.RegisterDataEvent(tsSched.evCh, tsSched.nodeQueue, tsSched.maximumChunkSize)
 					evRequest.Result <- nil
-				case EVNewDataTask:
+				case TSSchedEVNewDataTask:
 
 					evPayloadNode, ok := evRequest.Payload.(*TSSchedSourceNode)
 					if !ok {
 						panic("unexpected ev payload, it's not of a type of struct *Node")
 					}
 
-					if nodeQueue.ReplaceOrInsert(evPayloadNode) != nil {
+					if tsSched.nodeQueue.ReplaceOrInsert(evPayloadNode) != nil {
 						panic("the node is already in the queue, which is unexpected")
 					}
 
-					headItem := nodeQueue.DeleteMin()
+					headItem := tsSched.nodeQueue.DeleteMin()
 					if headItem == nil {
 						panic("head item in the queue shouldn't be nil")
 					}
@@ -131,20 +140,32 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 					if !ok {
 						panic("head item in the queue is not a of type struct Node")
 					}
+					if nodeObject == nil {
+						panic("head node in the queue is nil")
+					}
+					if nodeObject.Dead {
+						log.Printf("node %d is dead, skipping", nodeObject.Id)
+						continue
+					}
 
-					itemsCopied := <-nodeObject.Run(outC, nodeObject, *tsSched.defaultTimeSlice)
+					itemsCopied, nodeIsDead := nodeObject.Run(tsSched.outC, nodeObject, *tsSched.defaultTimeSlice)
 					nodeObject.ScheduledTime += 1.0
 					nodeObject.NumItemsCopied[0] = nodeObject.NumItemsCopied[1]
 					nodeObject.NumItemsCopied[1] = nodeObject.NumItemsCopied[2]
 					nodeObject.NumItemsCopied[2] = itemsCopied
+
+					if nodeIsDead {
+						nodeObject.Dead = true
+						delete(tsSched.nodesAdded, nodeObject.Id)
+						log.Printf("node %d is drained, removing from the queue", nodeObject.Id)
+					}
+
 					evRequest.Result <- nil
 
 				default:
 					panic(fmt.Sprintf("unknown event type: %s", evRequest.Type))
 				}
-
 			}
-
 		}
 	}()
 	return errorChan
@@ -158,7 +179,7 @@ func (tsSched *TimeSlicedEVLoopSched) AddInput(ctx context.Context, inputChan <-
 	defer close(evSubCh)
 
 	evObj := TSSchedEVObject{
-		Type:    EVNewSource,
+		Type:    TSSchedEVNewSource,
 		Payload: inputChan,
 		Result:  make(chan error),
 	}
@@ -176,6 +197,7 @@ func (tsSched *TimeSlicedEVLoopSched) AddInput(ctx context.Context, inputChan <-
 
 type TSSchedSourceNode struct {
 	Id              int
+	Dead            bool
 	InC             <-chan interface{}
 	ScheduledTime   float64
 	queuePending    chan interface{}
@@ -189,9 +211,11 @@ type TSSchedDataBlob struct {
 	Remaining    int
 }
 
-const defaultChannelBufferSize = 1024
-
-func (nd *TSSchedSourceNode) RegisterDataEvent(evCh <-chan chan TSSchedEVObject, nodeQueue *btree.BTree) {
+func (nd *TSSchedSourceNode) RegisterDataEvent(
+	evCh <-chan chan TSSchedEVObject,
+	nodeQueue *btree.BTree,
+	maximumChunkSize int,
+) {
 	toBeSendFragments := make(chan *TSSchedDataBlob)
 
 	go func() {
@@ -201,7 +225,7 @@ func (nd *TSSchedSourceNode) RegisterDataEvent(evCh <-chan chan TSSchedEVObject,
 				nd.queuePending <- struct{}{}
 				nd.CurrentDataBlob = dataBlob
 				evObj := TSSchedEVObject{
-					Type:    EVNewDataTask,
+					Type:    TSSchedEVNewDataTask,
 					Payload: nd,
 					Result:  make(chan error),
 				}
@@ -220,7 +244,7 @@ func (nd *TSSchedSourceNode) RegisterDataEvent(evCh <-chan chan TSSchedEVObject,
 
 		totalItemsProcessed := 0
 
-		staging := make(chan interface{}, defaultChannelBufferSize)
+		staging := make(chan interface{}, maximumChunkSize)
 		temporaryBuf := make([]interface{}, 0)
 		for item := range nd.InC {
 			totalItemsProcessed++
@@ -244,7 +268,7 @@ func (nd *TSSchedSourceNode) RegisterDataEvent(evCh <-chan chan TSSchedEVObject,
 					Remaining:    itemsLoaded,
 				}
 				itemsLoaded = 0
-				staging = make(chan interface{}, defaultChannelBufferSize)
+				staging = make(chan interface{}, maximumChunkSize)
 			}
 		}
 
@@ -288,8 +312,8 @@ func (n *TSSchedSourceNode) Less(item btree.Item) bool {
 type TSSchedEVType string
 
 const (
-	EVNewSource   TSSchedEVType = "new_source"
-	EVNewDataTask TSSchedEVType = "new_data_task"
+	TSSchedEVNewSource   TSSchedEVType = "new_source"
+	TSSchedEVNewDataTask TSSchedEVType = "new_data_task"
 )
 
 type TSSchedEVObject struct {
@@ -299,36 +323,26 @@ type TSSchedEVObject struct {
 }
 
 // the returning channel doesn't emit anything meaningful, it's simply for synchronization
-func (nd *TSSchedSourceNode) Run(outC chan<- interface{}, nodeObject *TSSchedSourceNode, duration time.Duration) <-chan int {
-	runCh := make(chan int)
+func (nd *TSSchedSourceNode) Run(outC chan<- interface{}, nodeObject *TSSchedSourceNode, duration time.Duration) (itemsCopied int, nodeIsDead bool) {
 
-	var itemsCopied *int = new(int)
-	*itemsCopied = 0
+	itemsCopied = 0
 
-	go func() {
-		defer func() {
-			n := *itemsCopied
-			runCh <- n
-		}()
+	timeout := time.After(duration)
 
-		timeout := time.After(duration)
-
-		for {
-			select {
-			case <-timeout:
-				// todo: Some data may still in the buffer when timeout.
-				return
-			case item, ok := <-nodeObject.CurrentDataBlob.BufferedChan:
-				if !ok {
-					return
-				}
-				outC <- item
-				*itemsCopied = *itemsCopied + 1
-				nodeObject.CurrentDataBlob.Remaining--
-			default:
-				return
+	for {
+		select {
+		case <-timeout:
+			// todo: Some data may still in the buffer when timeout.
+			return itemsCopied, false
+		case item, ok := <-nodeObject.CurrentDataBlob.BufferedChan:
+			if !ok {
+				return itemsCopied, true
 			}
+			outC <- item
+			itemsCopied = itemsCopied + 1
+			nodeObject.CurrentDataBlob.Remaining--
+		default:
+			return itemsCopied, false
 		}
-	}()
-	return runCh
+	}
 }
