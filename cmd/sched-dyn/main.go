@@ -10,170 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/btree"
+	pkgthrottle "example.com/rbmq-demo/pkg/throttle"
 )
 
-type Node struct {
-	Id              int
-	Name            string
-	InC             chan interface{}
-	ScheduledTime   float64
-	queuePending    chan interface{}
-	NumItemsCopied  []int
-	CurrentDataBlob *DataBlob
-}
-
-type DataBlob struct {
-	BufferedChan chan interface{}
-	Size         int
-	Remaining    int
-}
-
-const defaultChannelBufferSize = 1024
-
-func (nd *Node) RegisterDataEvent(evCh <-chan chan EVObject, nodeQueue *btree.BTree) {
-	toBeSendFragments := make(chan *DataBlob)
-
-	go func() {
-		for dataBlob := range toBeSendFragments {
-			for dataBlob.Remaining > 0 {
-				evSubCh := <-evCh
-				nd.queuePending <- struct{}{}
-				nd.CurrentDataBlob = dataBlob
-				evObj := EVObject{
-					Type:    EVNewDataTask,
-					Payload: nd,
-					Result:  make(chan error),
-				}
-
-				evSubCh <- evObj
-				<-evObj.Result
-
-				<-nd.queuePending
-			}
-		}
-	}()
-
-	go func() {
-		itemsLoaded := 0
-		defer log.Printf("node %s is drained", nd.Name)
-
-		totalItemsProcessed := 0
-
-		staging := make(chan interface{}, defaultChannelBufferSize)
-		temporaryBuf := make([]interface{}, 0)
-		for item := range nd.InC {
-			totalItemsProcessed++
-
-			if len(temporaryBuf) > 0 {
-				fmt.Println("flushing temporaryBuf: ", len(temporaryBuf))
-				for _, item := range temporaryBuf {
-					staging <- item
-					itemsLoaded++
-				}
-				temporaryBuf = make([]interface{}, 0)
-			}
-			select {
-			case staging <- item:
-				itemsLoaded++
-			default:
-				temporaryBuf = append(temporaryBuf, item)
-				toBeSendFragments <- &DataBlob{
-					BufferedChan: staging,
-					Size:         itemsLoaded,
-					Remaining:    itemsLoaded,
-				}
-				itemsLoaded = 0
-				staging = make(chan interface{}, defaultChannelBufferSize)
-			}
-		}
-
-		if itemsLoaded > 0 {
-			// flush the remaining items in buffer
-			toBeSendFragments <- &DataBlob{
-				BufferedChan: staging,
-				Size:         itemsLoaded,
-				Remaining:    itemsLoaded,
-			}
-			itemsLoaded = 0
-		}
-
-		fmt.Println("total items processed: ", totalItemsProcessed)
-	}()
-}
-
-func (nd *Node) TotalCopied() int {
-	sum := 0
-	for _, v := range nd.NumItemsCopied {
-		sum += v
-	}
-	return sum
-}
-
-func (n *Node) Less(item btree.Item) bool {
-	if n == nil || item == nil {
-		panic("comparing node against nil")
-	}
-
-	if nodeItem, ok := item.(*Node); ok {
-		if n.TotalCopied() == nodeItem.TotalCopied() {
-			return !(n.Id < nodeItem.Id)
-		}
-		return n.TotalCopied() < nodeItem.TotalCopied()
-	}
-
-	panic(fmt.Sprintf("comparing node with unexpected item type: %T", item))
-}
-
-type EVType string
-
-const (
-	EVNodeAdded   EVType = "node_added"
-	EVNewDataTask EVType = "new_data_task"
-)
-
-type EVObject struct {
-	Type    EVType
-	Payload interface{}
-	Result  chan error
-}
-
-// the returning channel doesn't emit anything meaningful, it's simply for synchronization
-func (nd *Node) Run(outC chan<- interface{}, nodeObject *Node) <-chan int {
-	runCh := make(chan int)
-
-	var itemsCopied *int = new(int)
-	*itemsCopied = 0
-
-	go func() {
-		defer func() {
-			n := *itemsCopied
-			runCh <- n
-		}()
-
-		timeout := time.After(defaultTimeSlice)
-
-		for {
-			select {
-			case <-timeout:
-				// todo: Some data may still in the buffer when timeout.
-				return
-			case item, ok := <-nodeObject.CurrentDataBlob.BufferedChan:
-				if !ok {
-					return
-				}
-				outC <- item
-				*itemsCopied = *itemsCopied + 1
-				nodeObject.CurrentDataBlob.Remaining--
-			default:
-				return
-			}
-		}
-	}()
-	return runCh
-}
-
-func anonymousSource(ctx context.Context, content string, limit *int) chan interface{} {
+func anonymousSource(ctx context.Context, symbol int, limit *int) chan interface{} {
 	outC := make(chan interface{})
 	numItemsCopied := 0
 	go func() {
@@ -185,10 +25,10 @@ func anonymousSource(ctx context.Context, content string, limit *int) chan inter
 			case <-ctx.Done():
 				return
 			default:
-				outC <- content
+				outC <- symbol
 				numItemsCopied++
 				if limit != nil && *limit > 0 && numItemsCopied >= *limit {
-					log.Printf("source %s reached limit %d, stopping", content, *limit)
+					log.Printf("source %d reached limit %d, stopping", symbol, *limit)
 					return
 				}
 			}
@@ -197,18 +37,19 @@ func anonymousSource(ctx context.Context, content string, limit *int) chan inter
 	return outC
 }
 
-const defaultTimeSlice time.Duration = 50 * time.Millisecond
-
 func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	evCenter, err := pkgthrottle.NewTimeSlicedEVLoopSched(&pkgthrottle.TimeSlicedEVLoopSchedConfig{})
+	if err != nil {
+		log.Fatalf("failed to create evCenter: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	evCenter.Run(ctx)
 
-	nodeQueue := btree.New(2)
-
-	outC := make(chan interface{})
-	evCh := make(chan chan EVObject)
+	outC := evCenter.GetOutput()
 
 	var nodesCount *int = new(int)
 	*nodesCount = 0
@@ -218,108 +59,19 @@ func main() {
 	var numEventsPassed *int = new(int)
 	*numEventsPassed = 0
 
-	add := func(name string, limit *int) *Node {
+	add := func(symbol int, limit *int, evCenter *pkgthrottle.TimeSlicedEVLoopSched) {
 		nodesCountMutex.Lock()
 		defer nodesCountMutex.Unlock()
 
-		node := &Node{
-			Id:   *nodesCount,
-			Name: name,
-			InC:  anonymousSource(ctx, name, limit),
-
-			// the buffer size of this channel `queuePending` must be 1,
-			// to ensure that, for every moment, at most 1 node instance is in-queue
-			queuePending:   make(chan interface{}, 1),
-			NumItemsCopied: make([]int, 3),
+		dataSource := anonymousSource(ctx, symbol, limit)
+		if err := evCenter.AddInput(dataSource); err != nil {
+			log.Fatalf("failed to add input to evCenter: %v", err)
 		}
-		node.NumItemsCopied[0] = 0
-		node.NumItemsCopied[1] = 0
-		node.NumItemsCopied[2] = 0
-
-		*nodesCount = *nodesCount + 1
-
-		return node
-	}
-
-	addToEvCenter := func(node *Node) {
-		evSubCh, ok := <-evCh
-		if !ok {
-			panic("evCh is closed")
-		}
-		evObj := EVObject{
-			Type:    EVNodeAdded,
-			Payload: node,
-			Result:  make(chan error),
-		}
-		evSubCh <- evObj
-		<-evObj.Result
 	}
 
 	aLim := 8000000
 	bLim := 16000000
 	cLim := 24000000
-
-	go func() {
-		log.Println("evCenter started")
-
-		defer close(evCh)
-
-		for {
-			evRequestCh := make(chan EVObject)
-			select {
-			case <-ctx.Done():
-				return
-			case evCh <- evRequestCh:
-				evRequest := <-evRequestCh
-				*numEventsPassed = *numEventsPassed + 1
-
-				log.Printf("Event %s, Generation: %d", evRequest.Type, *numEventsPassed)
-
-				switch evRequest.Type {
-				case EVNodeAdded:
-					newNode, ok := evRequest.Payload.(*Node)
-					if !ok {
-						panic("unexpected node type")
-					}
-					log.Printf("Added node %s to evCenter", newNode.Name)
-					newNode.RegisterDataEvent(evCh, nodeQueue)
-					evRequest.Result <- nil
-				case EVNewDataTask:
-
-					evPayloadNode, ok := evRequest.Payload.(*Node)
-					if !ok {
-						panic("unexpected ev payload, it's not of a type of struct *Node")
-					}
-
-					if nodeQueue.ReplaceOrInsert(evPayloadNode) != nil {
-						panic("the node is already in the queue, which is unexpected")
-					}
-
-					headItem := nodeQueue.DeleteMin()
-					if headItem == nil {
-						panic("head item in the queue shouldn't be nil")
-					}
-
-					nodeObject, ok := headItem.(*Node)
-					if !ok {
-						panic("head item in the queue is not a of type struct Node")
-					}
-
-					itemsCopied := <-nodeObject.Run(outC, nodeObject)
-					nodeObject.ScheduledTime += 1.0
-					nodeObject.NumItemsCopied[0] = nodeObject.NumItemsCopied[1]
-					nodeObject.NumItemsCopied[1] = nodeObject.NumItemsCopied[2]
-					nodeObject.NumItemsCopied[2] = itemsCopied
-					evRequest.Result <- nil
-
-				default:
-					panic(fmt.Sprintf("unknown event type: %s", evRequest.Type))
-				}
-
-			}
-
-		}
-	}()
 
 	// consumer goroutine
 	go func() {
@@ -352,13 +104,9 @@ func main() {
 
 	}()
 
-	nodeA := add("A", &aLim)
-	nodeB := add("B", &bLim)
-	nodeC := add("C", &cLim)
-
-	addToEvCenter(nodeA)
-	addToEvCenter(nodeB)
-	addToEvCenter(nodeC)
+	add(1, &aLim, evCenter)
+	add(2, &bLim, evCenter)
+	add(3, &cLim, evCenter)
 
 	sig := <-sigs
 	fmt.Println("signal received: ", sig, " exitting...")
