@@ -84,9 +84,9 @@ func main() {
 	var numEventsPassed *int = new(int)
 	*numEventsPassed = 0
 
-	aLim := 8000000
-	bLim := 16000000
-	cLim := 24000000
+	aLim := 80
+	bLim := 160
+	cLim := 240
 
 	// consumer goroutine
 	go func() {
@@ -109,7 +109,7 @@ func main() {
 
 			stat[muxedItem.Symbol]++
 			*total = *total + 1
-			if *total%1000 == 0 {
+			if *total%10 == 0 {
 				fmt.Println("Current statistics:")
 				for k, v := range stat {
 					fmt.Printf("%d: %d, %.2f%%\n", k, v, 100*float64(v)/float64(*total))
@@ -143,7 +143,8 @@ func main() {
 		return nil
 	})
 
-	var sleepIntv *time.Duration = nil
+	dur := 500 * time.Millisecond
+	var sleepIntv *time.Duration = &dur
 	opaqueNodeId := add(ctx, 1, &aLim, evCenter, sleepIntv)
 	log.Printf("node %v is added", opaqueNodeId)
 	wg.Add(1)
