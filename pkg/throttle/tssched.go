@@ -152,7 +152,7 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 			evRequestCh := make(chan TSSchedEVObject)
 			select {
 			case <-ctx.Done():
-				log.Println("inside event loop, context is done or cancelled")
+				log.Println("exitting event loop")
 				return
 			case tsSched.evCh <- evRequestCh:
 				evRequest := <-evRequestCh

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -105,6 +106,8 @@ func main() {
 
 	}()
 
+	wg := sync.WaitGroup{}
+
 	evCenter.RegisterCustomEVHandler(ctx, pkgthrottle.TSSchedEVNodeDrained, "node_drained", func(evObj *pkgthrottle.TSSchedEVObject) error {
 
 		nodeId, ok := evObj.Payload.(int)
@@ -113,6 +116,7 @@ func main() {
 		}
 
 		log.Printf("node %d is drained", nodeId)
+		wg.Done()
 
 		evObj.Result <- nil
 		return nil
@@ -120,13 +124,22 @@ func main() {
 
 	opaqueNodeId := add(ctx, 1, &aLim, evCenter)
 	log.Printf("node %v is added", opaqueNodeId)
+	wg.Add(1)
+
 	opaqueNodeId = add(ctx, 2, &bLim, evCenter)
 	log.Printf("node %v is added", opaqueNodeId)
+	wg.Add(1)
+
 	opaqueNodeId = add(ctx, 3, &cLim, evCenter)
 	log.Printf("node %v is added", opaqueNodeId)
+	wg.Add(1)
 
 	sig := <-sigs
-	fmt.Println("signal received: ", sig, " exitting...")
+	log.Println("signal received: ", sig, " exitting...")
+
+	log.Println("waiting for all nodes to be drained")
+	wg.Wait()
+	log.Println("all nodes are drained")
 
 	cancel()
 
