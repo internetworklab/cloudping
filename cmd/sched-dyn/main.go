@@ -70,9 +70,9 @@ func main() {
 	var numEventsPassed *int = new(int)
 	*numEventsPassed = 0
 
-	aLim := 80000
-	bLim := 160000
-	cLim := 240000
+	aLim := 8000
+	bLim := 16000
+	cLim := 24000
 
 	// consumer goroutine
 	go func() {

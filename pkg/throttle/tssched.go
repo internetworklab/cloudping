@@ -117,6 +117,7 @@ func (tsSched *TimeSlicedEVLoopSched) RegisterCustomEVHandler(ctx context.Contex
 		Payload: TSSchedCustomEVHandlerSubmission{
 			HookName: hookName,
 			Handler:  handler,
+			EVType:   evType,
 		},
 		Result: make(chan error),
 	}
@@ -170,6 +171,9 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 						tsSched.customEVHandlers[evType] = make(map[string]func(evObj *TSSchedEVObject) error)
 					}
 					tsSched.customEVHandlers[evType][evPayloadHook.HookName] = evPayloadHook.Handler
+
+					log.Printf("custom ev handler %s for ev type %s is registered", evPayloadHook.HookName, evType)
+
 					evRequest.Result <- nil
 				case TSSchedEVNewSource:
 					inputChanSubmission, ok := evRequest.Payload.(*TSSchedInputChanSubmission)
@@ -214,40 +218,24 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 					if nodeObject == nil {
 						panic("head node in the queue is nil")
 					}
-					if nodeObject.Dead {
-						log.Printf("node %d is dead, skipping", nodeObject.Id)
-						continue
-					}
 
-					itemsCopied, nodeIsDead := nodeObject.Run(tsSched.outC, nodeObject, *tsSched.defaultTimeSlice)
+					itemsCopied := nodeObject.Run(tsSched.outC, nodeObject, *tsSched.defaultTimeSlice)
 					nodeObject.ScheduledTime += 1.0
 					nodeObject.NumItemsCopied[0] = nodeObject.NumItemsCopied[1]
 					nodeObject.NumItemsCopied[1] = nodeObject.NumItemsCopied[2]
 					nodeObject.NumItemsCopied[2] = itemsCopied
 
-					if nodeIsDead {
-						nodeObject.Dead = true
-						delete(tsSched.nodesAdded, nodeObject.Id)
-
-						go func() {
-							evSubCh, ok := <-tsSched.evCh
-							if !ok {
-								return
-							}
-							evObj := TSSchedEVObject{
-								Type:    TSSchedEVNodeDrained,
-								Payload: nodeObject.Id,
-								Result:  make(chan error),
-							}
-							evSubCh <- evObj
-							<-evObj.Result
-						}()
-					}
-
 					evRequest.Result <- nil
 				case TSSchedEVNodeDrained:
+					deadNodeId, ok := evRequest.Payload.(int)
+					if !ok {
+						panic("unexpected ev payload, it's not of a type of int")
+					}
+					delete(tsSched.nodesAdded, deadNodeId)
+
 					if handlers, ok := tsSched.customEVHandlers[TSSchedEVNodeDrained]; ok {
-						for _, handler := range handlers {
+						for hookName, handler := range handlers {
+							log.Printf("executing custom ev handler %s for ev type %s", hookName, TSSchedEVNodeDrained)
 							handler(&evRequest)
 						}
 					}
@@ -296,7 +284,6 @@ func (tsSched *TimeSlicedEVLoopSched) AddInput(ctx context.Context, inputChan <-
 
 type TSSchedSourceNode struct {
 	Id              int
-	Dead            bool
 	InC             <-chan interface{}
 	ScheduledTime   float64
 	queuePending    chan interface{}
@@ -377,6 +364,20 @@ func (nd *TSSchedSourceNode) RegisterDataEvent(
 			}
 			itemsLoaded = 0
 		}
+
+		go func() {
+			evSubCh, ok := <-evCh
+			if !ok {
+				return
+			}
+			evObj := TSSchedEVObject{
+				Type:    TSSchedEVNodeDrained,
+				Payload: nd.Id,
+				Result:  make(chan error),
+			}
+			evSubCh <- evObj
+			<-evObj.Result
+		}()
 	}()
 }
 
@@ -404,7 +405,7 @@ func (n *TSSchedSourceNode) Less(item btree.Item) bool {
 }
 
 // the returning channel doesn't emit anything meaningful, it's simply for synchronization
-func (nd *TSSchedSourceNode) Run(outC chan<- interface{}, nodeObject *TSSchedSourceNode, duration time.Duration) (itemsCopied int, nodeIsDead bool) {
+func (nd *TSSchedSourceNode) Run(outC chan<- interface{}, nodeObject *TSSchedSourceNode, duration time.Duration) (itemsCopied int) {
 
 	itemsCopied = 0
 
@@ -414,16 +415,16 @@ func (nd *TSSchedSourceNode) Run(outC chan<- interface{}, nodeObject *TSSchedSou
 		select {
 		case <-timeout:
 			// todo: Some data may still in the buffer when timeout.
-			return itemsCopied, false
+			return itemsCopied
 		case item, ok := <-nodeObject.CurrentDataBlob.BufferedChan:
 			if !ok {
-				return itemsCopied, true
+				return itemsCopied
 			}
 			outC <- item
 			itemsCopied = itemsCopied + 1
 			nodeObject.CurrentDataBlob.Remaining--
 		default:
-			return itemsCopied, false
+			return itemsCopied
 		}
 	}
 }
