@@ -14,7 +14,7 @@ type ICMPTrackerEntry struct {
 	Seq        int
 	SentAt     time.Time
 	ReceivedAt []time.Time
-	Timer      *time.Timer
+	Timer      *time.Timer `json:"-"`
 }
 
 func (itEnt *ICMPTrackerEntry) ReadonlyClone() *ICMPTrackerEntry {
@@ -83,6 +83,7 @@ func NewICMPTracker(config *ICMPTrackerConfig) (*ICMPTracker, error) {
 		serviceChan: make(chan chan ServiceRequest),
 		closeCh:     make(chan interface{}),
 		RecvEvC:     make(chan ICMPTrackerEntry, config.TimeoutChannelEventBufferSize),
+		pktTimeout:  config.PacketTimeout,
 	}
 	return it, nil
 }
