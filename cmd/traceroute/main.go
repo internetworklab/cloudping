@@ -117,7 +117,6 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 }
 
 type PingHandler struct {
-	ICMPTracker *pkgraw.ICMPTracker
 }
 
 func NewPingHandler() *PingHandler {
@@ -137,6 +136,19 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	pktTimeout := 3 * time.Second
+	pktInterval := 1 * time.Second
+	buffRedundancyFactor := 2
+	trackerConfig := &pkgraw.ICMPTrackerConfig{
+		PacketTimeout:                 pktTimeout,
+		TimeoutChannelEventBufferSize: buffRedundancyFactor * int(pktTimeout.Seconds()/math.Max(1, pktInterval.Seconds())),
+	}
+	tracker, err := pkgraw.NewICMPTracker(trackerConfig)
+	if err != nil {
+		log.Fatalf("failed to create ICMP tracker: %v", err)
+	}
+	tracker.Run(ctx)
 
 	var resolver *net.Resolver = net.DefaultResolver
 	if pingRequest.Resolver != nil {
@@ -162,8 +174,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := *dstPtr
-
-	tracker := ph.ICMPTracker
 
 	var transceiver pkgraw.GeneralICMPTransceiver
 	if dst.IP.To4() != nil {
@@ -197,7 +207,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ctx.Done():
 				return
-			case ev := <-ph.ICMPTracker.RecvEvC:
+			case ev := <-tracker.RecvEvC:
 				json.NewEncoder(w).Encode(ev)
 				flusher, ok := w.(http.Flusher)
 				if ok {
@@ -277,21 +287,7 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	pktTimeout := 3 * time.Second
-	pktInterval := 1 * time.Second
-	buffRedundancyFactor := 2
-	trackerConfig := &pkgraw.ICMPTrackerConfig{
-		PacketTimeout:                 pktTimeout,
-		TimeoutChannelEventBufferSize: buffRedundancyFactor * int(pktTimeout.Seconds()/math.Max(1, pktInterval.Seconds())),
-	}
-	tracker, err := pkgraw.NewICMPTracker(trackerConfig)
-	if err != nil {
-		log.Fatalf("failed to create ICMP tracker: %v", err)
-	}
-	tracker.Run(ctx)
-
 	handler := NewPingHandler()
-	handler.ICMPTracker = tracker
 
 	listener, err := net.Listen("unix", *socketPath)
 	if err != nil {
