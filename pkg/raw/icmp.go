@@ -20,8 +20,6 @@ type GeneralICMPTransceiver interface {
 type ICMP4TransceiverConfig struct {
 	// ICMP ID to use
 	ID int
-
-	PktTimeout time.Duration
 }
 
 type ICMPSendRequest struct {
@@ -49,7 +47,6 @@ type ICMP4Transceiver struct {
 	id             int
 	packetConn     net.PacketConn
 	ipv4PacketConn *ipv4.PacketConn
-	pktTimeout     time.Duration
 
 	// User send requests to here, we retrieve the request,
 	// then we translate it to the wire format.
@@ -62,10 +59,9 @@ type ICMP4Transceiver struct {
 func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, error) {
 
 	tracer := &ICMP4Transceiver{
-		id:         config.ID,
-		SendC:      make(chan ICMPSendRequest),
-		ReceiveC:   make(chan chan ICMPReceiveReply),
-		pktTimeout: config.PktTimeout,
+		id:       config.ID,
+		SendC:    make(chan ICMPSendRequest),
+		ReceiveC: make(chan chan ICMPReceiveReply),
 	}
 
 	return tracer, nil
@@ -122,14 +118,9 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 					return
 				case replysSubCh := <-icmp4tr.ReceiveC:
 					for {
-						err := icmp4tr.ipv4PacketConn.SetReadDeadline(time.Now().Add(icmp4tr.pktTimeout))
-						if err != nil {
-							log.Fatalf("failed to set read deadline: %v", err)
-						}
 						nBytes, ctrlMsg, peerAddr, err := icmp4tr.ipv4PacketConn.ReadFrom(rb)
 						if err != nil {
 							if err, ok := err.(net.Error); ok && err.Timeout() {
-								log.Printf("timeout reading from connection, skipping")
 								continue
 							}
 							log.Fatalf("failed to read from connection: %v", err)
@@ -224,15 +215,12 @@ func (icmp4tr *ICMP4Transceiver) GetReceiver() chan<- chan ICMPReceiveReply {
 type ICMP6TransceiverConfig struct {
 	// ICMP ID to use
 	ID int
-
-	PktTimeout time.Duration
 }
 
 type ICMP6Transceiver struct {
 	id             int
 	packetConn     net.PacketConn
 	ipv6PacketConn *ipv6.PacketConn
-	pktTimeout     time.Duration
 
 	// User send requests to here, we retrieve the request,
 	// then we translate it to the wire format.
@@ -245,10 +233,9 @@ type ICMP6Transceiver struct {
 func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, error) {
 
 	tracer := &ICMP6Transceiver{
-		id:         config.ID,
-		SendC:      make(chan ICMPSendRequest),
-		ReceiveC:   make(chan chan ICMPReceiveReply),
-		pktTimeout: config.PktTimeout,
+		id:       config.ID,
+		SendC:    make(chan ICMPSendRequest),
+		ReceiveC: make(chan chan ICMPReceiveReply),
 	}
 
 	return tracer, nil
@@ -297,11 +284,6 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 					return
 				case replySubCh := <-icmp6tr.ReceiveC:
 					for {
-						err := icmp6tr.ipv6PacketConn.SetReadDeadline(time.Now().Add(icmp6tr.pktTimeout))
-						if err != nil {
-							log.Fatalf("failed to set read deadline: %v", err)
-						}
-
 						nBytes, ctrlMsg, peerAddr, err := icmp6tr.ipv6PacketConn.ReadFrom(rb)
 						if err != nil {
 							if err, ok := err.(net.Error); ok && err.Timeout() {

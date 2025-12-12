@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"os"
@@ -46,6 +48,19 @@ func main() {
 	ctx := context.TODO()
 	ctx, cancel := context.WithCancel(ctx)
 
+	pktTimeout := 3 * time.Second
+	pktInterval := 1 * time.Second
+	buffRedundancyFactor := 2
+	trackerConfig := &pkgraw.ICMPTrackerConfig{
+		PacketTimeout:                 pktTimeout,
+		TimeoutChannelEventBufferSize: buffRedundancyFactor * int(pktTimeout.Seconds()/math.Max(1, pktInterval.Seconds())),
+	}
+	tracker, err := pkgraw.NewICMPTracker(trackerConfig)
+	if err != nil {
+		log.Fatalf("failed to create ICMP tracker: %v", err)
+	}
+	tracker.Run(ctx)
+
 	dstPtr, err := selectDstIP(context.TODO(), net.DefaultResolver, *host, preferV4, preferV6)
 	if err != nil {
 		log.Fatalf("failed to select destination IP for host %s: %v", *host, err)
@@ -61,8 +76,7 @@ func main() {
 
 	if dst.IP.To4() != nil {
 		icmp4tr, err := pkgraw.NewICMP4Transceiver(pkgraw.ICMP4TransceiverConfig{
-			ID:         idToUse,
-			PktTimeout: 3 * time.Second,
+			ID: idToUse,
 		})
 		if err != nil {
 			log.Fatalf("failed to create ICMP4 transceiver: %v", err)
@@ -74,8 +88,7 @@ func main() {
 		transceiver = icmp4tr
 	} else {
 		icmp6tr, err := pkgraw.NewICMP6Transceiver(pkgraw.ICMP6TransceiverConfig{
-			ID:         idToUse,
-			PktTimeout: 3 * time.Second,
+			ID: idToUse,
 		})
 		if err != nil {
 			log.Fatalf("failed to create ICMP6 transceiver: %v", err)
@@ -94,23 +107,35 @@ func main() {
 	}
 
 	go func() {
+		log.Printf("Started listening for ICMPTracker events")
+		for ev := range tracker.RecvEvC {
+			evJsonB, _ := json.Marshal(ev)
+			evJson := string(evJsonB)
+			log.Printf("ICMPReply: %s, %s", evJson, time.Now().Format(time.RFC3339Nano))
+		}
+	}()
+
+	go func() {
 		receiverCh := transceiver.GetReceiver()
-		for range pingRequests {
+		for {
 			subCh := make(chan pkgraw.ICMPReceiveReply)
-			go func() {
-				receiverCh <- subCh
-			}()
-			reply := <-subCh
-			log.Printf("received reply at %v: %+v", reply.ReceivedAt.Format(time.RFC3339Nano), reply)
+			select {
+			case <-ctx.Done():
+				return
+			case receiverCh <- subCh:
+				reply := <-subCh
+				tracker.MarkReceived(reply.Seq)
+			}
 		}
 	}()
 
 	go func() {
 		senderCh := transceiver.GetSender()
+
 		for _, pingRequest := range pingRequests {
 			senderCh <- pingRequest
-			log.Printf("sent ping request at %v: %+v", time.Now().Format(time.RFC3339Nano), pingRequest)
-			<-time.After(1 * time.Second)
+			tracker.MarkSent(pingRequest.Seq)
+			<-time.After(pktInterval)
 		}
 	}()
 

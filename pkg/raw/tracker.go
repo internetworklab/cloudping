@@ -64,7 +64,6 @@ type ServiceRequest struct {
 type ICMPTracker struct {
 	store       map[int]*ICMPTrackerEntry
 	serviceChan chan chan ServiceRequest
-	closeCh     chan interface{}
 	pktTimeout  time.Duration
 
 	// Receiving Events
@@ -81,7 +80,6 @@ func NewICMPTracker(config *ICMPTrackerConfig) (*ICMPTracker, error) {
 	it := &ICMPTracker{
 		store:       make(map[int]*ICMPTrackerEntry),
 		serviceChan: make(chan chan ServiceRequest),
-		closeCh:     make(chan interface{}),
 		RecvEvC:     make(chan ICMPTrackerEntry, config.TimeoutChannelEventBufferSize),
 		pktTimeout:  config.PacketTimeout,
 	}
@@ -94,11 +92,10 @@ func (it *ICMPTracker) Run(ctx context.Context) {
 		defer close(it.serviceChan)
 
 		for {
-
 			serviceSubCh := make(chan ServiceRequest)
 
 			select {
-			case <-it.closeCh:
+			case <-ctx.Done():
 				return
 			case it.serviceChan <- serviceSubCh:
 				serviceReq := <-serviceSubCh
@@ -249,11 +246,4 @@ func (it *ICMPTracker) MarkSent(seq int) error {
 func (it *ICMPTracker) MarkReceived(seq int) error {
 	it.handleInTime(seq)
 	return nil
-}
-
-func (it *ICMPTracker) Close() {
-	if it.closeCh == nil {
-		panic("ICMPTracker is not started yet")
-	}
-	close(it.closeCh)
 }

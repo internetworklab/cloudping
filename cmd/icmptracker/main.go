@@ -37,7 +37,6 @@ func main() {
 
 	ctx := context.TODO()
 	tracker.Run(ctx)
-	defer tracker.Close()
 
 	go func() {
 		log.Printf("Started listening for ICMPTracker events")
