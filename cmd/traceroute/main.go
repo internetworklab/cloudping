@@ -256,12 +256,12 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case <-ctx.Done():
 				return
 			case reqraw := <-proxyCh:
-				log.Printf("received request from proxy: %v", reqraw)
 				req, ok := reqraw.(pkgraw.ICMPSendRequest)
 				if !ok {
 					log.Fatal("wrong format")
 				}
 				senderCh <- req
+				tracker.MarkSent(req.Seq)
 			}
 		}
 	}()
@@ -279,7 +279,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Dst: dst,
 			}
 			throttleProxySrc <- req
-			tracker.MarkSent(req.Seq)
 
 			if pingRequest.TotalPkts != nil && numPktsSent >= *pingRequest.TotalPkts {
 				break
