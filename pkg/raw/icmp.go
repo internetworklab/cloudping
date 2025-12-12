@@ -136,7 +136,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							ID:         icmp4tr.id,
 							Size:       nBytes,
 							ReceivedAt: receivedAt,
-							Peer:       peerAddr.Network() + ":" + peerAddr.String(),
+							Peer:       peerAddr.String(),
 							TTL:        ctrlMsg.TTL,
 							Seq:        -1, // if can't determine, use -1
 						}
