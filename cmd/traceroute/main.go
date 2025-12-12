@@ -371,10 +371,10 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigs
+	log.Printf("Received signal: %v, exiting...", sig.String())
+	cancel()
 	err = <-tsSchedRunerr
 	if err != nil {
 		log.Fatalf("failed to run time sliced event loop scheduler: %v", err)
 	}
-	log.Printf("Received signal: %v, exiting...", sig.String())
-	cancel()
 }
