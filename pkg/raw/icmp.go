@@ -159,15 +159,57 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 						switch receiveMsg.Type {
 						case ipv4.ICMPTypeTimeExceeded:
-							// task & hints:
-							// 1. `receiveMsg.Body` is now the origin IP header plus the origin ICMP message
-							// 2. extract the origin SEQ and ID field from the origin ICMP echo message.
+							ty = ipv4.ICMPTypeTimeExceeded
 
-							replyObject.ICMPTypeV4 = &ty
+							// Extract original ICMP message from TimeExceeded body
+							timeExceededBody, ok := receiveMsg.Body.(*icmp.TimeExceeded)
+							if !ok || len(timeExceededBody.Data) < 28 {
+								log.Printf("Invalid ICMP Time-Exceeded body: %+v", receiveMsg)
+								continue
+							}
+
+							// Skip IP header (minimum 20 bytes, but check IHL field for actual length)
+							ipHeaderLen := int(timeExceededBody.Data[0]&0x0F) * 4
+							if ipHeaderLen < 20 {
+								ipHeaderLen = 20
+							}
+
+							if len(timeExceededBody.Data) < ipHeaderLen+8 {
+								log.Printf("Invalid ICMP Time-Exceeded message: %+v", receiveMsg)
+								continue
+							}
+
+							// Parse the original ICMP message (protocol 1 for ICMP)
+							originalICMPData := timeExceededBody.Data[ipHeaderLen:]
+							originalICMPMsg, err := icmp.ParseMessage(1, originalICMPData)
+							if err != nil {
+								log.Printf("Invalid ICMP Time-Exceeded message: %+v error: %+v", receiveMsg, err)
+								continue
+							}
+
+							echoBody, ok := originalICMPMsg.Body.(*icmp.Echo)
+							if !ok {
+								log.Printf("Invalid ICMP Time-Exceeded message: %+v", receiveMsg)
+								continue
+							}
+
+							replyObject.Seq = echoBody.Seq
+							replyObject.ID = echoBody.ID
 						case ipv4.ICMPTypeEchoReply:
 							ty = ipv4.ICMPTypeEchoReply
+							icmpBody, ok := receiveMsg.Body.(*icmp.Echo)
+							if !ok {
+								log.Printf("failed to parse icmp body: %+v", receiveMsg)
+								continue
+							}
+							replyObject.Seq = icmpBody.Seq
+							replyObject.ID = icmpBody.ID
 						default:
 							log.Printf("unknown ICMP message: %+v", receiveMsg)
+							continue
+						}
+						if replyObject.ID != icmp4tr.id {
+							// this packet is not intended for us, silently ignore it
 							continue
 						}
 
