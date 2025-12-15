@@ -114,7 +114,7 @@ type RawPingEventICMPReply = {
   Size?: number;
   // TTl of the reply packet
   TTL?: number;
-}
+};
 
 type RawPingEventData = {
   RTTMilliSecs?: number[];
@@ -128,12 +128,12 @@ type RawPingEventData = {
 
   // TTL of the sent packet
   TTL?: number;
-}
+};
 
 type RawPingEventMetadata = {
   from?: string;
   target?: string;
-}
+};
 
 // Raw event returned by the API
 type RawPingEvent = {
@@ -218,17 +218,22 @@ class PingEventAdapter extends TransformStream<RawPingEvent, PingSample> {
 function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
   const from = event.metadata?.from || "";
   const target = event.metadata?.target || "";
-  const latencies = event.data?.RTTNanoSecs
-  const latencyMs = latencies && latencies.length > 0 ? latencies[latencies.length-1]/1000000 : -1;
+  const latencies = event.data?.RTTNanoSecs;
+  const latencyMs =
+    latencies && latencies.length > 0
+      ? latencies[latencies.length - 1] / 1000000
+      : -1;
   if (latencyMs < 0) {
     return undefined;
   }
   const ttl = event.data?.TTL;
   const seq = event.data?.Seq;
   const raws = event.data?.Raw;
-  const peer = raws && raws.length > 0 ? raws[raws.length-1].Peer : undefined;
-  const peerRdns = raws && raws.length > 0 ? raws[raws.length-1].PeerRDNS : undefined;
-  const peerRdnsLast = peerRdns && peerRdns.length > 0 ? peerRdns[peerRdns.length-1] : undefined;
+  const peer = raws && raws.length > 0 ? raws[raws.length - 1].Peer : undefined;
+  const peerRdns =
+    raws && raws.length > 0 ? raws[raws.length - 1].PeerRDNS : undefined;
+  const peerRdnsLast =
+    peerRdns && peerRdns.length > 0 ? peerRdns[peerRdns.length - 1] : undefined;
 
   return {
     from: from,
@@ -238,7 +243,7 @@ function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
     seq: seq,
     peer: peer,
     peerRdns: peerRdnsLast,
-  }
+  };
 }
 
 function convertRawStreamToPingSampleStream(
@@ -247,21 +252,25 @@ function convertRawStreamToPingSampleStream(
   return;
 }
 
+export type PingRequest = {
+  sources: string[];
+  targets: string[];
+  count: number;
+  intervalMs: number; // how fast to generate icmp echo requests
+  pktTimeoutMs: number; // how patient to wait for a icmp reply
+};
+
 export function generatePingSampleStream(
-  sources: string[],
-  targets: string[],
-  count: number,
-  intervalMs: number,
-  timeoutSecs: number
+  pingReq: PingRequest
 ): ReadableStream<PingSample> {
-  const payload = {
-    from: sources,
-    targets: targets,
-    count: count,
-    interval: intervalMs,
-    timeout: timeoutSecs,
-  };
-  const payloadJson = JSON.stringify(payload);
+  const { sources, targets, count, intervalMs, pktTimeoutMs } = pingReq;
+
+  const urlParams = new URLSearchParams();
+  urlParams.set("from", sources.join(","));
+  urlParams.set("targets", targets.join(","));
+  urlParams.set("count", count.toString());
+  urlParams.set("intervalMs", intervalMs.toString());
+  urlParams.set("pktTimeoutMs", pktTimeoutMs.toString());
 
   const headers = new Headers();
   headers.set("Content-Type", "application/json");
@@ -275,10 +284,9 @@ export function generatePingSampleStream(
 
   return new ReadableStream<PingSample>({
     start(controller) {
-      fetch(`${getApiEndpoint()}/ping-task`, {
-        method: "POST",
+      fetch(`${getApiEndpoint()}/ping?${urlParams.toString()}`, {
+        method: "GET",
         headers: headers,
-        body: payloadJson,
       })
         .then((res) => res.body)
         .then((rawStream) => {

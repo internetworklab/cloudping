@@ -90,14 +90,14 @@ function PingResultDisplay(props: {
     ReadableStream<PingSample>,
     ReadableStreamDefaultReader<PingSample>
   ] {
-    const resultStream = generateFakePingSampleStream(sources, targets);
-    // const resultStream = generatePingSampleStream(
-    //   sources,
-    //   targets,
-    //   1000,
-    //   500,
-    //   60
-    // );
+    // const resultStream = generateFakePingSampleStream(sources, targets);
+    const resultStream = generatePingSampleStream({
+      sources: sources,
+      targets: targets,
+      count: 1000,
+      intervalMs: 100,
+      pktTimeoutMs: 3000,
+    });
     const reader = resultStream.getReader();
     const readNext = (props: {
       done: boolean;
@@ -389,10 +389,10 @@ export default function Home() {
                   .filter((s) => s.length > 0)}
                 onChange={(value) => setSourcesInput(value.join(","))}
                 getOptions={() => {
-                  // return getCurrentPingers();
-                  return new Promise((res) => {
-                    window.setTimeout(() => res(fakeSources), 2000);
-                  });
+                  return getCurrentPingers();
+                  // return new Promise((res) => {
+                  //   window.setTimeout(() => res(fakeSources), 2000);
+                  // });
                 }}
               />
             </Box>
