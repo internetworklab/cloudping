@@ -124,6 +124,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		}
 
 		throttleProxySrc := make(chan interface{})
+		defer close(throttleProxySrc)
+
 		proxyCh, err := ph.CreateProxy(ctx, throttleProxySrc)
 		if err != nil {
 			log.Fatalf("failed to create proxy: %v", err)
@@ -177,11 +179,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				case <-ctx.Done():
 					return
 				case reqraw := <-proxyCh:
+					log.Printf("[DBG] received pending icmp echo request: %+v", reqraw)
 					req, ok := reqraw.(pkgraw.ICMPSendRequest)
 					if !ok {
 						log.Fatal("wrong format")
 					}
 					senderCh <- req
+					log.Printf("[DBG] sent icmp echo request: %+v", req)
 
 					tracker.MarkSent(req.Seq, req.TTL)
 				}
@@ -200,6 +204,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					Dst: dst,
 				}
 				throttleProxySrc <- req
+				log.Printf("[DBG] generated icmp echo request: %+v", req)
 
 				numPktsSent++
 				if pingRequest.TotalPkts != nil {

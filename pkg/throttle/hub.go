@@ -102,11 +102,6 @@ func (hub *SharedThrottleHub) CreateProxy(ctx context.Context, inChan <-chan int
 
 	wrappedInChan := make(chan interface{})
 
-	_, err = hub.mimoSched.AddInput(ctx, wrappedInChan, labelKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add input to mimo scheduler: %v", err)
-	}
-
 	smoothedInChan := make(chan interface{})
 	err = hub.mimoSched.AddOutput(smoothedInChan, labelKey)
 	if err != nil {
@@ -117,11 +112,10 @@ func (hub *SharedThrottleHub) CreateProxy(ctx context.Context, inChan <-chan int
 	go func() {
 		defer close(outChan)
 		defer func() {
-			log.Printf("[DBG] proxy goroutine for label %s is cleaning resources", labelKey)
 			hub.mimoSched.RemoveOutput(labelKey)
 			close(smoothedInChan)
+			log.Printf("[DBG] closed smoothedInChan for label %s", labelKey)
 		}()
-		defer log.Printf("[DBG] proxy goroutine for label %s closed", labelKey)
 
 		for {
 			select {
@@ -144,10 +138,37 @@ func (hub *SharedThrottleHub) CreateProxy(ctx context.Context, inChan <-chan int
 
 	go func() {
 		// this goroutine would be automatically closed once the inChan is depleted
+		defer log.Printf("[DBG] closed wrappedInChan for label %s", labelKey)
 		defer close(wrappedInChan)
-		for pktIn := range inChan {
-			wrappedInChan <- pktIn
+
+		opaqueSourceId, err := hub.mimoSched.AddInput(ctx, wrappedInChan, labelKey)
+		if err != nil {
+			panic(fmt.Errorf("failed to add input to the mimo scheduler: %v", err))
 		}
+
+		log.Printf("[DBG] wrappedInChan for label %s is running", labelKey)
+
+		defer func() {
+			log.Printf("[DBG] removing input from the mimo scheduler for label %s", labelKey)
+			err := hub.mimoSched.RemoveInput(context.Background(), opaqueSourceId)
+			if err != nil {
+				panic(fmt.Errorf("failed to remove input from the mimo scheduler: %v", err))
+			}
+			log.Printf("[DBG] input from the mimo scheduler for label %s has been removed", labelKey)
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case pktIn, ok := <-inChan:
+				if !ok {
+					return
+				}
+				wrappedInChan <- pktIn
+			}
+		}
+
 	}()
 
 	return outChan, nil

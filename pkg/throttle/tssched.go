@@ -16,10 +16,11 @@ const defaultMaximumChunkSize = 1024
 type TSSchedEVType string
 
 const (
-	TSSchedEVNewSource   TSSchedEVType = "new_source"
-	TSSchedEVNewDataTask TSSchedEVType = "new_data_task"
-	TSSchedEVNodeDrained TSSchedEVType = "node_drained"
-	TSSchedEVNewHook     TSSchedEVType = "new_hook"
+	TSSchedEVNewSource    TSSchedEVType = "new_source"
+	TSSchedEVNewDataTask  TSSchedEVType = "new_data_task"
+	TSSchedEVNodeDrained  TSSchedEVType = "node_drained"
+	TSSchedEVNewHook      TSSchedEVType = "new_hook"
+	TSSchedEVRemoveSource TSSchedEVType = "remove_source"
 )
 
 type TSSchedEVObject struct {
@@ -135,6 +136,31 @@ func (tsSched *TimeSlicedEVLoopSched) RegisterCustomEVHandler(ctx context.Contex
 	}
 }
 
+func (tsSched *TimeSlicedEVLoopSched) RemoveInput(ctx context.Context, opaqueSourceId interface{}) error {
+	evSubCh, ok := <-tsSched.evCh
+	if !ok {
+		return fmt.Errorf("ev channel is already closed")
+	}
+
+	evObj := TSSchedEVObject{
+		Type:    TSSchedEVRemoveSource,
+		Payload: opaqueSourceId,
+		Result:  make(chan error),
+	}
+
+	evSubCh <- evObj
+
+	select {
+	case err, ok := <-evObj.Result:
+		if !ok {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (tsSched *TimeSlicedEVLoopSched) GetOutput() <-chan interface{} {
 	return tsSched.outC
 }
@@ -157,6 +183,7 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 			case tsSched.evCh <- evRequestCh:
 				evRequest := <-evRequestCh
 				*numEventsPassed = *numEventsPassed + 1
+				log.Printf("[DBG] tssched received event: %+v", evRequest)
 
 				switch evRequest.Type {
 				case TSSchedEVNewHook:
@@ -200,6 +227,13 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 						panic("unexpected ev payload, it's not of a type of struct *Node")
 					}
 
+					if _, ok := tsSched.nodesAdded[evPayloadNode.Id]; !ok {
+						// node is already removed somehow, just throw away all its unread content
+						evPayloadNode.CurrentDataBlob.NextRead = evPayloadNode.CurrentDataBlob.Length
+						evRequest.Result <- nil
+						continue
+					}
+
 					if tsSched.nodeQueue.ReplaceOrInsert(evPayloadNode) != nil {
 						panic("the node is already in the queue, which is unexpected")
 					}
@@ -223,8 +257,10 @@ func (tsSched *TimeSlicedEVLoopSched) Run(ctx context.Context) chan error {
 					nodeObject.NumItemsCopied[1] = nodeObject.NumItemsCopied[2]
 					nodeObject.NumItemsCopied[2] = itemsCopied
 
+					log.Printf("[DBG] tssched copied %d items to output channel", itemsCopied)
+
 					evRequest.Result <- nil
-				case TSSchedEVNodeDrained:
+				case TSSchedEVNodeDrained, TSSchedEVRemoveSource:
 					deadNodeId, ok := evRequest.Payload.(int)
 					if !ok {
 						panic("unexpected ev payload, it's not of a type of int")

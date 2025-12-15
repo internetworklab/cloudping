@@ -13,6 +13,9 @@ import (
 // is exactly the same as the type of the input items.
 type GenericMISOScheduler interface {
 	AddInput(ctx context.Context, inputChan <-chan interface{}) (opaqueSourceId interface{}, err error)
+
+	// Simply rely on source channel close to remove the input is un-reliable.
+	RemoveInput(ctx context.Context, opaqueSourceId interface{}) error
 	GetOutput() <-chan interface{}
 }
 

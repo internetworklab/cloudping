@@ -5,6 +5,7 @@ package throttle
 
 import (
 	"context"
+	"log"
 	"sync"
 )
 
@@ -46,6 +47,11 @@ func (mimoSched *MIMOScheduler) AddInput(ctx context.Context, inputChan <-chan i
 	return mimoSched.config.Muxer.AddInput(ctx, wrappedPktCh)
 }
 
+// Simply rely on source channel close to remove the input is un-reliable.
+func (mimoSched *MIMOScheduler) RemoveInput(ctx context.Context, opaqueNodeId interface{}) error {
+	return mimoSched.config.Muxer.RemoveInput(ctx, opaqueNodeId)
+}
+
 // AddOutput expresses an interest about a specific set of packets tagged with a specific label pattern.
 // Note: outputChan should be buffered if you want to allow downstream processing to be slow.
 func (mimoSched *MIMOScheduler) AddOutput(outputChan chan interface{}, label string) error {
@@ -79,6 +85,7 @@ func (mimoSched *MIMOScheduler) Run(ctx context.Context) {
 				if !ok {
 					return
 				}
+				log.Printf("[DBG] tssched received packet: %+v", packetraw)
 
 				packet, ok := packetraw.(MIMOPacketizedItem)
 				if !ok {
