@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	pkgraw "example.com/rbmq-demo/pkg/raw"
@@ -125,13 +126,25 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			log.Fatalf("failed to create proxy: %v", err)
 		}
 
+		var pkgWg sync.WaitGroup
+		defer func() {
+			if pingRequest.TotalPkts != nil {
+				log.Println("[DBG] Waiting for all pkts to be acknowledged")
+				pkgWg.Wait()
+				log.Println("[DBG] All pkts acknowledged")
+			}
+		}()
+
 		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case ev := <-tracker.RecvEvC:
-					outputEVChan <- PingEvent{Data: ev}
+			for ev := range tracker.RecvEvC {
+				outputEVChan <- PingEvent{Data: ev}
+				if pingRequest.TotalPkts != nil {
+					log.Println("[DBG] Pkt is acknowledged", ev.Seq, ev.TTL)
+					pkgWg.Done()
+					if ev.Seq >= *pingRequest.TotalPkts {
+						log.Println("[DBG] Limit reached, stopping ping rx ev emitter")
+						return
+					}
 				}
 			}
 		}()
@@ -151,11 +164,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		}()
 
 		senderCh := transceiver.GetSender()
-		numPktsSent := 0
-		ttl := 64
-		if pingRequest.TTL != nil {
-			ttl = *pingRequest.TTL
-		}
 
 		go func() {
 			for {
@@ -168,31 +176,36 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						log.Fatal("wrong format")
 					}
 					senderCh <- req
+					log.Println("[DBG] Sent packet", req.Seq, req.TTL)
 					tracker.MarkSent(req.Seq, req.TTL)
 				}
 			}
 		}()
 
+		numPktsSent := 0
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				numPktsSent++
 				req := pkgraw.ICMPSendRequest{
-					Seq: numPktsSent,
-					TTL: ttl,
+					Seq: numPktsSent + 1,
+					TTL: *pingRequest.TTL,
 					Dst: dst,
 				}
 				throttleProxySrc <- req
-
-				if pingRequest.TotalPkts != nil && numPktsSent >= *pingRequest.TotalPkts {
-					log.Println("[DBG] Limit reached, stopping ping")
-					return
+				log.Println("[DBG] Request generated", req.Seq, req.TTL)
+				numPktsSent++
+				if pingRequest.TotalPkts != nil {
+					pkgWg.Add(1)
+					if numPktsSent >= *pingRequest.TotalPkts {
+						return
+					}
 				}
 				<-time.After(time.Duration(pingRequest.IntvMilliseconds) * time.Millisecond)
 			}
 		}
+
 	}()
 	return outputEVChan
 }

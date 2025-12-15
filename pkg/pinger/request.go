@@ -37,6 +37,8 @@ const ParamICMPId = "id"
 const ParamDestination = "destination"
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 
+const defaultTTL = 64
+
 func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
 	if targetsStr := r.URL.Query().Get(ParamTargets); targetsStr != "" {
@@ -95,6 +97,9 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 			return nil, fmt.Errorf("failed to parse ttl: %v", err)
 		}
 		result.TTL = &ttlInt
+	} else {
+		ttl := defaultTTL
+		result.TTL = &ttl
 	}
 
 	if preferV4 := r.URL.Query().Get(ParamPreferV4); preferV4 != "" {
