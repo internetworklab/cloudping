@@ -82,7 +82,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-	log.Println("[DBG] Ping request completed")
+
 }
 
 func (agentCmd *AgentCmd) Run() error {

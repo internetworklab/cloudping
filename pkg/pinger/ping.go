@@ -129,9 +129,9 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		var pkgWg sync.WaitGroup
 		defer func() {
 			if pingRequest.TotalPkts != nil {
-				log.Println("[DBG] Waiting for all pkts to be acknowledged")
+
 				pkgWg.Wait()
-				log.Println("[DBG] All pkts acknowledged")
+
 			}
 		}()
 
@@ -139,10 +139,10 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			for ev := range tracker.RecvEvC {
 				outputEVChan <- PingEvent{Data: ev}
 				if pingRequest.TotalPkts != nil {
-					log.Println("[DBG] Pkt is acknowledged", ev.Seq, ev.TTL)
+
 					pkgWg.Done()
 					if ev.Seq >= *pingRequest.TotalPkts {
-						log.Println("[DBG] Limit reached, stopping ping rx ev emitter")
+
 						return
 					}
 				}
@@ -176,7 +176,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						log.Fatal("wrong format")
 					}
 					senderCh <- req
-					log.Println("[DBG] Sent packet", req.Seq, req.TTL)
+
 					tracker.MarkSent(req.Seq, req.TTL)
 				}
 			}
@@ -194,7 +194,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					Dst: dst,
 				}
 				throttleProxySrc <- req
-				log.Println("[DBG] Request generated", req.Seq, req.TTL)
+
 				numPktsSent++
 				if pingRequest.TotalPkts != nil {
 					pkgWg.Add(1)
