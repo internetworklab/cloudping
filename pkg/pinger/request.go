@@ -2,7 +2,6 @@ package pinger
 
 import (
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 
 type SimplePingRequest struct {
 	From                       []string
-	ICMPId                     *int
 	Destination                string
 	Targets                    []string
 	IntvMilliseconds           int
@@ -33,7 +31,7 @@ const ParamTTL = "ttl"
 const ParamPreferV4 = "preferV4"
 const ParamPreferV6 = "preferV6"
 const ParamResolver = "resolver"
-const ParamICMPId = "id"
+
 const ParamDestination = "destination"
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 
@@ -122,17 +120,6 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 		result.Resolver = &resolver
 	}
 
-	if icmpId := r.URL.Query().Get(ParamICMPId); icmpId != "" {
-		idInt, err := strconv.Atoi(icmpId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse id: %v", err)
-		}
-		result.ICMPId = &idInt
-	} else {
-		idInt := rand.Intn(0x10000)
-		result.ICMPId = &idInt
-	}
-
 	destination := r.URL.Query().Get(ParamDestination)
 	if destination == "" {
 		if len(result.Targets) == 0 {
@@ -154,10 +141,6 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 
 	if pr.From != nil {
 		vals.Add(ParamFrom, strings.Join(pr.From, ","))
-	}
-
-	if pr.ICMPId != nil {
-		vals.Add(ParamICMPId, strconv.Itoa(*pr.ICMPId))
 	}
 
 	vals.Add(ParamDestination, pr.Destination)

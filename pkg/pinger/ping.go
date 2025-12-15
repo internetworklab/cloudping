@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -95,10 +96,12 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		}
 		dst := *dstPtr
 
+		icmpId := rand.Intn(0x10000)
+
 		var transceiver pkgraw.GeneralICMPTransceiver
 		if dst.IP.To4() != nil {
 			icmp4tr, err := pkgraw.NewICMP4Transceiver(pkgraw.ICMP4TransceiverConfig{
-				ID: *pingRequest.ICMPId,
+				ID: icmpId,
 			})
 			if err != nil {
 				log.Fatalf("failed to create ICMP4 transceiver: %v", err)
@@ -109,7 +112,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			transceiver = icmp4tr
 		} else {
 			icmp6tr, err := pkgraw.NewICMP6Transceiver(pkgraw.ICMP6TransceiverConfig{
-				ID: *pingRequest.ICMPId,
+				ID: icmpId,
 			})
 			if err != nil {
 				log.Fatalf("failed to create ICMP6 transceiver: %v", err)
