@@ -14,7 +14,7 @@ import (
 
 const ipv4HeaderLen int = 20
 const ipv6HeaderLen int = 40
-const mimICMPHeaderSize int = 8
+const headerSizeICMP int = 8
 const protocolNumberICMPv4 int = 1
 const protocolNumberICMPv6 int = 58
 
@@ -191,7 +191,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							}
 
 							// Extract original ICMP message from Destination Unreachable body
-							if len(dstUnreachBody.Data) < ipv4HeaderLen+mimICMPHeaderSize {
+							if len(dstUnreachBody.Data) < ipv4HeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
 								continue
 							}
@@ -203,14 +203,14 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							}
 							if replyObject.SetMTUTo != nil {
 								newMTU := *replyObject.SetMTUTo
-								shrinkTo := newMTU - ipHeaderLen - mimICMPHeaderSize
+								shrinkTo := newMTU - ipHeaderLen - headerSizeICMP
 								if shrinkTo < 0 {
 									shrinkTo = 0
 								}
 								replyObject.ShrinkICMPPayloadTo = &shrinkTo
 							}
 
-							if len(dstUnreachBody.Data) < ipHeaderLen+mimICMPHeaderSize {
+							if len(dstUnreachBody.Data) < ipHeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Destination Unreachable message: %+v", receiveMsg)
 								continue
 							}
@@ -236,7 +236,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 							// Extract original ICMP message from TimeExceeded body
 							timeExceededBody, ok := receiveMsg.Body.(*icmp.TimeExceeded)
-							if !ok || len(timeExceededBody.Data) < ipv4HeaderLen+mimICMPHeaderSize {
+							if !ok || len(timeExceededBody.Data) < ipv4HeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Time-Exceeded body: %+v", receiveMsg)
 								continue
 							}
@@ -247,7 +247,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 								ipHeaderLen = 20
 							}
 
-							if len(timeExceededBody.Data) < ipHeaderLen+mimICMPHeaderSize {
+							if len(timeExceededBody.Data) < ipHeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Time-Exceeded message: %+v", receiveMsg)
 								continue
 							}
@@ -451,14 +451,14 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 							// Extract MTU from PacketTooBig message
 							mtu := packetTooBigBody.MTU
 							replyObject.SetMTUTo = &mtu
-							shrinkTo := mtu - ipv6HeaderLen - mimICMPHeaderSize
+							shrinkTo := mtu - ipv6HeaderLen - headerSizeICMP
 							if shrinkTo < 0 {
 								shrinkTo = 0
 							}
 							replyObject.ShrinkICMPPayloadTo = &shrinkTo
 
 							// Extract original ICMP message from PacketTooBig body
-							if len(packetTooBigBody.Data) < ipv6HeaderLen+mimICMPHeaderSize {
+							if len(packetTooBigBody.Data) < ipv6HeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Packet Too Big body: %+v", receiveMsg)
 								continue
 							}
@@ -487,7 +487,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 
 							// Skip IPv6 header (fixed 40 bytes)
 
-							if !ok || len(timeExceededBody.Data) < ipv6HeaderLen+mimICMPHeaderSize {
+							if !ok || len(timeExceededBody.Data) < ipv6HeaderLen+headerSizeICMP {
 								log.Printf("Invalid ICMP Time-Exceeded body: %+v", receiveMsg)
 								continue
 							}
