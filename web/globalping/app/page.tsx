@@ -94,8 +94,7 @@ function PingResultDisplay(props: {
     const resultStream = generatePingSampleStream({
       sources: sources,
       targets: targets,
-      count: 1000,
-      intervalMs: 100,
+      intervalMs: 300,
       pktTimeoutMs: 3000,
     });
     const reader = resultStream.getReader();

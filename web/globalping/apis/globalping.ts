@@ -255,7 +255,7 @@ function convertRawStreamToPingSampleStream(
 export type PingRequest = {
   sources: string[];
   targets: string[];
-  count: number;
+  count?: number;
   intervalMs: number; // how fast to generate icmp echo requests
   pktTimeoutMs: number; // how patient to wait for a icmp reply
 };
@@ -268,7 +268,9 @@ export function generatePingSampleStream(
   const urlParams = new URLSearchParams();
   urlParams.set("from", sources.join(","));
   urlParams.set("targets", targets.join(","));
-  urlParams.set("count", count.toString());
+  if (count !== undefined && count !== null) {
+    urlParams.set("count", count.toString());
+  }
   urlParams.set("intervalMs", intervalMs.toString());
   urlParams.set("pktTimeoutMs", pktTimeoutMs.toString());
 
