@@ -29,9 +29,10 @@ type ICMP4TransceiverConfig struct {
 }
 
 type ICMPSendRequest struct {
-	Dst net.IPAddr
-	Seq int
-	TTL int
+	Dst  net.IPAddr
+	Seq  int
+	TTL  int
+	Data []byte
 }
 
 type ICMPReceiveReply struct {
@@ -296,6 +297,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 					}
 
 					wm.Body.(*icmp.Echo).Seq = req.Seq
+					wm.Body.(*icmp.Echo).Data = req.Data
 					wb, err := wm.Marshal(nil)
 					if err != nil {
 						log.Fatalf("failed to marshal icmp message: %v", err)
@@ -532,6 +534,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 					}
 
 					wm.Body.(*icmp.Echo).Seq = req.Seq
+					wm.Body.(*icmp.Echo).Data = req.Data
 					wb, err := wm.Marshal(nil)
 					if err != nil {
 						log.Fatalf("failed to marshal icmp message: %v", err)

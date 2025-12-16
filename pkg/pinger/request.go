@@ -23,6 +23,7 @@ type SimplePingRequest struct {
 	TotalPkts                  *int
 	Resolver                   *string
 	TTL                        TTLGenerator
+	RandomPayloadSize          *int
 	ResolveTimeoutMilliseconds *int
 }
 
@@ -35,7 +36,7 @@ const ParamTTL = "ttl"
 const ParamPreferV4 = "preferV4"
 const ParamPreferV6 = "preferV6"
 const ParamResolver = "resolver"
-
+const ParamRandomPayloadSize = "randomPayloadSize"
 const ParamDestination = "destination"
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 
@@ -43,6 +44,15 @@ const defaultTTL = 64
 
 func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
+
+	if randomPayloadSize := r.URL.Query().Get(ParamRandomPayloadSize); randomPayloadSize != "" {
+		randomPayloadSizeInt, err := strconv.Atoi(randomPayloadSize)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse random payload size: %v", err)
+		}
+		result.RandomPayloadSize = &randomPayloadSizeInt
+	}
+
 	if targetsStr := r.URL.Query().Get(ParamTargets); targetsStr != "" {
 		targets := strings.Split(targetsStr, ",")
 		for _, target := range targets {
@@ -180,6 +190,9 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 	}
 	if pr.ResolveTimeoutMilliseconds != nil {
 		vals.Add(ParamResolveTimeoutMilliseconds, strconv.Itoa(*pr.ResolveTimeoutMilliseconds))
+	}
+	if pr.RandomPayloadSize != nil {
+		vals.Add(ParamRandomPayloadSize, strconv.Itoa(*pr.RandomPayloadSize))
 	}
 
 	return vals

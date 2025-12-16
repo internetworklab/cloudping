@@ -2,6 +2,7 @@ package pinger
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
 	"fmt"
 	"log"
 	"math"
@@ -127,6 +128,11 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			}
 		}()
 
+		var payloadManager *PayloadManager
+		if pingRequest.RandomPayloadSize != nil {
+			payloadManager = NewPayloadManager(*pingRequest.RandomPayloadSize)
+		}
+
 		go func() {
 			for ev := range tracker.RecvEvC {
 				var wrappedEV *pkgraw.ICMPTrackerEntry = &ev
@@ -135,6 +141,15 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				if wrappedEV.IsFromLastHop(dst) {
 					if autoTTL, ok := pingRequest.TTL.(*AutoTTL); ok {
 						autoTTL.Reset()
+					}
+				}
+
+				if payloadManager != nil {
+					for _, icmpReply := range wrappedEV.Raw {
+						if icmpReply.SetMTUTo != nil {
+							log.Printf("[DBG] Shrinking payload due to PMTU msg: %d", *icmpReply.SetMTUTo)
+							payloadManager.Shrink(dst, icmpReply.SetMTUTo)
+						}
 					}
 				}
 
@@ -180,6 +195,11 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					TTL: ttl,
 					Dst: dst,
 				}
+
+				if payloadManager != nil {
+					req.Data = payloadManager.GetPayload()
+				}
+
 				senderCh <- req
 
 				tracker.MarkSent(req.Seq, req.TTL)
@@ -197,4 +217,37 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 
 	}()
 	return outputEVChan
+}
+
+type PayloadManager struct {
+	data []byte
+	lock sync.Mutex
+}
+
+func NewPayloadManager(size int) *PayloadManager {
+	pm := &PayloadManager{
+		lock: sync.Mutex{},
+	}
+	pm.data = make([]byte, size)
+	cryptoRand.Read(pm.data)
+
+	return pm
+}
+
+func (pm *PayloadManager) GetPayload() []byte {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+
+	return pm.data
+}
+
+func (pm *PayloadManager) Shrink(dstIP net.IPAddr, setMTUTo *int) {
+	pm.lock.Lock()
+	defer pm.lock.Unlock()
+
+	if setMTUTo == nil {
+		return
+	}
+
+	// todo: decide appropriate new payload size
 }
