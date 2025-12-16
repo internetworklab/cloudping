@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/sys/unix"
 )
 
 const ipv4HeaderLen int = 20
@@ -109,6 +110,31 @@ func getMaximumMTU() int {
 	return maximumMTU
 }
 
+// setDFBit sets the Don't Fragment (DF) bit on the IPv4 packet connection
+// by setting the IP_MTU_DISCOVER socket option to IP_PMTUDISC_DO.
+// This ensures that routers will send ICMP errors instead of fragmenting packets.
+func setDFBit(conn net.PacketConn) error {
+	// Get the underlying syscall.RawConn
+	rawConn, err := conn.(*net.IPConn).SyscallConn()
+	if err != nil {
+		return fmt.Errorf("failed to get raw connection: %v", err)
+	}
+
+	var setErr error
+	err = rawConn.Control(func(fd uintptr) {
+		// Set IP_MTU_DISCOVER to IP_PMTUDISC_DO to enable DF bit
+		// IP_PMTUDISC_DO = 2 means "Always set DF"
+		setErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_MTU_DISCOVER, unix.IP_PMTUDISC_DO)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to control raw connection: %v", err)
+	}
+	if setErr != nil {
+		return fmt.Errorf("failed to set DF bit: %v", setErr)
+	}
+	return nil
+}
+
 func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
@@ -119,6 +145,12 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 		icmp4tr.packetConn = conn
 		icmp4tr.ipv4PacketConn = ipv4.NewPacketConn(conn)
+
+		// Set the DF (Don't Fragment) bit to prevent routers from fragmenting packets
+		// If fragmentation is needed, routers will send ICMP errors instead
+		if err := setDFBit(conn); err != nil {
+			log.Fatalf("failed to set DF bit: %v", err)
+		}
 
 		if err := icmp4tr.ipv4PacketConn.SetControlMessage(ipv4.FlagTTL|ipv4.FlagSrc|ipv4.FlagDst|ipv4.FlagInterface, true); err != nil {
 			log.Fatal(err)
