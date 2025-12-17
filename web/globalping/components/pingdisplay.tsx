@@ -18,6 +18,8 @@ import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { PendingTask } from "@/apis/types";
 import { TaskCloseIconButton } from "@/components/taskclose";
+import { getLatencyColor } from "./colorfunc";
+import { PlayPauseButton } from "./playpause";
 
 export function PingResultDisplay(props: {
   pendingTask: PendingTask;
@@ -34,19 +36,6 @@ export function PingResultDisplay(props: {
     target: string
   ): number | undefined | null => {
     return latencyMap[target]?.[source];
-  };
-
-  const getLatencyColor = (latency: number | null | undefined): string => {
-    if (latency === null || latency === undefined) {
-      return "inherit"; // Default color for missing data
-    }
-    if (latency <= 40) {
-      return "#4caf50"; // Green for [0-40]ms
-    } else if (latency <= 150) {
-      return "#ff9800"; // Yellow for (40-150]ms
-    } else {
-      return "#f44336"; // Red for (150, +inf)ms
-    }
   };
 
   const [running, setRunning] = useState<boolean>(true);
@@ -128,20 +117,18 @@ export function PingResultDisplay(props: {
       >
         <Typography variant="h6">Task #{pendingTask.taskId}</Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <Tooltip title={running ? "Running" : "Stopped"}>
-            <IconButton
-              onClick={() => {
-                if (running) {
-                  cancelStream();
-                  setRunning(false);
-                } else {
-                  setRunning(true);
-                }
-              }}
-            >
-              {running ? <PauseIcon /> : <PlayArrowIcon />}
-            </IconButton>
-          </Tooltip>
+          <PlayPauseButton
+            running={running}
+            onToggle={(prev, nxt) => {
+              if (prev) {
+                cancelStream();
+                setRunning(false);
+              } else {
+                setRunning(true);
+              }
+            }}
+          />
+
           <TaskCloseIconButton
             taskId={pendingTask.taskId}
             onConfirmedClosed={() => {

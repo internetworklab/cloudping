@@ -14,6 +14,17 @@ import { getCurrentPingers } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
+import { TracerouteResultDisplay } from "@/components/traceroutedisplay";
+
+const fakeSources = [
+  "192.168.1.1",
+  "192.168.1.2",
+  "192.168.1.3",
+  "192.168.1.4",
+  "192.168.1.5",
+  "192.168.1.6",
+  "192.168.1.7",
+];
 
 function getSortedOnGoingTasks(onGoingTasks: PendingTask[]): PendingTask[] {
   const sortedTasks = [...onGoingTasks];
@@ -42,7 +53,14 @@ export default function Home() {
   const [sourcesInput, setSourcesInput] = useState<string>("");
   const [targetsInput, setTargetsInput] = useState<string>("");
 
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
+    {
+      sources: fakeSources,
+      targets: [],
+      taskId: "1",
+      type: "traceroute",
+    },
+  ]);
 
   let containerStyles: CSSProperties[] = [
     {
@@ -102,10 +120,10 @@ export default function Home() {
                   .filter((s) => s.length > 0)}
                 onChange={(value) => setSourcesInput(value.join(","))}
                 getOptions={() => {
-                  return getCurrentPingers();
-                  // return new Promise((res) => {
-                  //   window.setTimeout(() => res(fakeSources), 2000);
-                  // });
+                  // return getCurrentPingers();
+                  return new Promise((res) => {
+                    window.setTimeout(() => res(fakeSources), 2000);
+                  });
                 }}
               />
             </Box>
@@ -124,14 +142,18 @@ export default function Home() {
         {getSortedOnGoingTasks(onGoingTasks).map((task) => (
           <Card key={task.taskId}>
             <CardContent>
-              <PingResultDisplay
-                pendingTask={task}
-                onDeleted={() => {
-                  setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId)
-                  );
-                }}
-              />
+              {task.type === "ping" ? (
+                <PingResultDisplay
+                  pendingTask={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                    );
+                  }}
+                />
+              ) : (
+                <TracerouteResultDisplay />
+              )}
             </CardContent>
           </Card>
         ))}
