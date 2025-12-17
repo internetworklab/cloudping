@@ -41,7 +41,7 @@ export type PingSample = {
   target: string;
 
   // in the unit of milliseconds
-  latencyMs: number;
+  latencyMs?: number;
 
   // the ttl of the sent packet
   ttl?: number | null;
@@ -218,14 +218,15 @@ class PingEventAdapter extends TransformStream<RawPingEvent, PingSample> {
 function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
   const from = event.metadata?.from || "";
   const target = event.metadata?.target || "";
+
+  let latencyMs: number | undefined = undefined;
   const latencies = event.data?.RTTNanoSecs;
-  const latencyMs =
-    latencies && latencies.length > 0
-      ? latencies[latencies.length - 1] / 1000000
-      : -1;
-  if (latencyMs < 0) {
-    return undefined;
+  if (latencies && latencies.length > 0) {
+    latencyMs = latencies[latencies.length - 1] / 1000000;
   }
+  // if you can obtain some basic information from a RawPingEvent, say, from, target, ttl, seq, etc.,
+  // but no rtt, then it's probably a timeout event, when rendering as traceroute display, perhaps mark it as triple asterisk?
+
   const ttl = event.data?.TTL;
   const seq = event.data?.Seq;
   const raws = event.data?.Raw;
