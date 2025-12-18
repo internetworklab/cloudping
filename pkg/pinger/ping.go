@@ -148,13 +148,11 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					wrappedEV, foundLastHop = wrappedEV.MarkLastHop(dst)
 					if foundLastHop {
 						if autoTTL, ok := pingRequest.TTL.(*AutoTTL); ok {
-							log.Printf("[DBG] resetting auto TTL")
 							autoTTL.Reset()
 						}
 					}
 				}
 				nextTTL := pingRequest.TTL.GetNext()
-				log.Printf("[DBG] next TTL=%d", nextTTL)
 				ttlCh <- nextTTL
 
 				if sp.ipinfoAdapter != nil {
