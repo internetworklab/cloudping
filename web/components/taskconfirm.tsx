@@ -19,15 +19,29 @@ export function TaskConfirmDialog(props: {
 }) {
   const { open, pendingTask, onConfirm, onCancel } = props;
 
+  if (pendingTask.type === "traceroute" && pendingTask.targets.length > 1) {
+    return (
+      <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
+        <DialogTitle>Note</DialogTitle>
+        <DialogContent>
+          For traceroute task, only one target at a time.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onCancel}>Good</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
+
   if (pendingTask.sources.length === 0 || pendingTask.targets.length === 0) {
     return (
       <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
-        <DialogTitle>Confirm Task</DialogTitle>
+        <DialogTitle>Note</DialogTitle>
         <DialogContent>
           At least one source and one target are required.
         </DialogContent>
         <DialogActions>
-          <Button onClick={onCancel}>Confirm</Button>
+          <Button onClick={onCancel}>Good</Button>
         </DialogActions>
       </Dialog>
     );
