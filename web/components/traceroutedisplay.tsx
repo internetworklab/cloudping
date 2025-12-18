@@ -12,7 +12,14 @@ import {
   Tab,
   Tabs,
 } from "@mui/material";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { TaskCloseIconButton } from "@/components/taskclose";
 import { PlayPauseButton, StopButton } from "./playpause";
 import { getLatencyColor } from "./colorfunc";
@@ -165,8 +172,6 @@ function updatePageState(
   pageState: PageState,
   pingSample: PingSample
 ): PageState {
-  console.log("[dbg] updatePageState", pingSample);
-
   // debugger;
   const newState = { ...pageState };
 
@@ -233,7 +238,10 @@ export function TracerouteResultDisplay(props: {
 }) {
   const { task, onDeleted } = props;
 
-  const [pageState, setPageState] = useState<PageState>({});
+  const initPageState: PageState = {};
+  const pageStateRef = useRef<PageState>(initPageState);
+  const [pageState, setPageState] = useState<PageState>(initPageState);
+
   const [paused, setPaused] = useState<boolean>(false);
   const [stopped, setStopped] = useState<boolean>(false);
 
@@ -285,7 +293,12 @@ export function TracerouteResultDisplay(props: {
             return;
           }
           if (value) {
-            setPageState((prev) => updatePageState(prev, value));
+            console.log("[dbg] readNext value:", value);
+            pageStateRef.current = updatePageState(pageStateRef.current, value);
+
+            // in StrictMode, this will be called twice per sample
+            setPageState(pageStateRef.current);
+
             readerRef.current?.read().then(readNext);
           }
         };
