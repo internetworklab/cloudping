@@ -104,6 +104,14 @@ function updateHopEntryState(
     newEntry.rtts.history = [...newEntry.rtts.history, pingSample.latencyMs];
     newEntry.rtts.median = getMedian(newEntry.rtts.history);
     newEntry.stats.replied++;
+    console.log(
+      "[dbg] replied",
+      newEntry.stats.replied,
+      "now:",
+      new Date().valueOf(),
+      "pingSample:",
+      pingSample
+    );
   } else {
     newEntry.stats.lost++;
   }
