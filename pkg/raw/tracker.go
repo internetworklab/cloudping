@@ -26,7 +26,7 @@ type ICMPTrackerEntry struct {
 }
 
 func (itEnt *ICMPTrackerEntry) IsFromLastHop(dst net.IPAddr) bool {
-	if itEnt.Raw == nil {
+	if itEnt == nil || itEnt.Raw == nil {
 		return false
 	}
 
