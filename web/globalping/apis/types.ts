@@ -6,3 +6,8 @@ export type PendingTask = {
   taskId: string;
   type: PingTaskType;
 };
+
+export type ExactLocation = {
+  Longitude: number;
+  Latitude: number;
+}

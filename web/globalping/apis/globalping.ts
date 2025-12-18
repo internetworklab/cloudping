@@ -1,3 +1,5 @@
+import { ExactLocation } from "./types";
+
 function getApiEndpoint(): string {
   return (
     process.env.NEXT_PUBLIC_API_ENDPOINT ||
@@ -61,7 +63,7 @@ export type PingSample = {
 
   peerISP?: string;
 
-  peerExactLocation?: number[]; // [latitude, longitude]
+  peerExactLocation?: ExactLocation;
 };
 
 export function generateFakePingSampleStream(
@@ -117,9 +119,7 @@ type RawPingEventICMPReply = {
   PeerASN?: string;
   PeerLocation?: string;
   PeerISP?: string;
-
-  // [latitude, longitude]
-  PeerExactLocation?: number[];
+  PeerExactLocation?: ExactLocation;
 
   ReceivedAt?: ISO8601Timestamp;
 

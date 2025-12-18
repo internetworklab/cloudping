@@ -145,10 +145,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					log.Printf("failed to resolve RDNS: %v", err)
 					err = nil
 				}
-				wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.ipinfoAdapter)
-				if err != nil {
-					log.Printf("failed to resolve IP info: %v", err)
-					err = nil
+
+				if sp.ipinfoAdapter != nil {
+					wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.ipinfoAdapter)
+					if err != nil {
+						log.Printf("failed to resolve IP info: %v", err)
+						err = nil
+					}
 				}
 
 				if wrappedEV.IsFromLastHop(dst) {

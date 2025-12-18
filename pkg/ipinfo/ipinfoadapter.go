@@ -27,17 +27,33 @@ func (reg *IPInfoProviderRegistry) GetAdapter(name string) (GeneralIPInfoAdapter
 	return nil, fmt.Errorf("adapter %s not found", name)
 }
 
+type ExactLocation struct {
+	Longitude, Latitude float64
+}
+
+func RandomLocation() *ExactLocation {
+	randomLatitude := rand.Float64()*180 - 90
+	randomLongitude := rand.Float64()*360 - 180
+
+	return &ExactLocation{
+		Longitude: randomLongitude,
+		Latitude:  randomLatitude,
+	}
+}
+
 type BasicIPInfo struct {
-	ASN           string
-	Location      string
-	ISP           string
-	ExactLocation []float64 // [latitude, longitude]
+	ASN      string
+	Location string
+	ISP      string
+	Exact    *ExactLocation
 }
 
 type GeneralIPInfoAdapter interface {
+	// return ipinfo for the querying ip address
 	GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo, error)
+
+	// return the name of the ipinfo adapter, although mostly there's only one adapter for each ipinfo provider
 	GetName() string
-	Configure(ctx context.Context, configString string) error
 }
 
 type IPInfoAdapter struct {
@@ -59,12 +75,6 @@ func (ia *IPInfoAdapter) GetName() string {
 	return "ipinfo"
 }
 
-// configString is come from ping request
-func (ia *IPInfoAdapter) Configure(ctx context.Context, configString string) error {
-	// todo: implement
-	return nil
-}
-
 type DN42IPInfoAdapter struct{}
 
 func NewDN42IPInfoAdapter() GeneralIPInfoAdapter {
@@ -78,11 +88,6 @@ func (ia *DN42IPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIP
 
 func (ia *DN42IPInfoAdapter) GetName() string {
 	return "dn42"
-}
-
-func (ia *DN42IPInfoAdapter) Configure(ctx context.Context, configString string) error {
-	// todo: implement
-	return nil
 }
 
 type RandomIPInfoAdapter struct{}
@@ -117,26 +122,18 @@ func (ia *RandomIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*Basic
 		"MO",
 	}
 
-	exactLocX := rand.Float64()*180 - 90
-	exactLocY := rand.Float64()*360 - 180
-	exactLocation := []float64{exactLocX, exactLocY}
-
 	randASN := randASNList[rand.Intn(len(randASNList))]
 	randISP := randISPList[rand.Intn(len(randISPList))]
 	randLocation := randLocationList[rand.Intn(len(randLocationList))]
 
 	return &BasicIPInfo{
-		ASN:           randASN,
-		ISP:           randISP,
-		Location:      randLocation,
-		ExactLocation: exactLocation,
+		ASN:      randASN,
+		ISP:      randISP,
+		Location: randLocation,
+		Exact:    RandomLocation(),
 	}, nil
 }
 
 func (ia *RandomIPInfoAdapter) GetName() string {
 	return "random"
-}
-
-func (ia *RandomIPInfoAdapter) Configure(ctx context.Context, configString string) error {
-	return nil
 }

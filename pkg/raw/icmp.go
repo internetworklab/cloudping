@@ -60,11 +60,10 @@ type ICMPReceiveReply struct {
 	ShrinkICMPPayloadTo *int `json:"-"`
 
 	// below are left for ip information provider
-	PeerASN      *string
-	PeerLocation *string
-	PeerISP      *string
-	// [latitude, longitude]
-	PeerExactLocation []float64
+	PeerASN           *string
+	PeerLocation      *string
+	PeerISP           *string
+	PeerExactLocation *pkgipinfo.ExactLocation
 }
 
 func (icmpReply *ICMPReceiveReply) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*ICMPReceiveReply, error) {
@@ -75,7 +74,7 @@ func (icmpReply *ICMPReceiveReply) ResolveIPInfo(ctx context.Context, ipinfoAdap
 		return nil, err
 	}
 	if ipInfo == nil {
-		return nil, nil
+		return clonedICMPReply, nil
 	}
 	if ipInfo.ASN != "" {
 		clonedICMPReply.PeerASN = &ipInfo.ASN
@@ -86,8 +85,8 @@ func (icmpReply *ICMPReceiveReply) ResolveIPInfo(ctx context.Context, ipinfoAdap
 	if ipInfo.ISP != "" {
 		clonedICMPReply.PeerISP = &ipInfo.ISP
 	}
-	if ipInfo.ExactLocation != nil {
-		clonedICMPReply.PeerExactLocation = ipInfo.ExactLocation
+	if ipInfo.Exact != nil {
+		clonedICMPReply.PeerExactLocation = ipInfo.Exact
 	}
 	return clonedICMPReply, nil
 }

@@ -66,6 +66,8 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	pingReqJSB, _ := json.Marshal(pingRequest)
 	log.Printf("Started ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
+	defer log.Printf("Finished ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
+
 	ctx := r.Context()
 
 	var ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter = nil
@@ -74,14 +76,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
 			return
-		}
-
-		if pingRequest.IPInfoProviderParams != nil && *pingRequest.IPInfoProviderParams != "" {
-			err = ipinfoAdapter.Configure(ctx, *pingRequest.IPInfoProviderParams)
-			if err != nil {
-				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
-				return
-			}
 		}
 	}
 
