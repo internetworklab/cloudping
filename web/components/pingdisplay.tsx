@@ -96,12 +96,19 @@ export function PingResultDisplay(props: {
   }
 
   useEffect(() => {
+    let timer: number | null = null;
+
     if (running) {
-      const [_, reader] = launchStream();
-      readerRef.current = reader;
+      timer = window.setTimeout(() => {
+        const [_, reader] = launchStream();
+        readerRef.current = reader;
+      });
     }
 
     return () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
       cancelStream();
     };
   }, [pendingTask.taskId, running]);
