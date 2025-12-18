@@ -17,8 +17,9 @@ import { TaskCloseIconButton } from "@/components/taskclose";
 import { PlayPauseButton } from "./playpause";
 import { getLatencyColor } from "./colorfunc";
 import { IPDisp } from "./ipdisp";
-import { PingSample } from "@/apis/globalping";
+import { generatePingSampleStream, PingSample } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
+import { demoPingSamples } from "@/apis/mock/mocktraceroute";
 
 type TracerouteIPEntry = {
   ip: string;
@@ -59,31 +60,6 @@ type TabState = {
   hopEntries: Record<number, HopEntryState>;
 };
 type PageState = Record<string, TabState>;
-
-type PageHistory = {
-  history: PageState[];
-  readIdx: number;
-  paused: boolean;
-};
-
-function updatePageHistory(
-  pageHistory: PageHistory,
-  pingSample: PingSample
-): PageHistory {
-  const newHistory = { ...pageHistory };
-
-  const lastPageState: PageState =
-    newHistory.history.length > 0
-      ? newHistory.history[newHistory.history.length - 1]
-      : {};
-  const nextPageState = updatePageState(lastPageState, pingSample);
-  newHistory.history = [...newHistory.history, nextPageState];
-  if (!pageHistory.paused) {
-    newHistory.readIdx++;
-  }
-
-  return newHistory;
-}
 
 function sortAndDedupPeers(
   peers: TraceroutePeerEntry[]
@@ -251,316 +227,17 @@ function getDispEntries(
   return dispEntries;
 }
 
-// Demo samples so you can see how the traceroute table renders.
-// This emits a small, realistic-looking "stream" (multiple hops + a few timeouts).
-const demoPingSamples: PingSample[] = [
-  // agent1: West coast US → 1.1.1.1 (Cloudflare)
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 1,
-    seq: 1,
-    latencyMs: 1.132,
-    peer: "192.168.1.1",
-    peerRdns: "home-gw-1.lan",
-    peerASN: "AS0",
-    peerLocation: "San Jose, US",
-    peerISP: "Local Gateway",
-    peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 1,
-    seq: 2,
-    latencyMs: 1.481,
-    peer: "192.168.2.1",
-    peerRdns: "home-gw-2.lan",
-    peerASN: "AS0",
-    peerLocation: "San Jose, US",
-    peerISP: "Local Gateway",
-    peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 2,
-    seq: 3,
-    latencyMs: 4.902,
-    peer: "10.10.0.1",
-    peerRdns: "cmts01.isp.example",
-    peerASN: "AS64512",
-    peerLocation: "San Jose, US",
-    peerISP: "ExampleCable",
-    peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 3,
-    seq: 4,
-    latencyMs: 10.774,
-    peer: "203.0.113.9",
-    peerRdns: "edge01.sjc.example.net",
-    peerASN: "AS64512",
-    peerLocation: "San Jose, US",
-    peerISP: "ExampleCable",
-    peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 3,
-    seq: 5,
-    latencyMs: 7.774,
-    peer: "203.0.113.19",
-    peerRdns: "edge02.sjc.example.net",
-    peerASN: "AS64512",
-    peerLocation: "San Jose, US",
-    peerISP: "ExampleCable",
-    peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 4,
-    seq: 5,
-    latencyMs: 16.221,
-    peer: "198.51.100.14",
-    peerRdns: "core01.sfo.example.net",
-    peerASN: "AS64512",
-    peerLocation: "San Francisco, US",
-    peerISP: "ExampleCable",
-    peerExactLocation: { Latitude: 37.7749, Longitude: -122.4194 },
-  },
-  // timeout probe at hop 5 (no latency + no peer/seq so it renders as loss only)
-  { from: "agent1", target: "1.1.1.1", ttl: 5 },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 5,
-    seq: 6,
-    latencyMs: 21.093,
-    peer: "162.158.88.1",
-    peerRdns: "ae1.cloudflare-sfo.example",
-    peerASN: "AS13335",
-    peerLocation: "San Francisco, US",
-    peerISP: "Cloudflare",
-    peerExactLocation: { Latitude: 37.7749, Longitude: -122.4194 },
-  },
-  {
-    from: "agent1",
-    target: "1.1.1.1",
-    ttl: 6,
-    seq: 7,
-    latencyMs: 22.611,
-    peer: "1.1.1.1",
-    peerRdns: "one.one.one.one",
-    peerASN: "AS13335",
-    peerLocation: "San Francisco, US",
-    peerISP: "Cloudflare",
-    peerExactLocation: { Latitude: 37.7749, Longitude: -122.4194 },
-  },
+export function TracerouteResultDisplay(props: {
+  task: PendingTask;
+  onDeleted: () => void;
+}) {
+  const { task, onDeleted } = props;
 
-  // agent2: London → 8.8.8.8 (Google DNS)
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 1,
-    seq: 1,
-    latencyMs: 0.842,
-    peer: "192.168.0.1",
-    peerRdns: "router.lan",
-    peerASN: "AS0",
-    peerLocation: "London, UK",
-    peerISP: "Local Gateway",
-    peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
-  },
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 2,
-    seq: 2,
-  },
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 3,
-    seq: 3,
-    latencyMs: 11.883,
-    peer: "203.0.113.25",
-    peerRdns: "core01.lon.example.net",
-    peerASN: "AS64513",
-    peerLocation: "London, UK",
-    peerISP: "ExampleFiber",
-    peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
-  },
-  // a brief loss at hop 4
-  { from: "agent2", target: "8.8.8.8", ttl: 4 },
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 4,
-    seq: 4,
-    latencyMs: 15.992,
-    peer: "198.51.100.41",
-    peerRdns: "ixp01.lon.example",
-    peerASN: "AS65500",
-    peerLocation: "London, UK",
-    peerISP: "LINX",
-    peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
-  },
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 5,
-    seq: 5,
-    latencyMs: 19.204,
-    peer: "142.250.214.193",
-    peerRdns: "lhr25s12-in-f1.1e100.net",
-    peerASN: "AS15169",
-    peerLocation: "London, UK",
-    peerISP: "Google",
-    peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
-  },
-  {
-    from: "agent2",
-    target: "8.8.8.8",
-    ttl: 6,
-    seq: 6,
-    latencyMs: 19.882,
-    peer: "8.8.8.8",
-    peerRdns: "dns.google",
-    peerASN: "AS15169",
-    peerLocation: "London, UK",
-    peerISP: "Google",
-    peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
-  },
+  const [pageState, setPageState] = useState<PageState>({});
+  const [paused, setPaused] = useState<boolean>(false);
+  const pausedRef = useRef<boolean>(false);
 
-  // agent3: Singapore → 9.9.9.9 (Quad9)
-  {
-    from: "agent3",
-    target: "9.9.9.9",
-    ttl: 1,
-    seq: 1,
-    latencyMs: 1.004,
-    peer: "192.168.88.1",
-    peerRdns: "ap-gw.lan",
-    peerASN: "AS0",
-    peerLocation: "Singapore, SG",
-    peerISP: "Local Gateway",
-    peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
-  },
-  {
-    from: "agent3",
-    target: "9.9.9.9",
-    ttl: 2,
-    seq: 2,
-    latencyMs: 4.771,
-    peer: "10.20.0.1",
-    peerRdns: "bng01.isp.example",
-    peerASN: "AS64514",
-    peerLocation: "Singapore, SG",
-    peerISP: "ExampleMobile",
-    peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
-  },
-  {
-    from: "agent3",
-    target: "9.9.9.9",
-    ttl: 4,
-    seq: 4,
-    latencyMs: 36.202,
-    peer: "198.51.100.88",
-    peerRdns: "sg-ix01.example",
-    peerASN: "AS65501",
-    peerLocation: "Singapore, SG",
-    peerISP: "SGIX",
-    peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
-  },
-  {
-    from: "agent3",
-    target: "9.9.9.9",
-    ttl: 5,
-    seq: 5,
-    latencyMs: 172.511,
-    peer: "45.90.28.0",
-    peerRdns: "anycast.quad9.net",
-    peerASN: "AS19281",
-    peerLocation: "Zurich, CH",
-    peerISP: "Quad9",
-    peerExactLocation: { Latitude: 47.3769, Longitude: 8.5417 },
-  },
-  // final hop
-  {
-    from: "agent3",
-    target: "9.9.9.9",
-    ttl: 6,
-    seq: 6,
-    latencyMs: 173.044,
-    peer: "9.9.9.9",
-    peerRdns: "dns.quad9.net",
-    peerASN: "AS19281",
-    peerLocation: "Zurich, CH",
-    peerISP: "Quad9",
-    peerExactLocation: { Latitude: 47.3769, Longitude: 8.5417 },
-  },
-];
-
-function streamFromSamples(samples: PingSample[]): ReadableStream<PingSample> {
-  const baseDelayMs = 300;
-  const jitterMs = 125;
-
-  let closed = false;
-  let timeoutIds: Array<ReturnType<typeof setTimeout>> = [];
-
-  const clearAllTimeouts = () => {
-    for (const tid of timeoutIds) {
-      globalThis.clearTimeout(tid);
-    }
-    timeoutIds = [];
-  };
-
-  return new ReadableStream<PingSample>({
-    start(controller) {
-      if (samples.length === 0) {
-        closed = true;
-        controller.close();
-        return;
-      }
-
-      timeoutIds = samples.map((sample, idx) => {
-        const delayMs =
-          baseDelayMs * (idx + 1) + Math.floor(Math.random() * jitterMs);
-        return globalThis.setTimeout(() => {
-          if (closed) {
-            return;
-          }
-          controller.enqueue(sample);
-          if (idx === samples.length - 1) {
-            closed = true;
-            controller.close();
-          }
-        }, delayMs);
-      });
-    },
-    cancel() {
-      closed = true;
-      clearAllTimeouts();
-    },
-  });
-}
-
-export function TracerouteResultDisplay(props: { task: PendingTask }) {
-  const { task } = props;
-
-  const [pageHistory, setPageHistory] = useState<PageHistory>({
-    history: [],
-    readIdx: -1,
-    paused: false,
-  });
-
-  const fakeSources = ["agent1", "agent2", "agent3"];
-  const [tabValue, setTabValue] = useState(fakeSources[0]);
+  const [tabValue, setTabValue] = useState(task.sources[0]);
 
   const readerRef = useRef<ReadableStreamDefaultReader<PingSample> | null>(
     null
@@ -570,28 +247,22 @@ export function TracerouteResultDisplay(props: { task: PendingTask }) {
     console.log("[dbg] useEffect mount");
     if (!readerRef.current) {
       console.log("[dbg] creating stream and getting reader");
-      const stream = streamFromSamples(demoPingSamples);
+
+      // const stream = streamFromSamples(demoPingSamples);
+      const stream = generatePingSampleStream({
+        sources: task.sources,
+        targets: task.targets.slice(0, 1),
+        intervalMs: 300,
+        pktTimeoutMs: 3000,
+        ttl: "auto",
+
+        // when testing, use 'random', should replace this with 'ipinfo' later
+        ipInfoProviderName: "random",
+      });
+
       const reader = stream.getReader();
       readerRef.current = reader;
     }
-
-    const readNext = ({
-      done,
-      value,
-    }: {
-      done: boolean;
-      value: PingSample | undefined | null;
-    }) => {
-      console.log("[dbg] readNext", done, value);
-      if (done) {
-        return;
-      }
-      if (value) {
-        setPageHistory((prev) => updatePageHistory(prev, value));
-        readerRef.current?.read().then(readNext);
-      }
-    };
-    readerRef.current?.read().then(readNext);
 
     return () => {
       console.log("[dbg] useEffect unmount");
@@ -611,6 +282,34 @@ export function TracerouteResultDisplay(props: { task: PendingTask }) {
     };
   }, [task.taskId]);
 
+  useEffect(() => {
+    console.log("[dbg] enter useEffect [paused]", paused);
+    const readNext = ({
+      done,
+      value,
+    }: {
+      done: boolean;
+      value: PingSample | undefined | null;
+    }) => {
+      if (pausedRef.current) {
+        console.log("[dbg] paused, skipping");
+        return;
+      }
+      console.log("[dbg] readNext", done, value);
+      if (done) {
+        return;
+      }
+      if (value) {
+        setPageState((prev) => updatePageState(prev, value));
+        readerRef.current?.read().then(readNext);
+      }
+    };
+    readerRef.current?.read().then(readNext);
+    return () => {
+      console.log("[dbg] exit useEffect [paused]", paused);
+    };
+  }, [paused]);
+
   return (
     <Fragment>
       <Box
@@ -622,31 +321,37 @@ export function TracerouteResultDisplay(props: { task: PendingTask }) {
       >
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <Typography variant="h6">Task #{1}</Typography>
-          <Tabs
-            value={tabValue}
-            onChange={(event, newValue) => setTabValue(newValue)}
-          >
-            <Tab value={fakeSources[0]} label={fakeSources[0]} />
-            <Tab value={fakeSources[1]} label={fakeSources[1]} />
-            <Tab value={fakeSources[2]} label={fakeSources[2]} />
-          </Tabs>
+          {task.sources.length > 0 && (
+            <Tabs
+              value={tabValue}
+              onChange={(event, newValue) => setTabValue(newValue)}
+            >
+              {task.sources.map((source, idx) => (
+                <Tab value={source} label={source} key={idx} />
+              ))}
+            </Tabs>
+          )}
         </Box>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <PlayPauseButton
-            running={true}
+            running={!paused}
             onToggle={(prev, nxt) => {
               if (prev) {
-                // todo
+                // prev is running, next is not running
+                setPaused(true);
+                pausedRef.current = true;
               } else {
-                // todo
+                // prev is not running, next is running
+                setPaused(false);
+                pausedRef.current = false;
               }
             }}
           />
 
           <TaskCloseIconButton
-            taskId={"1"}
+            taskId={task.taskId}
             onConfirmedClosed={() => {
-              // todo
+              onDeleted();
             }}
           />
         </Box>
@@ -661,111 +366,101 @@ export function TracerouteResultDisplay(props: { task: PendingTask }) {
               <TableCell>Stats</TableCell>
             </TableRow>
           </TableHead>
-          {pageHistory.readIdx >= 0 &&
-            pageHistory.history[pageHistory.readIdx] && (
-              <TableBody>
-                {getDispEntries(
-                  pageHistory.history[pageHistory.readIdx],
-                  tabValue
-                ).map(({ hop, entry }) => {
-                  return (
-                    <TableRow key={hop}>
-                      <TableCell>{hop}</TableCell>
-                      <TableCell>
-                        {entry.peers.length > 0 ? (
+          <TableBody>
+            {getDispEntries(pageState, tabValue).map(({ hop, entry }) => {
+              return (
+                <TableRow key={hop}>
+                  <TableCell>{hop}</TableCell>
+                  <TableCell>
+                    {entry.peers.length > 0 ? (
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(4, auto)",
+                          alignItems: "center",
+                          justifyItems: "flex-start",
+                          justifyContent: "start",
+                          columnGap: 2,
+                        }}
+                      >
+                        {entry.peers.map((peer, idx) => (
+                          <Fragment key={idx}>
+                            <IPDisp rdns={peer.ip.rdns} ip={peer.ip.ip} />
+                            <Box>{peer.asn}</Box>
+                            <Box>{peer.location}</Box>
+                            <Box>{peer.isp}</Box>
+                          </Fragment>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Box>{"***"}</Box>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+                      {entry.rtts.history.length > 0 ? (
+                        <Fragment>
+                          <Box
+                            sx={{
+                              color: getLatencyColor(entry.rtts.current),
+                            }}
+                          >
+                            {entry.rtts.current.toFixed(3)}ms
+                          </Box>
                           <Box
                             sx={{
                               display: "grid",
-                              gridTemplateColumns: "repeat(4, auto)",
+                              gridTemplateColumns: "repeat(3, auto)",
+                              justifyContent: "space-between",
+                              justifyItems: "center",
                               alignItems: "center",
-                              justifyItems: "flex-start",
-                              justifyContent: "start",
                               columnGap: 2,
                             }}
                           >
-                            {entry.peers.map((peer, idx) => (
-                              <Fragment key={idx}>
-                                <IPDisp rdns={peer.ip.rdns} ip={peer.ip.ip} />
-                                <Box>{peer.asn}</Box>
-                                <Box>{peer.location}</Box>
-                                <Box>{peer.isp}</Box>
-                              </Fragment>
-                            ))}
-                          </Box>
-                        ) : (
-                          <Box>{"***"}</Box>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Box
-                          sx={{ display: "flex", gap: 2, alignItems: "center" }}
-                        >
-                          {entry.rtts.history.length > 0 ? (
                             <Fragment>
+                              <Box>Min</Box>
+                              <Box>Med</Box>
+                              <Box>Max</Box>
                               <Box
                                 sx={{
-                                  color: getLatencyColor(entry.rtts.current),
+                                  color: getLatencyColor(entry.rtts.min),
                                 }}
                               >
-                                {entry.rtts.current.toFixed(3)}ms
+                                {entry.rtts.min.toFixed(3)}ms
                               </Box>
                               <Box
                                 sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: "repeat(3, auto)",
-                                  justifyContent: "space-between",
-                                  justifyItems: "center",
-                                  alignItems: "center",
-                                  columnGap: 2,
+                                  color: getLatencyColor(entry.rtts.median),
                                 }}
                               >
-                                <Fragment>
-                                  <Box>Min</Box>
-                                  <Box>Med</Box>
-                                  <Box>Max</Box>
-                                  <Box
-                                    sx={{
-                                      color: getLatencyColor(entry.rtts.min),
-                                    }}
-                                  >
-                                    {entry.rtts.min.toFixed(3)}ms
-                                  </Box>
-                                  <Box
-                                    sx={{
-                                      color: getLatencyColor(entry.rtts.median),
-                                    }}
-                                  >
-                                    {entry.rtts.median.toFixed(3)}ms
-                                  </Box>
-                                  <Box
-                                    sx={{
-                                      color: getLatencyColor(entry.rtts.max),
-                                    }}
-                                  >
-                                    {entry.rtts.max.toFixed(3)}ms
-                                  </Box>
-                                </Fragment>
+                                {entry.rtts.median.toFixed(3)}ms
+                              </Box>
+                              <Box
+                                sx={{
+                                  color: getLatencyColor(entry.rtts.max),
+                                }}
+                              >
+                                {entry.rtts.max.toFixed(3)}ms
                               </Box>
                             </Fragment>
-                          ) : (
-                            <Box>{"***"}</Box>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box
-                          sx={{ display: "flex", gap: 1, alignItems: "center" }}
-                        >
-                          <Box>{entry.stats.sent} Sent,</Box>
-                          <Box>{entry.stats.replied} Replied,</Box>
-                          <Box>{entry.stats.lost} Lost</Box>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            )}
+                          </Box>
+                        </Fragment>
+                      ) : (
+                        <Box>{"***"}</Box>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                      <Box>{entry.stats.sent} Sent,</Box>
+                      <Box>{entry.stats.replied} Replied,</Box>
+                      <Box>{entry.stats.lost} Lost</Box>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
         </Table>
       </TableContainer>
     </Fragment>

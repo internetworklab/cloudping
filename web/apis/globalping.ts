@@ -45,11 +45,11 @@ export type PingSample = {
   // in the unit of milliseconds
   latencyMs?: number;
 
-  // the ttl of the sent packet
-  ttl?: number | null;
+  // the ttl of the sent packet, ttl must be present, even in the case of timeout
+  ttl: number;
 
-  // the seq of the sent packet
-  seq?: number | null;
+  // the seq of the sent packet, seq must be present, even in the case of timeout
+  seq: number;
 
   // the address of the peer, could be the original destination, or some middlebox halfway
   peer?: string;
@@ -79,6 +79,7 @@ export function generateFakePingSampleStream(
       intervalId = setInterval(() => {
         console.log("[dbg] interval invoked");
 
+        let seq = 0;
         // Generate all combinations of sources × targets
         for (const source of sources) {
           for (const target of targets) {
@@ -89,7 +90,10 @@ export function generateFakePingSampleStream(
               from: source,
               target: target,
               latencyMs: latencyMs,
+              ttl: 64,
+              seq: seq,
             };
+            seq++;
 
             console.log("[dbg] enqueueing sample:", sample);
 
@@ -244,6 +248,11 @@ function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
 
   const ttl = event.data?.TTL;
   const seq = event.data?.Seq;
+  if (ttl === undefined || ttl === null || seq === undefined || seq === null) {
+    console.log("skipping invalid sample, missing ttl or seq (or both)", event);
+    return;
+  }
+
   const raws = event.data?.Raw;
   const peer = raws && raws.length > 0 ? raws[raws.length - 1].Peer : undefined;
   const peerRdns =
@@ -272,33 +281,54 @@ function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
   };
 }
 
-function convertRawStreamToPingSampleStream(
-  rawStream: ReadableStream<any> | undefined | null
-): ReadableStream<PingSample> | undefined | null {
-  return;
-}
-
 export type PingRequest = {
   sources: string[];
   targets: string[];
   count?: number;
   intervalMs: number; // how fast to generate icmp echo requests
   pktTimeoutMs: number; // how patient to wait for a icmp reply
+
+  // it is a pattern string for specifying how the agent generates icmp echo request packets
+  // example values:
+  // 'auto': incrementally increase the ttl from 1, until the destination is reached
+  // 'auto(<number)': like 'auto', but explicitly specify the starting ttl
+  // 'range(<s>;<e>;<d>)', 'range(<s>;<e>)' specify a range, or a range with step 'd'
+  // '<number>', fixed number
+  // (omit): agent will automatically determine the ttl, mostly used in pingging rather that tracerouting
+  ttl?: string;
+
+  ipInfoProviderName?: string;
 };
 
 export function generatePingSampleStream(
   pingReq: PingRequest
 ): ReadableStream<PingSample> {
-  const { sources, targets, count, intervalMs, pktTimeoutMs } = pingReq;
+  const {
+    sources,
+    targets,
+    count,
+    intervalMs,
+    pktTimeoutMs,
+    ttl,
+    ipInfoProviderName,
+  } = pingReq;
 
   const urlParams = new URLSearchParams();
   urlParams.set("from", sources.join(","));
   urlParams.set("targets", targets.join(","));
-  if (count !== undefined && count !== null) {
+  if (count !== undefined && count !== null && count > 0) {
     urlParams.set("count", count.toString());
   }
   urlParams.set("intervalMs", intervalMs.toString());
   urlParams.set("pktTimeoutMs", pktTimeoutMs.toString());
+
+  if (ttl !== undefined && ttl !== null && ttl !== "") {
+    urlParams.set("ttl", ttl);
+  }
+
+  if (ipInfoProviderName) {
+    urlParams.set("ipInfoProviderName", ipInfoProviderName);
+  }
 
   const headers = new Headers();
   headers.set("Content-Type", "application/json");

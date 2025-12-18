@@ -56,14 +56,7 @@ export default function Home() {
   const [sourcesInput, setSourcesInput] = useState<string>("");
   const [targetsInput, setTargetsInput] = useState<string>("");
 
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
-    {
-      sources: fakeSources,
-      targets: [],
-      taskId: "1",
-      type: "traceroute",
-    },
-  ]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
 
   let containerStyles: CSSProperties[] = [
     {
@@ -145,10 +138,10 @@ export default function Home() {
                   .filter((s) => s.length > 0)}
                 onChange={(value) => setSourcesInput(value.join(","))}
                 getOptions={() => {
-                  // return getCurrentPingers();
-                  return new Promise((res) => {
-                    window.setTimeout(() => res(fakeSources), 2000);
-                  });
+                  return getCurrentPingers();
+                  // return new Promise((res) => {
+                  //   window.setTimeout(() => res(fakeSources), 2000);
+                  // });
                 }}
               />
             </Box>
@@ -181,7 +174,14 @@ export default function Home() {
                   }}
                 />
               ) : (
-                <TracerouteResultDisplay task={task} />
+                <TracerouteResultDisplay
+                  task={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                    );
+                  }}
+                />
               )}
             </CardContent>
           </Card>
