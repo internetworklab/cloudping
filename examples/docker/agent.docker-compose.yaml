@@ -1,7 +1,7 @@
 networks:
   globalping:
     name: globalping
-    enable_ipv6: true
+    enable_ipv6: false
     ipam:
       driver: default
       config:
@@ -11,6 +11,12 @@ services:
     container_name: globalping-agent
     pull_policy: always
     image: ghcr.io/internetworklab/globalping:latest
+    sysctls:
+      net.ipv4.conf.default.rp_filter: 0
+      net.ipv4.conf.default.forwarding: 1
+      net.ipv6.conf.default.forwarding: 1
+    extra_hosts:
+      - "hub.example.com:152.53.46.158"
     networks:
       - globalping
     volumes:
