@@ -1,5 +1,6 @@
 networks:
-  global-ping:
+  globalping:
+    name: globalping
     enable_ipv6: true
     ipam:
       driver: default
@@ -7,17 +8,25 @@ networks:
         - subnet: "${SUBNET_OVERRIDE}"
 services:
   agent:
-    container_name: global-pinger-proxy
+    container_name: globalping-agent
     pull_policy: always
     image: ghcr.io/internetworklab/globalping:latest
     networks:
-      - global-ping
+      - globalping
     volumes:
       - "./container-resolv.conf:/etc/resolv.conf:ro"
+      - "./certs:/app/globalping/certs:ro"
     command:
-      - "/usr/local/bin/global-pinger-proxy"
-      - "-addr=vie1.exploro.one:8080"
-      - "-path=/ws"
-      - "-node-name=${NODE_NAME}"
-      - "-rabbitmq-broker-url=${RABBIT_MQ_BROKER_URL}"
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--node-name=${NODE_NAME}"
+      - "--http-endpoint=${HTTP_ENDPOINT}"
+      - "--peer-c-as=/app/globalping/certs/ca.pem"
+      - "--server-name=${HUB_SERVER_NAME}"
+      - "--client-cert=/app/globalping/certs/peer.pem"
+      - "--client-cert-key=/app/globalping/certs/peer-key.pem"
+      - "--server-cert=/app/globalping/certs/peer.pem"
+      - "--server-cert-key=/app/globalping/certs/peer-key.pem"
+      - "--tls-listen-address=:8081"
+      - "--shared-quota=10"
     mem_limit: 256m
