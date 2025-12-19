@@ -57,4 +57,5 @@ nsenter -t $pid2 -n ip a add $DN42_IPV6/128 dev v-bird
 nsenter -t $pid2 -n ip a flush scope link dev v-bird
 nsenter -t $pid2 -n ip a add fe80::2/64 dev v-bird
 nsenter -t $pid2 -n ip r add 172.20.0.0/14 via inet6 fe80::1 dev v-bird
+nsenter -t $pid2 -n ip r add 10.127.0.0/16 via inet6 fe80::1 dev v-bird
 nsenter -t $pid2 -n ip r add fd00::/8 via fe80::1 dev v-bird
