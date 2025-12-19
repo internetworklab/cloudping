@@ -10,6 +10,7 @@ services:
   agent:
     container_name: globalping-agent
     pull_policy: always
+    restart: unless-stopped
     image: ghcr.io/internetworklab/globalping:latest
     sysctls:
       net.ipv4.conf.default.rp_filter: 0
