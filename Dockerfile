@@ -24,6 +24,6 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o bin/globalping ./cmd/globa
 FROM debian:bookworm
 
 RUN \
-  apt-update && apt-get install -y ca-certificates 
+  apt-get update -y && apt-get install -y ca-certificates 
 
 COPY --from=builder /app/globalping/bin/globalping /usr/local/bin/globalping
