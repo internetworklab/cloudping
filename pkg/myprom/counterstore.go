@@ -2,6 +2,7 @@ package myprom
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	pkgutils "example.com/rbmq-demo/pkg/utils"
@@ -43,6 +44,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.ServedDurationMs); err != nil {
+		log.Printf("ServedDurationMs might have been already registered: %v", err)
+	}
 
 	cs.NumRequestsServed = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -51,6 +55,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.NumRequestsServed); err != nil {
+		log.Printf("NumRequestsServed might have been already registered: %v", err)
+	}
 
 	cs.NumPktsSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -59,6 +66,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.NumPktsSent); err != nil {
+		log.Printf("NumPktsSent might have been already registered: %v", err)
+	}
 
 	cs.NumPktsReceived = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -67,6 +77,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.NumPktsReceived); err != nil {
+		log.Printf("NumPktsReceived might have been already registered: %v", err)
+	}
 
 	cs.NumBytesSent = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -75,6 +88,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.NumBytesSent); err != nil {
+		log.Printf("NumBytesSent might have been already registered: %v", err)
+	}
 
 	cs.NumBytesReceived = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -83,6 +99,9 @@ func NewCounterStore() *CounterStore {
 		},
 		commonLabels,
 	)
+	if err := prometheus.Register(cs.NumBytesReceived); err != nil {
+		log.Printf("NumBytesReceived might have been already registered: %v", err)
+	}
 
 	return cs
 }
