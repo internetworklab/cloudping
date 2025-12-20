@@ -11,15 +11,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
 	pkgthrottle "example.com/rbmq-demo/pkg/throttle"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type AgentCmd struct {
@@ -47,6 +51,10 @@ type AgentCmd struct {
 	TLSListenAddress   string `help:"Address to listen on for TLS" default:"localhost:8081"`
 	SharedQuota        int    `help:"Shared quota for the traceroute (packets per second)" default:"10"`
 	DN42IPInfoProvider string `help:"APIEndpoint of DN42 IPInfo provider" default:"https://dn42-query.netneighbor.me/ipinfo/lite/query"`
+
+	// Prometheus stuffs
+	MetricsListenAddress string `help:"Endpoint to expose prometheus metrics" default:":2112"`
+	MetricsPath          string `help:"Path to expose prometheus metrics" default:"/metrics"`
 }
 
 type PingHandler struct {
@@ -70,6 +78,25 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer log.Printf("Finished ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
 
 	ctx := r.Context()
+	counterStore := r.Context().Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
+	if counterStore == nil {
+		panic("failed to obtain counter store from request context")
+	}
+
+	commonLabels := prometheus.Labels{
+		pkgmyprom.PromLabelFrom:   strings.Join(pingRequest.From, ","),
+		pkgmyprom.PromLabelTarget: pingRequest.Destination,
+		pkgmyprom.PromLabelClient: pkgutils.GetRemoteAddr(r),
+	}
+	ctx = context.WithValue(ctx, pkgutils.CtxKeyPromCommonLabels, commonLabels)
+
+	startedAt := time.Now()
+	defer func() {
+		servedDurationMs := time.Since(startedAt).Milliseconds()
+
+		counterStore.NumRequestsServed.With(commonLabels).Add(1.0)
+		counterStore.ServedDurationMs.With(commonLabels).Add(float64(servedDurationMs))
+	}()
 
 	var ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter = nil
 	if pingRequest.IPInfoProviderName != nil && *pingRequest.IPInfoProviderName != "" {
@@ -102,6 +129,11 @@ func (agentCmd *AgentCmd) Run() error {
 	ctx := context.TODO()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	counterStore := pkgmyprom.NewCounterStore()
+	ctx = context.WithValue(ctx, pkgutils.CtxKeyPrometheusCounterStore, counterStore)
+
+	counterStore.StartedTime.Set(float64(time.Now().Unix()))
 
 	ipinfoReg := pkgipinfo.NewIPInfoProviderRegistry()
 	var ipinfoToken *string = nil
@@ -164,7 +196,7 @@ func (agentCmd *AgentCmd) Run() error {
 		serverSideTLSCfg.ClientCAs = customCAs
 	}
 	server := http.Server{
-		Handler:   muxer,
+		Handler:   pkgmyprom.WithCounterStoreHandler(muxer, counterStore),
 		TLSConfig: serverSideTLSCfg,
 	}
 	if agentCmd.ServerCert != "" && agentCmd.ServerCertKey != "" {
@@ -178,6 +210,28 @@ func (agentCmd *AgentCmd) Run() error {
 		serverSideTLSCfg.Certificates = append(serverSideTLSCfg.Certificates, cert)
 		log.Printf("Loaded server certificate: %s and key: %s", agentCmd.ServerCert, agentCmd.ServerCertKey)
 	}
+
+	prometheusListener, err := net.Listen("tcp", agentCmd.MetricsListenAddress)
+	if err != nil {
+		log.Fatalf("failed to listen on address for prometheus metrics: %s: %v", agentCmd.MetricsListenAddress, err)
+	}
+	log.Printf("Listening on address %s for prometheus metrics", agentCmd.MetricsListenAddress)
+
+	go func() {
+		log.Printf("Serving prometheus metrics on address %s", prometheusListener.Addr())
+		handler := promhttp.Handler()
+		serveMux := http.NewServeMux()
+		serveMux.Handle(agentCmd.MetricsPath, handler)
+		server := http.Server{
+			Handler: serveMux,
+		}
+		if err := server.Serve(prometheusListener); err != nil {
+			if !errors.Is(err, net.ErrClosed) {
+				log.Fatalf("failed to serve prometheus metrics: %v", err)
+			}
+			log.Println("Prometheus metrics server exitted")
+		}
+	}()
 
 	listener, err := tls.Listen("tcp", agentCmd.TLSListenAddress, serverSideTLSCfg)
 	if err != nil {

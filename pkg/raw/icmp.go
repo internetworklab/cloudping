@@ -8,6 +8,9 @@ import (
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
+	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -378,6 +381,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 						replyObject.ICMPTypeV4 = &ty
 						replysSubCh <- replyObject
+						markAsReceivedBytes(ctx, nBytes)
 						break
 					}
 				}
@@ -407,9 +411,11 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 					}
 
 					dst := req.Dst
-					if _, err := icmp4tr.ipv4PacketConn.WriteTo(wb, nil, &dst); err != nil {
+					nBytes, err := icmp4tr.ipv4PacketConn.WriteTo(wb, nil, &dst)
+					if err != nil {
 						log.Fatalf("failed to write to connection: %v", err)
 					}
+					markAsSentBytes(ctx, nBytes)
 				}
 			}
 		}()
@@ -620,6 +626,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 
 						replyObject.ICMPTypeV6 = &ty
 						replySubCh <- replyObject
+						markAsReceivedBytes(ctx, nBytes)
 						break
 					}
 				}
@@ -646,9 +653,11 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) error {
 
 					wcm.HopLimit = req.TTL
 					dst := req.Dst
-					if _, err := icmp6tr.ipv6PacketConn.WriteTo(wb, &wcm, &dst); err != nil {
+					nbytes, err := icmp6tr.ipv6PacketConn.WriteTo(wb, &wcm, &dst)
+					if err != nil {
 						log.Fatalf("failed to write to connection: %v", err)
 					}
+					markAsSentBytes(ctx, nbytes)
 				}
 			}
 		}()
@@ -665,4 +674,29 @@ func (icmp6tr *ICMP6Transceiver) GetSender() chan<- ICMPSendRequest {
 
 func (icmp6tr *ICMP6Transceiver) GetReceiver() chan<- chan ICMPReceiveReply {
 	return icmp6tr.ReceiveC
+}
+
+func markAsSentBytes(ctx context.Context, n int) {
+	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
+	if commonLabels == nil {
+		panic("commonLabels is nil")
+	}
+
+	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
+	if counterStore == nil {
+		panic("counterStore is nil")
+	}
+	counterStore.NumBytesSent.With(commonLabels).Add(float64(n))
+}
+
+func markAsReceivedBytes(ctx context.Context, n int) {
+	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
+	if commonLabels == nil {
+		panic("commonLabels is nil")
+	}
+	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
+	if counterStore == nil {
+		panic("counterStore is nil")
+	}
+	counterStore.NumBytesReceived.With(commonLabels).Add(float64(n))
 }

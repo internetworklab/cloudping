@@ -15,6 +15,9 @@ import (
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
+
+	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type SimplePinger struct {
@@ -35,6 +38,15 @@ func NewSimplePinger(cfg SimplePingerConfig) *SimplePinger {
 }
 
 func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
+	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
+	if commonLabels == nil {
+		panic("failed to obtain common labels from context")
+	}
+	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
+	if counterStore == nil {
+		panic("failed to obtain counter store from context")
+	}
+
 	outputEVChan := make(chan PingEvent)
 	go func() {
 		defer close(outputEVChan)
@@ -200,6 +212,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				case receiverCh <- subCh:
 					reply := <-subCh
 					tracker.MarkReceived(reply.Seq, reply)
+					counterStore.NumPktsReceived.With(commonLabels).Add(1.0)
 				}
 			}
 		}()
@@ -225,8 +238,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				}
 
 				senderCh <- req
-
 				tracker.MarkSent(req.Seq, req.TTL)
+				counterStore.NumPktsSent.With(commonLabels).Add(1.0)
 
 				numPktsSent++
 				if pingRequest.TotalPkts != nil {
