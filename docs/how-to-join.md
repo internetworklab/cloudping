@@ -79,11 +79,13 @@ go build -o bin/globalping ./cmd/globalping
 nodename=<your-node-name>
 http_endpoint=<public_http_endpoint_that_can_reach_your_globalping_agent> # for example: https://yournode.yourdomaon.com:18081, would be effected by --tls-listen-address parameter as well
 
+peer_ca=https://github.com/internetworklab/globalping/raw/refs/heads/master/confed/hub/ca.pem
+
 bin/globalping agent \
   --server-address=wss://globalping-hub.exploro.one:8080/ws \
   --node-name=$nodename \
   --http-endpoint=${HTTP_ENDPOINT} \
-  --peer-c-as=confed/hub/ca.pem \
+  --peer-c-as=$peer_ca \
   --server-name=globalping-hub.exploro.one \
   --client-cert=confed/$nickname/$nodename.pem \
   --client-cert-key=confed/$nickname/$nodename-key.pem \
