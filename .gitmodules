@@ -1,3 +1,6 @@
 [submodule "cfssl"]
 	path = cfssl
 	url = https://github.com/cloudflare/cfssl.git
+[submodule "regquery"]
+	path = regquery
+	url = git@github.com:internetworklab/regquery.git
