@@ -97,3 +97,9 @@ bin/globalping agent \
   --server-cert-key=confed/$nickname/$nodename-key.pem \
   --tls-listen-address=:18081
 ```
+
+To recap, mainly three steps are involved:
+
+1. Build your custom CA and submit it to the repo;
+2. Create (and maybe distribute) new cert pair for your new agent;
+3. Populate .env with your IPinfo token, and launch your globalping binary using proper parameters.
