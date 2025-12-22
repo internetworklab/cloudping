@@ -41,7 +41,7 @@ Your node would require both Internet ('Clearnet') and DN42 connectivity.
 
 Now assume that you have already recursively cloned our repo, and cd into the project root.
 
-1. Pick your nickname, a valid nickname is a valid dns label, satisfies regex `[a-zA-Z-_.\d]+`, for example, `json` is a valid nickname, create a directory in `confed/`, and populate the template contents:
+1. Pick your nickname, a valid nickname is a valid dns label, satisfies regex `[a-zA-Z-_.\d]+`, for example, `jason` is a valid nickname, create a directory in `confed/`, and populate the template contents:
 
 ```shell
 nickname=jason
