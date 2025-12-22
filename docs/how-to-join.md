@@ -122,7 +122,10 @@ bin/globalping agent \
   --client-cert-key=confed/$nickname/$nodename-key.pem \
   --server-cert=confed/$nickname/$nodename.pem \
   --server-cert-key=confed/$nickname/$nodename-key.pem \
-  --tls-listen-address=:18081
+  --tls-listen-address=:18081 \
+  --respond-range 172.20.0.0/14 \
+  --respond-range fd00::/8 \
+  --respond-range 10.127.0.0/16
 ```
 
 Note: When choosing the node name ($nodename), we suggest that, use some format like `<your-nickname>/<location><number>` or `<your-nickname>/<country-or-region>-<location>-<number>`, for example, `jason/nyc1`, `jason/us-nyc-01` are both good node name for an agent deployed at somewhere near NYC.
