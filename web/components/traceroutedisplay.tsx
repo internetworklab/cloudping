@@ -354,21 +354,6 @@ export function TracerouteResultDisplay(props: {
           )}
         </Box>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <PlayPauseButton
-            running={!paused}
-            onToggle={(prev, nxt) => {
-              if (prev) {
-                // prev is running, next is not running
-                setPaused(true);
-                pausedRef.current = true;
-              } else {
-                // prev is not running, next is running
-                setPaused(false);
-                pausedRef.current = false;
-              }
-            }}
-          />
-
           <StopButton
             stopped={stopped}
             onToggle={(prev, nxt) => {
