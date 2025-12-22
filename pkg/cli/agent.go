@@ -30,6 +30,8 @@ type AgentCmd struct {
 	HttpEndpoint  string `help:"HTTP endpoint to advertise to the hub"`
 	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
 
+	RespondRange []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
+
 	// PeerCAs are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
 	// Simply put, PeerCAs are what agent is use to verify the hub's cert, and what hub is use to verify the agent's cert.
@@ -57,21 +59,41 @@ type AgentCmd struct {
 }
 
 type PingHandler struct {
-	ipinfoReg *pkgipinfo.IPInfoProviderRegistry
+	ipinfoReg    *pkgipinfo.IPInfoProviderRegistry
+	respondRange []net.IPNet
 }
 
-func NewPingHandler(ipinfoReg *pkgipinfo.IPInfoProviderRegistry) *PingHandler {
+func NewPingHandler(ipinfoReg *pkgipinfo.IPInfoProviderRegistry, respondRange []net.IPNet) *PingHandler {
 	ph := new(PingHandler)
 	ph.ipinfoReg = ipinfoReg
+	ph.respondRange = respondRange
 	return ph
 }
 
 func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	pingRequest, err := pkgpinger.ParseSimplePingRequest(r)
 	if err != nil {
 		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	if len(ph.respondRange) > 0 {
+		willRespond := false
+		dst := net.ParseIP(pingRequest.Destination)
+		for _, nw := range ph.respondRange {
+			if nw.Contains(dst) {
+				willRespond = true
+				break
+			}
+		}
+		if !willRespond {
+			log.Printf("Destination %s from client %s is not in the respond range, will not respond", pingRequest.Destination, pkgutils.GetRemoteAddr(r))
+			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "destination not in respond range"})
+			return
+		}
+	}
+
 	pingReqJSB, _ := json.Marshal(pingRequest)
 	log.Printf("Started ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
 	defer log.Printf("Finished ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
@@ -179,7 +201,16 @@ func (agentCmd *AgentCmd) Run() error {
 	smoother := pkgthrottle.NewBurstSmoother(time.Duration(1000.0/float64(agentCmd.SharedQuota)) * time.Millisecond)
 	smoother.Run()
 
-	handler := NewPingHandler(ipinfoReg)
+	respondRangeNet := make([]net.IPNet, 0)
+	for _, rangeStr := range agentCmd.RespondRange {
+		_, nw, err := net.ParseCIDR(rangeStr)
+		if err != nil {
+			log.Printf("failed to parse respond range %s: %v", rangeStr, err)
+			continue
+		}
+		respondRangeNet = append(respondRangeNet, *nw)
+	}
+	handler := NewPingHandler(ipinfoReg, respondRangeNet)
 
 	muxer := http.NewServeMux()
 	muxer.Handle("/simpleping", handler)

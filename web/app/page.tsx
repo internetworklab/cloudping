@@ -229,7 +229,6 @@ export default function Home() {
         onConfirm={() => {
           setOnGoingTasks([...onGoingTasks, pendingTask]);
           setOpenTaskConfirmDialog(false);
-          setSourcesInput("");
           setTargetsInput("");
         }}
       />
