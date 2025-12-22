@@ -12,6 +12,7 @@ import (
 var CLI struct {
 	Agent pkgcli.AgentCmd `cmd:"agent"`
 	Hub   pkgcli.HubCmd   `cmd:"hub"`
+	Bot   pkgcli.BotCmd   `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
 }
 
 func main() {
