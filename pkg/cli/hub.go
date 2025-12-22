@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkghandler "example.com/rbmq-demo/pkg/handler"
@@ -34,6 +35,9 @@ type HubCmd struct {
 	// Certificates to present to the clients when the hub itself is acting as a server.
 	ServerCert    string `help:"The path to the server certificate" type:"path"`
 	ServerCertKey string `help:"The path to the server certificate key" type:"path"`
+
+	ResolverAddress         string `help:"The address of the resolver to use for DNS resolution" default:"172.20.0.53:53"`
+	OutOfRespondRangePolicy string `help:"The policy to apply when a target is out of the respond range of a node" enum:"allow,deny" default:"allow"`
 }
 
 func (hubCmd HubCmd) Run() error {
@@ -68,9 +72,12 @@ func (hubCmd HubCmd) Run() error {
 		clientTLSConfig.Certificates = append(clientTLSConfig.Certificates, cert)
 		log.Printf("Loaded client certificate: %s and key: %s", hubCmd.ClientCert, hubCmd.ClientCertKey)
 	}
+	resolver := pkgutils.NewCustomResolver(&hubCmd.ResolverAddress, 10*time.Second)
 	pingHandler := &pkghandler.PingTaskHandler{
-		ConnRegistry:    cr,
-		ClientTLSConfig: clientTLSConfig,
+		ConnRegistry:            cr,
+		ClientTLSConfig:         clientTLSConfig,
+		Resolver:                resolver,
+		OutOfRespondRangePolicy: pkghandler.OutOfRespondRangePolicy(hubCmd.OutOfRespondRangePolicy),
 	}
 
 	// muxerPrivate is for privileged rw operations

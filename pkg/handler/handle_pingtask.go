@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
@@ -15,16 +17,36 @@ import (
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
+type OutOfRespondRangePolicy string
+
+const (
+	ORPolicyAllow = "allow"
+	ORPolicyDeny  = "deny"
+)
+
 type PingTaskHandler struct {
-	ConnRegistry    *pkgconnreg.ConnRegistry
-	ClientTLSConfig *tls.Config
+	ConnRegistry            *pkgconnreg.ConnRegistry
+	ClientTLSConfig         *tls.Config
+	Resolver                *net.Resolver
+	OutOfRespondRangePolicy OutOfRespondRangePolicy
 }
 
 const (
 	defaultRemotePingerPath = "/simpleping"
 )
 
-func getRemotePingerEndpoint(connRegistry *pkgconnreg.ConnRegistry, from string) *string {
+func checkIntersect(dstIPs []net.IP, rangeCIDRs []net.IPNet) bool {
+	for _, dstIP := range dstIPs {
+		for _, rangeCIDR := range rangeCIDRs {
+			if rangeCIDR.Contains(dstIP) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func getRemotePingerEndpoint(ctx context.Context, connRegistry *pkgconnreg.ConnRegistry, from string, target string, resolver *net.Resolver, outOfRangePolicy OutOfRespondRangePolicy) *string {
 	if connRegistry == nil {
 		k := from
 		return &k
@@ -42,6 +64,35 @@ func getRemotePingerEndpoint(connRegistry *pkgconnreg.ConnRegistry, from string)
 	if regData == nil {
 		// didn't found
 		return nil
+	}
+
+	// When OutOfRange policy is 'deny', the hub will carefully consider the RespondRange attribute announced by the agent,
+	// and make sure the ping request won't be distributed to whom that are not desired.
+	if outOfRangePolicy == ORPolicyDeny && regData.Attributes[pkgnodereg.AttributeKeyRespondRange] != "" {
+		respondRange := strings.Split(regData.Attributes[pkgnodereg.AttributeKeyRespondRange], ",")
+		rangeCIDRs := make([]net.IPNet, 0)
+		for _, rangeStr := range respondRange {
+			rangeStr = strings.TrimSpace(rangeStr)
+			if rangeStr == "" {
+				continue
+			}
+			if _, nw, err := net.ParseCIDR(rangeStr); err == nil && nw != nil {
+				rangeCIDRs = append(rangeCIDRs, *nw)
+			}
+		}
+
+		var dsts []net.IP
+		var err error
+		dsts, err = resolver.LookupIP(ctx, "ip", target)
+		if err != nil {
+			log.Printf("Failed to lookup IP for target %s: %v", target, err)
+			dsts = make([]net.IP, 0)
+		}
+		if !checkIntersect(dsts, rangeCIDRs) {
+			log.Printf("Target %s is not in the respond range of node %s, which is %s", target, from, strings.Join(respondRange, ", "))
+			log.Printf("Out of range target %s will not be assigned to a remote pinger because of the policy", target)
+			return nil
+		}
 	}
 
 	remotePingerEndpoint, ok := regData.Attributes[pkgnodereg.AttributeKeyHttpEndpoint]
@@ -132,7 +183,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	for _, from := range form.From {
 		for _, target := range form.Targets {
-			remotePingerEndpoint := getRemotePingerEndpoint(handler.ConnRegistry, from)
+			remotePingerEndpoint := getRemotePingerEndpoint(ctx, handler.ConnRegistry, from, target, handler.Resolver, handler.OutOfRespondRangePolicy)
 			if remotePingerEndpoint == nil {
 				// the node might be currently offline, skip it for now
 				log.Printf("Node %s appears on the conn registry's list but have no ping capability, skipping...", from)

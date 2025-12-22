@@ -228,6 +228,41 @@ func (it *ICMPTracker) handleTimeout(seq int) {
 	}
 }
 
+func (it *ICMPTracker) GetUnAcked() int {
+	requestCh, ok := <-it.serviceChan
+	if !ok {
+		// engine is already shutdown
+		return 0
+	}
+	defer close(requestCh)
+
+	unAcked := new(int)
+	*unAcked = 0
+
+	fn := func(ctx context.Context) error {
+		n := 0
+		for _, ent := range it.store {
+			if len(ent.ReceivedAt) == 0 {
+				n++
+			}
+		}
+		*unAcked = n
+		return nil
+	}
+
+	resultCh := make(chan error)
+	requestCh <- ServiceRequest{
+		Func:   fn,
+		Result: resultCh,
+	}
+
+	err := <-resultCh
+	if err != nil {
+		log.Printf("failed to get un-acked packets: %v", err)
+	}
+	return *unAcked
+}
+
 func (it *ICMPTracker) MarkSent(seq int, ttl int) error {
 	requestCh, ok := <-it.serviceChan
 	if !ok {

@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -71,18 +70,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		if sp.pingRequest.ResolveTimeoutMilliseconds != nil {
 			resolveTimeout = time.Duration(*sp.pingRequest.ResolveTimeoutMilliseconds) * time.Millisecond
 		}
-		var resolver *net.Resolver = net.DefaultResolver
-		if pingRequest.Resolver != nil {
-			resolver = &net.Resolver{
-				PreferGo: true,
-				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					d := net.Dialer{
-						Timeout: resolveTimeout,
-					}
-					return d.DialContext(ctx, network, *pingRequest.Resolver)
-				},
-			}
-		}
+		resolver := pkgutils.NewCustomResolver(pingRequest.Resolver, resolveTimeout)
 
 		destHostName := pingRequest.Destination
 		if destHostName == "" {
@@ -135,79 +123,88 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			transceiver = icmp6tr
 		}
 
-		var pkgWg sync.WaitGroup
-		defer func() {
-			if pingRequest.TotalPkts != nil {
-
-				pkgWg.Wait()
-
-			}
-		}()
-
 		var payloadManager *PayloadManager
 		if pingRequest.RandomPayloadSize != nil {
 			payloadManager = NewPayloadManager(*pingRequest.RandomPayloadSize)
 		}
 
-		ttlCh := make(chan int)
+		ttlCh := make(chan int, 1)
+		ttlCh <- pingRequest.TTL.GetNext()
 
+		waitForICMPEVGenGoroutine := sync.WaitGroup{}
+
+		waitForICMPEVGenGoroutine.Add(1)
 		go func() {
-			ttlCh <- pingRequest.TTL.GetNext()
-			for ev := range tracker.RecvEvC {
-				var wrappedEV *pkgraw.ICMPTrackerEntry = &ev
-				if dst.IP != nil {
-					var foundLastHop bool
-					wrappedEV, foundLastHop = wrappedEV.MarkLastHop(dst)
-					if foundLastHop {
-						if autoTTL, ok := pingRequest.TTL.(*AutoTTL); ok {
-							autoTTL.Reset()
+			log.Printf("ICMP Event-generating goroutine for %s is started", dst.String())
+			defer waitForICMPEVGenGoroutine.Done()
+			defer log.Printf("ICMP Event-generating goroutine for %s is exitting", dst.String())
+
+			for {
+				select {
+				case <-ctx.Done():
+					log.Printf("In ICMP Event-generating goroutine for %s, got context done", dst.String())
+					return
+				case ev := <-tracker.RecvEvC:
+					var wrappedEV *pkgraw.ICMPTrackerEntry = &ev
+					if dst.IP != nil {
+						var foundLastHop bool
+						wrappedEV, foundLastHop = wrappedEV.MarkLastHop(dst)
+						if foundLastHop {
+							if autoTTL, ok := pingRequest.TTL.(*AutoTTL); ok {
+								autoTTL.Reset()
+							}
 						}
 					}
-				}
 
-				if sp.ipinfoAdapter != nil {
-					wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.ipinfoAdapter)
+					if sp.ipinfoAdapter != nil {
+						wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.ipinfoAdapter)
+						if err != nil {
+							log.Printf("failed to resolve IP info: %v", err)
+							err = nil
+						}
+					}
+
+					wrappedEV, err = wrappedEV.ResolveRDNS(ctx, resolver)
 					if err != nil {
-						log.Printf("failed to resolve IP info: %v", err)
+						log.Printf("failed to resolve RDNS: %v", err)
 						err = nil
 					}
-				}
 
-				wrappedEV, err = wrappedEV.ResolveRDNS(ctx, resolver)
-				if err != nil {
-					log.Printf("failed to resolve RDNS: %v", err)
-					err = nil
-				}
-
-				if payloadManager != nil {
-					for _, icmpReply := range wrappedEV.Raw {
-						if icmpReply.SetMTUTo != nil && icmpReply.ShrinkICMPPayloadTo != nil {
-							log.Printf("[DBG] Shrinking payload due to PMTU msg: SetMTUTo=%d, ShrinkICMPPayloadTo=%d, dst=%s", *icmpReply.SetMTUTo, *icmpReply.ShrinkICMPPayloadTo, dst.String())
-							payloadManager.Shrink(icmpReply.ShrinkICMPPayloadTo)
+					if payloadManager != nil {
+						for _, icmpReply := range wrappedEV.Raw {
+							if icmpReply.SetMTUTo != nil && icmpReply.ShrinkICMPPayloadTo != nil {
+								log.Printf("[DBG] Shrinking payload due to PMTU msg: SetMTUTo=%d, ShrinkICMPPayloadTo=%d, dst=%s", *icmpReply.SetMTUTo, *icmpReply.ShrinkICMPPayloadTo, dst.String())
+								payloadManager.Shrink(icmpReply.ShrinkICMPPayloadTo)
+							}
 						}
 					}
-				}
 
-				outputEVChan <- PingEvent{Data: wrappedEV}
-				nextTTL := pingRequest.TTL.GetNext()
-				ttlCh <- nextTTL
+					outputEVChan <- PingEvent{Data: wrappedEV}
 
-				if pingRequest.TotalPkts != nil {
-
-					pkgWg.Done()
-					if ev.Seq >= *pingRequest.TotalPkts {
+					if pingRequest.TotalPkts != nil && ev.Seq >= *pingRequest.TotalPkts {
+						log.Printf("Max number of packets to send: %d, received ev of seq %d, no more icmp events will be generated", *pingRequest.TotalPkts, ev.Seq)
 						return
 					}
+
+					ttlCh <- pingRequest.TTL.GetNext()
 				}
+
 			}
+
 		}()
 
+		receivingCtx, cancelReceiving := context.WithCancel(context.Background())
+		defer cancelReceiving()
+
 		go func() {
+			log.Printf("ICMPReceiving goroutine for %s is started", dst.String())
+			defer log.Printf("ICMPReceiving goroutine for %s is exitting", dst.String())
+
 			receiverCh := transceiver.GetReceiver()
 			for {
 				subCh := make(chan pkgraw.ICMPReceiveReply)
 				select {
-				case <-ctx.Done():
+				case <-receivingCtx.Done():
 					return
 				case receiverCh <- subCh:
 					reply := <-subCh
@@ -217,42 +214,48 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			}
 		}()
 
-		senderCh := transceiver.GetSender()
+		go func() {
+			log.Printf("ICMPSending goroutine for %s is started", dst.String())
+			defer log.Printf("ICMPSending goroutine for %s is exitting", dst.String())
 
-		numPktsSent := 0
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ttl := <-ttlCh
+			senderCh := transceiver.GetSender()
+			numPktsSent := 0
+			for {
+				select {
+				case <-ctx.Done():
+					log.Printf("In ICMPSending goroutine for %s, got context done", dst.String())
+					return
+				default:
+					ttl := <-ttlCh
 
-				req := pkgraw.ICMPSendRequest{
-					Seq: numPktsSent + 1,
-					TTL: ttl,
-					Dst: dst,
-				}
-
-				if payloadManager != nil {
-					req.Data = payloadManager.GetPayload()
-				}
-
-				senderCh <- req
-				tracker.MarkSent(req.Seq, req.TTL)
-				counterStore.NumPktsSent.With(commonLabels).Add(1.0)
-
-				numPktsSent++
-				if pingRequest.TotalPkts != nil {
-					pkgWg.Add(1)
-					if numPktsSent >= *pingRequest.TotalPkts {
-						return
+					req := pkgraw.ICMPSendRequest{
+						Seq: numPktsSent + 1,
+						TTL: ttl,
+						Dst: dst,
 					}
-				}
-				<-time.After(time.Duration(pingRequest.IntvMilliseconds) * time.Millisecond)
-			}
-		}
 
+					if payloadManager != nil {
+						req.Data = payloadManager.GetPayload()
+					}
+
+					senderCh <- req
+					tracker.MarkSent(req.Seq, req.TTL)
+					counterStore.NumPktsSent.With(commonLabels).Add(1.0)
+
+					numPktsSent++
+					if pingRequest.TotalPkts != nil {
+						if numPktsSent >= *pingRequest.TotalPkts {
+							return
+						}
+					}
+					<-time.After(time.Duration(pingRequest.IntvMilliseconds) * time.Millisecond)
+				}
+			}
+		}()
+
+		waitForICMPEVGenGoroutine.Wait()
 	}()
+
 	return outputEVChan
 }
 
