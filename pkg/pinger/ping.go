@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -20,20 +21,9 @@ import (
 )
 
 type SimplePinger struct {
-	pingRequest   *SimplePingRequest
-	ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter
-}
-
-type SimplePingerConfig struct {
 	PingRequest   *SimplePingRequest
 	IPInfoAdapter pkgipinfo.GeneralIPInfoAdapter
-}
-
-func NewSimplePinger(cfg SimplePingerConfig) *SimplePinger {
-	sp := new(SimplePinger)
-	sp.pingRequest = cfg.PingRequest
-	sp.ipinfoAdapter = cfg.IPInfoAdapter
-	return sp
+	RespondRange  []net.IPNet
 }
 
 func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
@@ -50,12 +40,12 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 	go func() {
 		defer close(outputEVChan)
 
-		pingRequest := sp.pingRequest
+		pingRequest := sp.PingRequest
 		var err error
 
 		buffRedundancyFactor := 2
-		pkgTimeout := time.Duration(sp.pingRequest.PktTimeoutMilliseconds) * time.Millisecond
-		pkgInterval := time.Duration(sp.pingRequest.IntvMilliseconds) * time.Millisecond
+		pkgTimeout := time.Duration(sp.PingRequest.PktTimeoutMilliseconds) * time.Millisecond
+		pkgInterval := time.Duration(sp.PingRequest.IntvMilliseconds) * time.Millisecond
 		trackerConfig := &pkgraw.ICMPTrackerConfig{
 			PacketTimeout:                 pkgTimeout,
 			TimeoutChannelEventBufferSize: buffRedundancyFactor * int(pkgTimeout.Seconds()/math.Max(1, pkgInterval.Seconds())),
@@ -67,8 +57,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		tracker.Run(ctx)
 
 		resolveTimeout := 10 * time.Second
-		if sp.pingRequest.ResolveTimeoutMilliseconds != nil {
-			resolveTimeout = time.Duration(*sp.pingRequest.ResolveTimeoutMilliseconds) * time.Millisecond
+		if sp.PingRequest.ResolveTimeoutMilliseconds != nil {
+			resolveTimeout = time.Duration(*sp.PingRequest.ResolveTimeoutMilliseconds) * time.Millisecond
 		}
 		resolver := pkgutils.NewCustomResolver(pingRequest.Resolver, resolveTimeout)
 
@@ -84,7 +74,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			outputEVChan <- PingEvent{Error: fmt.Errorf("target is empty")}
 			return
 		}
-		dstPtr, err := pkgutils.SelectDstIP(ctx, resolver, destHostName, pingRequest.PreferV4, pingRequest.PreferV6)
+
+		dstPtr, err := pkgutils.SelectDstIP(ctx, resolver, destHostName, pingRequest.PreferV4, pingRequest.PreferV6, sp.RespondRange)
 		if err != nil {
 			outputEVChan <- PingEvent{Error: err}
 			return
@@ -157,8 +148,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						}
 					}
 
-					if sp.ipinfoAdapter != nil {
-						wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.ipinfoAdapter)
+					if sp.IPInfoAdapter != nil {
+						wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.IPInfoAdapter)
 						if err != nil {
 							log.Printf("failed to resolve IP info: %v", err)
 							err = nil

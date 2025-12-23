@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -34,7 +33,6 @@ type AgentCmd struct {
 	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
 
 	RespondRange []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
-	Resolver     string   `help:"The address of the resolver to use for DNS resolution" default:"172.20.0.53:53"`
 
 	// PeerCAs are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
@@ -69,14 +67,12 @@ type AgentCmd struct {
 type PingHandler struct {
 	ipinfoReg    *pkgipinfo.IPInfoProviderRegistry
 	respondRange []net.IPNet
-	resolver     *net.Resolver
 }
 
-func NewPingHandler(ipinfoReg *pkgipinfo.IPInfoProviderRegistry, respondRange []net.IPNet, resolver *net.Resolver) *PingHandler {
+func NewPingHandler(ipinfoReg *pkgipinfo.IPInfoProviderRegistry, respondRange []net.IPNet) *PingHandler {
 	ph := new(PingHandler)
 	ph.ipinfoReg = ipinfoReg
 	ph.respondRange = respondRange
-	ph.resolver = resolver
 	return ph
 }
 
@@ -89,20 +85,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-
-	if len(ph.respondRange) > 0 {
-		dsts, err := ph.resolver.LookupIP(ctx, "ip", pingRequest.Destination)
-		if err != nil {
-			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("unable to lookup IP for destination %s: %w", pingRequest.Destination, err).Error()})
-			return
-		}
-
-		if !pkgutils.CheckIntersect(dsts, ph.respondRange) {
-			log.Printf("Destination %s from client %s is not in the respond range, will not respond", pingRequest.Destination, pkgutils.GetRemoteAddr(r))
-			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("destination %s from client %s is not in the respond range", pingRequest.Destination, pkgutils.GetRemoteAddr(r)).Error()})
-			return
-		}
-	}
 
 	pingReqJSB, _ := json.Marshal(pingRequest)
 	log.Printf("Started ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
@@ -137,10 +119,11 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pinger := pkgpinger.NewSimplePinger(pkgpinger.SimplePingerConfig{
+	pinger := &pkgpinger.SimplePinger{
 		PingRequest:   pingRequest,
 		IPInfoAdapter: ipinfoAdapter,
-	})
+		RespondRange:  ph.respondRange,
+	}
 	for ev := range pinger.Ping(ctx) {
 		if ev.Error != nil {
 			errStr := ev.Error.Error()
@@ -151,7 +134,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-
 }
 
 func (agentCmd *AgentCmd) Run() error {
@@ -219,7 +201,7 @@ func (agentCmd *AgentCmd) Run() error {
 		}
 		respondRangeNet = append(respondRangeNet, *nw)
 	}
-	handler := NewPingHandler(ipinfoReg, respondRangeNet, pkgutils.NewCustomResolver(&agentCmd.Resolver, 10*time.Second))
+	handler := NewPingHandler(ipinfoReg, respondRangeNet)
 
 	muxer := http.NewServeMux()
 	muxer.Handle("/simpleping", handler)
