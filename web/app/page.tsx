@@ -255,18 +255,14 @@ export default function Home() {
                 }}
               />
             ) : (
-              <Card>
-                <CardContent>
-                  <TracerouteResultDisplay
-                    task={task}
-                    onDeleted={() => {
-                      setOnGoingTasks(
-                        onGoingTasks.filter((t) => t.taskId !== task.taskId)
-                      );
-                    }}
-                  />
-                </CardContent>
-              </Card>
+              <TracerouteResultDisplay
+                task={task}
+                onDeleted={() => {
+                  setOnGoingTasks(
+                    onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                  );
+                }}
+              />
             )}
           </Fragment>
         ))}

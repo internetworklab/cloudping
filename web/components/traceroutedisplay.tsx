@@ -11,6 +11,7 @@ import {
   TableContainer,
   Tab,
   Tabs,
+  Card,
 } from "@mui/material";
 import {
   Fragment,
@@ -334,12 +335,14 @@ export function TracerouteResultDisplay(props: {
   }, [task.taskId, stopped, paused]);
 
   return (
-    <Fragment>
+    <Card>
       <Box
         sx={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          overflow: "hidden",
+          padding: 2,
         }}
       >
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
@@ -373,9 +376,7 @@ export function TracerouteResultDisplay(props: {
       </Box>
 
       {task.targets.length > 0 && task.targets[0] && (
-        <Box sx={{ marginTop: 1, marginBottom: 1 }}>
-          Traceroute to {task.targets[0]}
-        </Box>
+        <Box sx={{ padding: 2 }}>Traceroute to {task.targets[0]}</Box>
       )}
       <TableContainer sx={{ maxWidth: "100%", overflowX: "auto" }}>
         <Table>
@@ -484,6 +485,6 @@ export function TracerouteResultDisplay(props: {
           </TableBody>
         </Table>
       </TableContainer>
-    </Fragment>
+    </Card>
   );
 }
