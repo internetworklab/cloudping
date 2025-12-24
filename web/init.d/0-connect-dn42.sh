@@ -46,6 +46,7 @@ nsenter -t $pid1 -n nft add rule ip nat snat-gpingweb ip saddr $my_ip/32 masquer
 
 # point bird -> globalping-web (v6)
 nsenter -t $pid1 -n ip -6 r add $dn42_ip6/128 via fe80::2 dev v-gpingweb vrf vrf42
+nsenter -t $pid1 -n sysctl -w net.ipv6.conf.v-gpingweb.forwarding=1
 
 # point globalping-web -> bird (v6)
 nsenter -t $pid2 -n ip a add $dn42_ip6/128 dev v-bird
