@@ -135,12 +135,38 @@ function RenderPolygons(props: {
   );
 }
 
+export type Marker = {
+  lonLat: LonLat;
+  fill?: CSSProperties["fill"];
+  radius?: number;
+  strokeWidth?: number;
+  stroke?: CSSProperties["stroke"];
+};
+
+function RenderMarker(props: { marker: Marker; projector: Projector }) {
+  const { marker, projector } = props;
+  const [x, y] = projector(marker.lonLat);
+  return (
+    <Fragment>
+      <circle
+        strokeWidth={marker.strokeWidth}
+        stroke={marker.stroke}
+        cx={x}
+        cy={y}
+        r={marker.radius}
+        fill={marker.fill}
+      />
+    </Fragment>
+  );
+}
+
 export function WorldMap(props: {
   canvasX: number;
   canvasY: number;
   fill: CSSProperties["fill"];
+  markers: Marker[];
 }) {
-  const { canvasX, canvasY, fill } = props;
+  const { canvasX, canvasY, fill, markers } = props;
   const flatShapes = useMemo(() => {
     const worldMap = worldMapAny as FeatureCollection;
     const flatShapes = toFlatShape(worldMap.features);
@@ -167,6 +193,9 @@ export function WorldMap(props: {
             projector={projector}
             fill={fill}
           />
+          {markers.map((marker, i) => (
+            <RenderMarker key={i} marker={marker} projector={projector} />
+          ))}
         </svg>
       </Box>
     </Fragment>
