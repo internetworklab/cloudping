@@ -30,7 +30,7 @@ import (
 type AgentCmd struct {
 	NodeName            string `help:"Nodename to advertise to the hub, leave it empty for not advertising itself to the hub"`
 	HttpEndpoint        string `help:"HTTP endpoint to advertise to the hub"`
-	ExactLocationLonLat string `help:"The exact geographic location to advertise to the hub, when present. Format: <latitude>,<longitude>"`
+	ExactLocationLatLon string `help:"The exact geographic location to advertise to the hub, when present. Format: <latitude>,<longitude>"`
 
 	// If server address is empty, it won't register itself to the hub.
 	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
@@ -334,8 +334,8 @@ func (agentCmd *AgentCmd) Run() error {
 		attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
 		attributes[pkgnodereg.AttributeKeyNodeName] = agentCmd.NodeName
 		attributes[pkgnodereg.AttributeKeyHttpEndpoint] = agentCmd.HttpEndpoint
-		if agentCmd.ExactLocationLonLat != "" {
-			attributes[pkgnodereg.AttributeKeyExactLocation] = agentCmd.ExactLocationLonLat
+		if agentCmd.ExactLocationLatLon != "" {
+			attributes[pkgnodereg.AttributeKeyExactLocation] = agentCmd.ExactLocationLatLon
 		}
 
 		if len(agentCmd.RespondRange) > 0 {
