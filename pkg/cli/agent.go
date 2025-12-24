@@ -28,8 +28,9 @@ import (
 )
 
 type AgentCmd struct {
-	NodeName     string `help:"Nodename to advertise to the hub, leave it empty for not advertising itself to the hub"`
-	HttpEndpoint string `help:"HTTP endpoint to advertise to the hub"`
+	NodeName            string `help:"Nodename to advertise to the hub, leave it empty for not advertising itself to the hub"`
+	HttpEndpoint        string `help:"HTTP endpoint to advertise to the hub"`
+	ExactLocationLonLat string `help:"The exact geographic location to advertise to the hub, when present. Format: <longitude>,<latitude>"`
 
 	// If server address is empty, it won't register itself to the hub.
 	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
@@ -333,9 +334,21 @@ func (agentCmd *AgentCmd) Run() error {
 		attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
 		attributes[pkgnodereg.AttributeKeyNodeName] = agentCmd.NodeName
 		attributes[pkgnodereg.AttributeKeyHttpEndpoint] = agentCmd.HttpEndpoint
+		if agentCmd.ExactLocationLonLat != "" {
+			attributes[pkgnodereg.AttributeKeyExactLocation] = agentCmd.ExactLocationLonLat
+		}
 
 		if len(agentCmd.RespondRange) > 0 {
 			attributes[pkgnodereg.AttributeKeyRespondRange] = strings.Join(agentCmd.RespondRange, ",")
+		}
+
+		if len(agentCmd.DomainRespondRange) > 0 {
+			// the domain respond range involved complex regex string literals, so better encode it somehow before transmitting it over the wire.
+			rangesJsonB, err := json.Marshal(agentCmd.DomainRespondRange)
+			if err != nil {
+				log.Fatalf("failed to marshal domain respond range: %v", err)
+			}
+			attributes[pkgnodereg.AttributeKeyDomainRespondRange] = string(rangesJsonB)
 		}
 
 		agent := pkgnodereg.NodeRegistrationAgent{

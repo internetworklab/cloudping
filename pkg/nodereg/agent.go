@@ -17,10 +17,12 @@ import (
 )
 
 const (
-	AttributeKeyNodeName       = "NodeName"
-	AttributeKeyPingCapability = "CapabilityPing"
-	AttributeKeyHttpEndpoint   = "HttpEndpoint"
-	AttributeKeyRespondRange   = "RespondRange"
+	AttributeKeyNodeName           = "NodeName"
+	AttributeKeyPingCapability     = "CapabilityPing"
+	AttributeKeyHttpEndpoint       = "HttpEndpoint"
+	AttributeKeyRespondRange       = "RespondRange"
+	AttributeKeyExactLocation      = "ExactLocation"
+	AttributeKeyDomainRespondRange = "DomainRespondRange"
 )
 
 type NodeRegistrationAgent struct {
