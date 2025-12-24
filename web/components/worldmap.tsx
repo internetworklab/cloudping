@@ -1,8 +1,8 @@
 "use client";
 
-import { CSSProperties, Fragment, useEffect, useMemo } from "react";
+import { CSSProperties, Fragment, useEffect, useMemo, useState } from "react";
 import worldMapAny from "./worldmap.json";
-import { Box } from "@mui/material";
+import { Box, Tooltip } from "@mui/material";
 
 // format: [longitude, latitude]
 type LonLat = number[];
@@ -141,21 +141,34 @@ export type Marker = {
   radius?: number;
   strokeWidth?: number;
   stroke?: CSSProperties["stroke"];
+  tooltip?: string;
 };
 
 function RenderMarker(props: { marker: Marker; projector: Projector }) {
   const { marker, projector } = props;
   const [x, y] = projector(marker.lonLat);
+  const [open, setOpen] = useState(false);
   return (
     <Fragment>
-      <circle
-        strokeWidth={marker.strokeWidth}
-        stroke={marker.stroke}
-        cx={x}
-        cy={y}
-        r={marker.radius}
-        fill={marker.fill}
-      />
+      <Tooltip
+        title={<Box sx={{ whiteSpace: "pre-wrap" }}>{marker.tooltip}</Box>}
+        open={open}
+        onOpen={() => {
+          if (marker.tooltip) {
+            setOpen(true);
+          }
+        }}
+        onClose={() => setOpen(false)}
+      >
+        <circle
+          strokeWidth={marker.strokeWidth}
+          stroke={marker.stroke}
+          cx={x}
+          cy={y}
+          r={marker.radius}
+          fill={marker.fill}
+        />
+      </Tooltip>
     </Fragment>
   );
 }

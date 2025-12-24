@@ -322,6 +322,7 @@ function RowMap(props: {
 
   let markers: Marker[] = [];
   for (const nodeGroup of nodeGroups) {
+    const latenciesMap: Record<string, number> = {};
     const latencies: number[] = [];
     for (const node of nodeGroup.nodes) {
       if (
@@ -341,21 +342,30 @@ function RowMap(props: {
         latency >= 0
       ) {
         latencies.push(latency);
+        latenciesMap[node.node_name] = latency;
       }
     }
+    let tooltip: string = "";
     latencies.sort((a, b) => a - b);
     let color: CSSProperties["color"] = colorGrey;
     if (latencies.length > 0) {
       color = getLatencyColor(latencies[0]);
+      for (const [nodeName, latency] of Object.entries(latenciesMap)) {
+        tooltip += `${nodeName}: ${latency.toFixed(3)} ms\n`;
+      }
     }
 
-    markers.push({
+    const marker: Marker = {
       lonLat: latLonToLonLat(nodeGroup.latLon),
       fill: color,
       radius: 2000,
       strokeWidth: 800,
       stroke: "white",
-    });
+    };
+    if (tooltip !== "") {
+      marker.tooltip = tooltip;
+    }
+    markers.push(marker);
   }
 
   return (
