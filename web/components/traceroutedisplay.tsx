@@ -270,6 +270,8 @@ export function TracerouteResultDisplay(props: {
           ttl: "auto",
           resolver: "172.20.0.53:53",
           ipInfoProviderName: "auto",
+          preferV4: task.preferV4,
+          preferV6: task.preferV6,
         });
         streamRef.current = stream;
         const reader = stream.getReader();

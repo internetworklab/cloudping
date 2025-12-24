@@ -45,7 +45,7 @@ export function PingResultDisplay(props: {
   onDeleted: () => void;
 }) {
   const { pendingTask, onDeleted } = props;
-  const { sources, targets } = pendingTask;
+  const { sources, targets, preferV4, preferV6 } = pendingTask;
 
   const [latencyMap, setLatencyMap] = useState<
     Record<string, Record<string, number>>
@@ -64,6 +64,8 @@ export function PingResultDisplay(props: {
       intervalMs: 300,
       pktTimeoutMs: 3000,
       resolver: "172.20.0.53:53",
+      preferV4: preferV4,
+      preferV6: preferV6,
     });
     const reader = resultStream.getReader();
     const readNext = (props: {

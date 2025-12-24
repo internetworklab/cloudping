@@ -5,6 +5,8 @@ export type PendingTask = {
   targets: string[];
   taskId: number;
   type: PingTaskType;
+  preferV4?: boolean;
+  preferV6?: boolean;
 };
 
 export type ExactLocation = {

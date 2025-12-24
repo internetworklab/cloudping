@@ -303,6 +303,9 @@ export type PingRequest = {
   ttl?: string;
 
   ipInfoProviderName?: string;
+
+  preferV4?: boolean;
+  preferV6?: boolean;
 };
 
 export function generatePingSampleStream(
@@ -317,6 +320,8 @@ export function generatePingSampleStream(
     ttl,
     ipInfoProviderName,
     resolver,
+    preferV4,
+    preferV6,
   } = pingReq;
 
   const urlParams = new URLSearchParams();
@@ -337,6 +342,13 @@ export function generatePingSampleStream(
 
   if (ipInfoProviderName) {
     urlParams.set("ipInfoProviderName", ipInfoProviderName);
+  }
+
+  if (preferV4 !== undefined && preferV4 !== null && preferV4) {
+    urlParams.set("preferV4", "true");
+  }
+  if (preferV6 !== undefined && preferV6 !== null && preferV6) {
+    urlParams.set("preferV6", "true");
   }
 
   const headers = new Headers();

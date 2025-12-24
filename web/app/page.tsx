@@ -12,6 +12,8 @@ import {
   Radio,
   Tooltip,
   IconButton,
+  Checkbox,
+  FormGroup,
 } from "@mui/material";
 import { CSSProperties, Fragment, useState } from "react";
 import { SourcesSelector } from "@/components/sourceselector";
@@ -106,8 +108,22 @@ export default function Home() {
       <Box sx={headerCardStyles}>
         <Card>
           <CardContent>
-            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                rowGap: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Typography variant="h6">GlobalPing</Typography>
                 <RadioGroup
                   value={taskType}
@@ -127,6 +143,38 @@ export default function Home() {
                     label="Traceroute"
                   />
                 </RadioGroup>
+                <FormGroup row>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!!pendingTask.preferV4}
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            preferV4: !!ckd,
+                            preferV6: ckd ? false : prev.preferV6,
+                          }));
+                        }}
+                      />
+                    }
+                    label="Prefer V4"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!!pendingTask.preferV6}
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            preferV4: ckd ? false : prev.preferV4,
+                            preferV6: !!ckd,
+                          }));
+                        }}
+                      />
+                    }
+                    label="Prefer V6"
+                  />
+                </FormGroup>
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 {repoAddr !== "" && (
@@ -150,12 +198,13 @@ export default function Home() {
                       .map((t) => t.trim())
                       .filter((t) => t.length > 0);
 
-                    setPendingTask({
+                    setPendingTask((prev) => ({
+                      ...prev,
                       sources: srcs,
                       targets: tgts,
                       taskId: getNextId(onGoingTasks),
                       type: taskType,
-                    });
+                    }));
                     setOpenTaskConfirmDialog(true);
                   }}
                 >
