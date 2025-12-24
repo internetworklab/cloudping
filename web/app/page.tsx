@@ -72,7 +72,14 @@ export default function Home() {
   const [sourcesInput, setSourcesInput] = useState<string>("");
   const [targetsInput, setTargetsInput] = useState<string>("");
 
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
+    {
+      sources: ["lax1", "sgp1", "vie1", "tyo1", "hkg1"],
+      targets: ["1.1.1.1"],
+      taskId: 101,
+      type: "ping",
+    },
+  ]);
 
   let containerStyles: CSSProperties[] = [
     {

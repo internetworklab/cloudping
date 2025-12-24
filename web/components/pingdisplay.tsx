@@ -8,18 +8,22 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TableContainer,
+  Button,
   IconButton,
   Tooltip,
-  TableContainer,
 } from "@mui/material";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { PingSample, generatePingSampleStream } from "@/apis/globalping";
-import PauseIcon from "@mui/icons-material/Pause";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { PendingTask } from "@/apis/types";
 import { TaskCloseIconButton } from "@/components/taskclose";
 import { getLatencyColor } from "./colorfunc";
 import { PlayPauseButton } from "./playpause";
+import MapIcon from "@mui/icons-material/Map";
+
+type RowObject = {
+  target: string;
+};
 
 export function PingResultDisplay(props: {
   pendingTask: PendingTask;
@@ -31,12 +35,6 @@ export function PingResultDisplay(props: {
   const [latencyMap, setLatencyMap] = useState<
     Record<string, Record<string, number>>
   >({});
-  const getLatency = (
-    source: string,
-    target: string
-  ): number | undefined | null => {
-    return latencyMap[target]?.[source];
-  };
 
   const [running, setRunning] = useState<boolean>(true);
 
@@ -114,6 +112,10 @@ export function PingResultDisplay(props: {
     };
   }, [pendingTask.taskId, running]);
 
+  const rowObjects: RowObject[] = targets.map((target) => ({
+    target: target,
+  }));
+
   return (
     <Fragment>
       <Box
@@ -153,34 +155,92 @@ export function PingResultDisplay(props: {
               {sources.map((source) => (
                 <TableCell key={source}>{source}</TableCell>
               ))}
+              <TableCell>Overview</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {targets.map((target) => (
-              <TableRow key={target}>
-                <TableCell>{target}</TableCell>
-                {sources.map((source) => {
-                  const latency = getLatency(source, target);
-                  return (
-                    <TableCell
-                      key={source}
-                      sx={{
-                        color: getLatencyColor(latency),
-                        fontWeight: 500,
-                        minWidth: 100,
-                      }}
-                    >
-                      {latency !== null && latency !== undefined
-                        ? `${latency.toFixed(3)} ms`
-                        : "—"}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
+            {rowObjects.map(({ target }, idx) => (
+              <RowMap
+                key={idx}
+                target={target}
+                sources={sources}
+                rowLength={sources.length + 2}
+                latencyMap={latencyMap}
+              />
             ))}
           </TableBody>
         </Table>
       </TableContainer>
+    </Fragment>
+  );
+}
+
+function RowMap(props: {
+  target: string;
+  sources: string[];
+  rowLength: number;
+  latencyMap: Record<string, Record<string, number>>;
+}) {
+  const { target, sources, rowLength, latencyMap } = props;
+  const [expanded, setExpanded] = useState<boolean>(false);
+  const getLatency = (
+    source: string,
+    target: string
+  ): number | undefined | null => {
+    return latencyMap[target]?.[source];
+  };
+
+  return (
+    <Fragment>
+      <TableRow>
+        <TableCell>{target}</TableCell>
+        {sources.map((source) => {
+          const latency = getLatency(source, target);
+          return (
+            <TableCell
+              key={source}
+              sx={{
+                color: getLatencyColor(latency),
+                fontWeight: 500,
+                minWidth: 100,
+              }}
+            >
+              {latency !== null && latency !== undefined
+                ? `${latency.toFixed(3)} ms`
+                : "—"}
+            </TableCell>
+          );
+        })}
+        <TableCell>
+          <Tooltip
+            title={
+              !expanded
+                ? "See Overview in World Map"
+                : "Hide World Map Overview"
+            }
+          >
+            <IconButton onClick={() => setExpanded((prev) => !prev)}>
+              <MapIcon />
+            </IconButton>
+          </Tooltip>
+        </TableCell>
+      </TableRow>
+      {expanded && (
+        <TableRow sx={{ "&>.MuiTableCell-body": { padding: 0 } }}>
+          <TableCell colSpan={props.rowLength}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                height: "300px",
+              }}
+            >
+              Test Content
+            </Box>
+          </TableCell>
+        </TableRow>
+      )}
     </Fragment>
   );
 }
