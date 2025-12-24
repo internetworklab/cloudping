@@ -20,6 +20,7 @@ import { TaskCloseIconButton } from "@/components/taskclose";
 import { getLatencyColor } from "./colorfunc";
 import { PlayPauseButton } from "./playpause";
 import MapIcon from "@mui/icons-material/Map";
+import { WorldMap } from "./worldmap";
 
 type RowObject = {
   target: string;
@@ -231,12 +232,12 @@ function RowMap(props: {
             <Box
               sx={{
                 display: "flex",
-                justifyContent: "center",
                 alignItems: "center",
                 height: "300px",
+                flexDirection: "row",
               }}
             >
-              Test Content
+              <WorldMap />
             </Box>
           </TableCell>
         </TableRow>
