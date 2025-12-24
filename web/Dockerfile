@@ -10,11 +10,12 @@ FROM build-deps AS build
 
 WORKDIR /app/web
 COPY . .
+
+# explicitly choose .env.prod
+COPY .env.prod .env
 RUN npm run build
 
 
 FROM nginx:latest AS app
 
 COPY --from=build /app/web/out /usr/share/nginx/html
-COPY nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
-

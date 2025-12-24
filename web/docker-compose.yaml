@@ -5,3 +5,7 @@ services:
     pull_policy: always
     ports:
       - "45843:80"
+    volumes:
+      - "./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
