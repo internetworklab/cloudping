@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -32,7 +34,8 @@ type AgentCmd struct {
 	// If server address is empty, it won't register itself to the hub.
 	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
 
-	RespondRange []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
+	RespondRange       []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
+	DomainRespondRange []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
 
 	// PeerCAs are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
@@ -65,15 +68,9 @@ type AgentCmd struct {
 }
 
 type PingHandler struct {
-	ipinfoReg    *pkgipinfo.IPInfoProviderRegistry
-	respondRange []net.IPNet
-}
-
-func NewPingHandler(ipinfoReg *pkgipinfo.IPInfoProviderRegistry, respondRange []net.IPNet) *PingHandler {
-	ph := new(PingHandler)
-	ph.ipinfoReg = ipinfoReg
-	ph.respondRange = respondRange
-	return ph
+	IPInfoReg          *pkgipinfo.IPInfoProviderRegistry
+	RespondRange       []net.IPNet
+	DomainRespondRange []regexp.Regexp
 }
 
 func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -110,9 +107,23 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		counterStore.ServedDurationMs.With(commonLabels).Add(float64(servedDurationMs))
 	}()
 
+	if len(ph.DomainRespondRange) > 0 {
+		hit := false
+		for _, domainPattern := range ph.DomainRespondRange {
+			if domainPattern.MatchString(pingRequest.Destination) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("domain %s does not match any pattern in the domain respond range", pingRequest.Destination).Error()})
+			return
+		}
+	}
+
 	var ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter = nil
 	if pingRequest.IPInfoProviderName != nil && *pingRequest.IPInfoProviderName != "" {
-		ipinfoAdapter, err = ph.ipinfoReg.GetAdapter(*pingRequest.IPInfoProviderName)
+		ipinfoAdapter, err = ph.IPInfoReg.GetAdapter(*pingRequest.IPInfoProviderName)
 		if err != nil {
 			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
 			return
@@ -122,7 +133,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pinger := &pkgpinger.SimplePinger{
 		PingRequest:   pingRequest,
 		IPInfoAdapter: ipinfoAdapter,
-		RespondRange:  ph.respondRange,
+		RespondRange:  ph.RespondRange,
 	}
 	for ev := range pinger.Ping(ctx) {
 		if ev.Error != nil {
@@ -201,7 +212,21 @@ func (agentCmd *AgentCmd) Run() error {
 		}
 		respondRangeNet = append(respondRangeNet, *nw)
 	}
-	handler := NewPingHandler(ipinfoReg, respondRangeNet)
+
+	domaonRespondRange := make([]regexp.Regexp, 0)
+	for _, domainPattern := range agentCmd.DomainRespondRange {
+		domainRegexp, err := regexp.Compile(domainPattern)
+		if err != nil {
+			log.Fatalf("failed to compile domain pattern %s: %v", domainPattern, err)
+		}
+		domaonRespondRange = append(domaonRespondRange, *domainRegexp)
+	}
+
+	handler := &PingHandler{
+		IPInfoReg:          ipinfoReg,
+		RespondRange:       respondRangeNet,
+		DomainRespondRange: domaonRespondRange,
+	}
 
 	muxer := http.NewServeMux()
 	muxer.Handle("/simpleping", handler)
