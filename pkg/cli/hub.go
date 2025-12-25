@@ -53,6 +53,7 @@ func (hubCmd HubCmd) Run() error {
 		if err != nil {
 			return fmt.Errorf("failed to parse min packet interval: %v", err)
 		}
+		log.Printf("Parsed min packet interval: %s", intv.String())
 		minPktInterval = &intv
 	}
 	if hubCmd.MaxPktTimeout != "" {
@@ -60,6 +61,7 @@ func (hubCmd HubCmd) Run() error {
 		if err != nil {
 			return fmt.Errorf("failed to parse max packet timeout: %v", err)
 		}
+		log.Printf("Parsed max packet timeout: %s", tmt.String())
 		maxPktTimeout = &tmt
 	}
 
