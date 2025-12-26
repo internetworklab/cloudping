@@ -219,6 +219,8 @@ type AutoTTL struct {
 	lock  sync.Mutex `json:"-"`
 }
 
+const maxAllowedAutoTTL = 64
+
 func ParseToAutoTTL(s string) (*AutoTTL, error) {
 	if s == "auto" {
 		return &AutoTTL{Start: 1, Next: 1}, nil
@@ -242,6 +244,10 @@ func (at *AutoTTL) GetNext() int {
 
 	retVal := at.Next
 	at.Next++
+	if at.Next > maxAllowedAutoTTL {
+		at.Next = at.Start
+	}
+
 	return retVal
 }
 
