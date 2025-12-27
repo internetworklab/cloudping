@@ -21,6 +21,7 @@ import (
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
+	pkgrouting "example.com/rbmq-demo/pkg/routing"
 	pkgthrottle "example.com/rbmq-demo/pkg/throttle"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
@@ -173,7 +174,10 @@ func (agentCmd *AgentCmd) Run() error {
 	ipinfoReg.RegisterAdapter(dn42IPInfoAdapter)
 	randomIPInfoAdapter := pkgipinfo.NewRandomIPInfoAdapter()
 	ipinfoReg.RegisterAdapter(randomIPInfoAdapter)
-	autoIPInfoDispatcher := pkgipinfo.NewAutoIPInfoDispatcher()
+
+	autoIPInfoDispatcher := &pkgipinfo.AutoIPInfoDispatcher{
+		Router: pkgrouting.NewSimpleRouter(),
+	}
 	autoIPInfoDispatcher.SetUpDefaultRoutes(dn42IPInfoAdapter, classicIPInfoAdapter)
 	ipinfoReg.RegisterAdapter(autoIPInfoDispatcher)
 

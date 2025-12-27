@@ -3,36 +3,12 @@ package ipinfo
 import (
 	"context"
 	"fmt"
-	"net"
 
 	pkgrouting "example.com/rbmq-demo/pkg/routing"
-	"github.com/google/btree"
 )
 
 type AutoIPInfoDispatcher struct {
-	router *pkgrouting.SimpleRouter
-}
-
-func NewAutoIPInfoDispatcher() *AutoIPInfoDispatcher {
-	return &AutoIPInfoDispatcher{
-		router: pkgrouting.NewSimpleRouter(),
-	}
-}
-
-type AutoIPInfoRoute struct {
-	IPNet          net.IPNet
-	IPInfoProvider GeneralIPInfoAdapter
-}
-
-func (route *AutoIPInfoRoute) Less(other btree.Item) bool {
-	otherRoute, ok := other.(*AutoIPInfoRoute)
-	if !ok {
-		panic("other is not an AutoIPInfoRoute")
-	}
-	ones1, _ := route.IPNet.Mask.Size()
-	ones2, _ := otherRoute.IPNet.Mask.Size()
-
-	return ones1 < ones2
+	Router pkgrouting.Router
 }
 
 func (autoProvider *AutoIPInfoDispatcher) SetUpDefaultRoutes(
@@ -53,11 +29,11 @@ func (autoProvider *AutoIPInfoDispatcher) SetUpDefaultRoutes(
 }
 
 func (autoProvider *AutoIPInfoDispatcher) AddRoute(prefix string, provider GeneralIPInfoAdapter) {
-	autoProvider.router.AddRoute(prefix, provider)
+	autoProvider.Router.AddRoute(prefix, provider)
 }
 
 func (autoProvider *AutoIPInfoDispatcher) GetIPInfo(ctx context.Context, ipAddr string) (*BasicIPInfo, error) {
-	ipinfoProviderRaw, err := autoProvider.router.GetRoute(ipAddr)
+	ipinfoProviderRaw, err := autoProvider.Router.GetRoute(ipAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ipinfo for %s: %v", ipAddr, err)
 	}
