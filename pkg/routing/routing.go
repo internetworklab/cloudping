@@ -132,8 +132,5 @@ func (router *SimpleRouter) GetRoute(ip string) (interface{}, error) {
 		return true
 	})
 
-	if result.Value != nil {
-		return result.Value, nil
-	}
-	return nil, nil
+	return result.Value, nil
 }
