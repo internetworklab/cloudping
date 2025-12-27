@@ -3,6 +3,7 @@
 import {
   CSSProperties,
   Fragment,
+  ReactNode,
   RefObject,
   useEffect,
   useMemo,
@@ -148,13 +149,18 @@ export type Marker = {
   radius?: number;
   strokeWidth?: number;
   stroke?: CSSProperties["stroke"];
-  tooltip?: string;
+  tooltip?: ReactNode;
+  open?: boolean;
+  index?: string;
 };
 
 function RenderMarker(props: { marker: Marker; projector: Projector }) {
   const { marker, projector } = props;
   const [x, y] = projector(marker.lonLat);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!marker.open);
+
+  const radius = Math.max(1, marker.radius ?? 0);
+
   return (
     <Fragment>
       <Tooltip
@@ -165,16 +171,33 @@ function RenderMarker(props: { marker: Marker; projector: Projector }) {
             setOpen(true);
           }
         }}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          if (!!marker.open) {
+            return;
+          }
+          setOpen(false);
+        }}
       >
-        <circle
-          strokeWidth={marker.strokeWidth}
-          stroke={marker.stroke}
-          cx={x}
-          cy={y}
-          r={marker.radius}
-          fill={marker.fill}
-        />
+        <g>
+          <circle
+            strokeWidth={marker.strokeWidth}
+            stroke={marker.stroke}
+            cx={x}
+            cy={y}
+            r={radius}
+            fill={marker.fill}
+          />
+          {marker.index && (
+            <text
+              x={x + radius * 1.75}
+              y={y + radius * 1.75}
+              fontSize={radius * 2}
+              fill="white"
+            >
+              {marker.index}
+            </text>
+          )}
+        </g>
       </Tooltip>
     </Fragment>
   );

@@ -26,7 +26,12 @@ import {
 } from "react";
 import { TaskCloseIconButton } from "@/components/taskclose";
 import { PlayPauseButton, StopButton } from "./playpause";
-import { getLatencyColor } from "./colorfunc";
+import {
+  colorGreen,
+  colorRed,
+  colorYellow,
+  getLatencyColor,
+} from "./colorfunc";
 import { IPDisp } from "./ipdisp";
 import { generatePingSampleStream, PingSample } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
@@ -413,7 +418,50 @@ export function TracerouteResultDisplay(props: {
             canvasWidth={canvasW}
             canvasHeight={canvasH}
             fill="lightblue"
-            markers={[]}
+            markers={[
+              {
+                lonLat: [120.585, 31.299],
+                fill: colorGreen,
+                radius: 2000,
+                strokeWidth: 800,
+                stroke: "white",
+                tooltip: (
+                  <Box>
+                    <Box>TTL:&nbsp;1</Box>
+                    <Box>shanghai.example.com</Box>
+                  </Box>
+                ),
+                index: "1",
+              },
+              {
+                lonLat: [114.177, 22.319],
+                fill: colorGreen,
+                radius: 2000,
+                strokeWidth: 800,
+                stroke: "white",
+                tooltip: (
+                  <Box>
+                    <Box>TTL:&nbsp;2</Box>
+                    <Box>hongkong.example.com</Box>
+                  </Box>
+                ),
+                index: "2",
+              },
+              {
+                lonLat: [-118.408, 33.942],
+                fill: colorYellow,
+                radius: 2000,
+                strokeWidth: 800,
+                stroke: "white",
+                tooltip: (
+                  <Box>
+                    <Box>TTL:&nbsp;3</Box>
+                    <Box>lax.example.com</Box>
+                  </Box>
+                ),
+                index: "3",
+              },
+            ]}
           />
         </Box>
       )}
@@ -428,7 +476,9 @@ export function TracerouteResultDisplay(props: {
       >
         <Box>
           {task.targets.length > 0 && task.targets[0] && (
-            <Box>Traceroute to {task.targets[0]}</Box>
+            <Box>
+              Traceroute to {task.targets[0]}, for informational purposes only.
+            </Box>
           )}
         </Box>
         <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
