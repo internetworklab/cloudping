@@ -156,11 +156,11 @@ export type Marker = {
 };
 
 function setViewBox(svg: SVGSVGElement, viewBox: number[]): void {
-  svg.setAttribute("viewBox", viewBox.join(" "));
+  svg?.setAttribute("viewBox", viewBox.join(" "));
 }
 
 function getViewBox(svg: SVGSVGElement): number[] {
-  const viewBox = svg.getAttribute("viewBox");
+  const viewBox = svg?.getAttribute("viewBox");
   if (viewBox) {
     return viewBox.split(" ").map(Number);
   }
@@ -231,9 +231,24 @@ export function useCanvasSizing(canvasW: number, canvasH: number) {
     svg?.addEventListener("mousedown", onMouseDown);
     console.log("[dbg] added mouse down listener");
 
+    const onWheel = (event: WheelEvent) => {
+      console.log("[dbg] wheel", event);
+      const delta = event.deltaY;
+      const [offsetX, offsetY, projXLen, projYLen] = getViewBox(svg!);
+      const ratio = projYLen / projXLen;
+      const newProjYLen = projYLen * (1 + delta / 100);
+      const newProjXLen = newProjYLen / ratio;
+      // todo
+      // setViewBox(svg!, [offsetX, offsetY, newProjXLen, newProjYLen]);
+    };
+    window.addEventListener("wheel", onWheel);
+    console.log("[dbg] added wheel listener");
+
     return () => {
       svg?.removeEventListener("mousedown", onMouseDown);
       console.log("[dbg] removed mouse down listener");
+      window.removeEventListener("wheel", onWheel);
+      console.log("[dbg] removed wheel listener");
     };
   }, [canvasSvgRef.current]);
   return { canvasSvgRef };
