@@ -75,12 +75,12 @@ export default function Home() {
   const [targetsInput, setTargetsInput] = useState<string>("");
 
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
-    {
-      sources: ["vie1"],
-      targets: ["map.dn42"],
-      taskId: 1,
-      type: "traceroute",
-    },
+    // {
+    //   sources: ["vie1"],
+    //   targets: ["map.dn42"],
+    //   taskId: 1,
+    //   type: "traceroute",
+    // },
   ]);
 
   let containerStyles: CSSProperties[] = [

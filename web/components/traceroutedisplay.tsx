@@ -36,7 +36,7 @@ import { IPDisp } from "./ipdisp";
 import { generatePingSampleStream, PingSample } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
 import { demoPingSamples } from "@/apis/mock/mocktraceroute";
-import { WorldMap } from "./worldmap";
+import { useCanvasSizing, WorldMap } from "./worldmap";
 import MapIcon from "@mui/icons-material/Map";
 
 type TracerouteIPEntry = {
@@ -347,28 +347,8 @@ export function TracerouteResultDisplay(props: {
   const canvasW = 360000;
   const canvasH = 200000;
 
-  const canvasSvgRef = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    if (canvasSvgRef.current) {
-      const svg = canvasSvgRef.current;
-      const parent = svg.parentElement;
-      if (parent) {
-        const parentRect = parent.getBoundingClientRect();
-        console.log("[dbg] parentRect", parentRect);
-        const realRatio = Math.max(0.3, parentRect.height / parentRect.width);
-        const croppedCanvasY = canvasW * realRatio;
-        const offsetX = 0;
-        const offsetY = Math.max(0, (0.7 * (canvasH - croppedCanvasY)) / 2);
-        const projXLen = canvasW;
-        const projYLen = croppedCanvasY;
+  const { canvasSvgRef } = useCanvasSizing(canvasW, canvasH);
 
-        svg.setAttribute(
-          "viewBox",
-          `${offsetX} ${offsetY} ${projXLen} ${projYLen}`
-        );
-      }
-    }
-  });
   const [showMap, setShowMap] = useState<boolean>(false);
 
   return (
@@ -411,8 +391,16 @@ export function TracerouteResultDisplay(props: {
           />
         </Box>
       </Box>
-      {showMap && (
-        <Box sx={{ height: "360px" }}>
+
+      <Box
+        sx={{
+          height: showMap ? "360px" : "36px",
+          position: "relative",
+          top: 0,
+          left: 0,
+        }}
+      >
+        {showMap && (
           <WorldMap
             canvasSvgRef={canvasSvgRef as any}
             canvasWidth={canvasW}
@@ -463,30 +451,38 @@ export function TracerouteResultDisplay(props: {
               },
             ]}
           />
+        )}
+
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            position: "absolute",
+            bottom: 0,
+            alignItems: "center",
+            paddingLeft: 2,
+            paddingRight: 2,
+            width: "100%",
+          }}
+        >
+          <Box>
+            {task.targets.length > 0 && task.targets[0] && (
+              <Box>
+                Traceroute to {task.targets[0]}, for informational purposes
+                only.
+              </Box>
+            )}
+          </Box>
+          <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
+            <IconButton onClick={() => setShowMap(!showMap)}>
+              <MapIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
-      )}
-      <Box
-        sx={{
-          padding: 2,
-          display: "flex",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 2,
-        }}
-      >
-        <Box>
-          {task.targets.length > 0 && task.targets[0] && (
-            <Box>
-              Traceroute to {task.targets[0]}, for informational purposes only.
-            </Box>
-          )}
-        </Box>
-        <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
-          <IconButton onClick={() => setShowMap(!showMap)}>
-            <MapIcon />
-          </IconButton>
-        </Tooltip>
       </Box>
+
       <TableContainer sx={{ maxWidth: "100%", overflowX: "auto" }}>
         <Table>
           <TableHead>

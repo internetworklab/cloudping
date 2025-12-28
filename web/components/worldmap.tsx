@@ -7,6 +7,7 @@ import {
   RefObject,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import worldMapAny from "./worldmap.json";
@@ -153,6 +154,32 @@ export type Marker = {
   open?: boolean;
   index?: string;
 };
+
+export function useCanvasSizing(canvasW: number, canvasH: number) {
+  const canvasSvgRef = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    if (canvasSvgRef.current) {
+      const svg = canvasSvgRef.current;
+      const parent = svg.parentElement;
+      if (parent) {
+        const parentRect = parent.getBoundingClientRect();
+        console.log("[dbg] canvas parentRect", parentRect);
+        const realRatio = Math.max(0.3, parentRect.height / parentRect.width);
+        const croppedCanvasY = canvasW * realRatio;
+        const offsetX = 0;
+        const offsetY = Math.max(0, (0.7 * (canvasH - croppedCanvasY)) / 2);
+        const projXLen = canvasW;
+        const projYLen = croppedCanvasY;
+
+        svg.setAttribute(
+          "viewBox",
+          `${offsetX} ${offsetY} ${projXLen} ${projYLen}`
+        );
+      }
+    }
+  });
+  return { canvasSvgRef };
+}
 
 function RenderMarker(props: { marker: Marker; projector: Projector }) {
   const { marker, projector } = props;

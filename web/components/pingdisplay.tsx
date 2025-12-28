@@ -34,7 +34,7 @@ import {
 } from "./colorfunc";
 import { PlayPauseButton } from "./playpause";
 import MapIcon from "@mui/icons-material/Map";
-import { Marker, WorldMap } from "./worldmap";
+import { Marker, useCanvasSizing, WorldMap } from "./worldmap";
 
 type RowObject = {
   target: string;
@@ -214,7 +214,7 @@ function RenderLegend(props: { color: CSSProperties["color"]; label: string }) {
 function RenderLegends(props: { encodings: ColorEncoding[] }) {
   const { encodings } = props;
   return (
-    <Box sx={{ paddingTop: 2, paddingRight: 2, flexShrink: 0 }}>
+    <Box sx={{ position: "absolute", top: 2, right: 2, padding: 2 }}>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {encodings.map((encoding) => (
           <RenderLegend
@@ -312,6 +312,8 @@ function RowMap(props: {
   const canvasX = 360000;
   const canvasY = 200000;
 
+  const { canvasSvgRef } = useCanvasSizing(canvasX, canvasY);
+
   const { data: conns } = useQuery({
     queryKey: ["nodes"],
     queryFn: () => getNodes(),
@@ -363,6 +365,7 @@ function RowMap(props: {
       radius: 2000,
       strokeWidth: 800,
       stroke: "white",
+      index: nodeGroup.nodes?.[0]?.node_name,
     };
     if (tooltip !== "") {
       marker.tooltip = tooltip;
@@ -410,19 +413,17 @@ function RowMap(props: {
           <TableCell colSpan={rowLength}>
             <Box
               sx={{
-                display: "flex",
-                height: "400px",
-                flexDirection: "row",
-                gap: 2,
+                height: "360px",
+                position: "relative",
+                top: 0,
+                left: 0,
               }}
             >
               <WorldMap
+                canvasSvgRef={canvasSvgRef as any}
                 canvasWidth={canvasX}
                 canvasHeight={canvasY}
                 fill="lightblue"
-                viewBox={`${canvasX * 0.1} ${canvasY * 0.1} 360000 ${
-                  canvasY * 0.6
-                }`}
                 markers={markers}
               />
               <RenderLegends encodings={encodings} />
