@@ -274,6 +274,7 @@ export default function Home() {
           </Fragment>
         ))}
       </Box>
+      <Box sx={{ height: "100vh" }}></Box>
       <TaskConfirmDialog
         pendingTask={pendingTask}
         open={openTaskConfirmDialog}
