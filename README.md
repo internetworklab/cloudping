@@ -1,12 +1,12 @@
 # My GlobalPing
 
-This is my own toy globalping project, and it has nothing to do with the more famous and official [globalping.io](https://globalping.io). I wrote this code for personal interest and fun, and I'm happy to experiment with networking technologies like sending and receiving raw IP packets, or deploying a global distributed system and securing it with mTLS.
+This is my own little toy project, and especially, it has nothing to do with the more famous and official [globalping.io](https://globalping.io). I wrote this code mainly for personal interest. To me, it's fun to experiment with networking technologies like IP, ICMP or BGP. It's quite meaningful to deal with raw ICMP/IP packets and that is exactly the practice for which I built this project for.
 
 ## So, What is My GlobalPing then?
 
 Just as My Traceroute (MTR) combines ping and traceroute features and provides a CLI user interface for continuously displaying network conditions refreshed in real-time, so does My GlobalPing. My GlobalPing also combines ping and traceroute, and provides a web-based UI for continuously displaying network path tracing refreshed in real-time.
 
-What's more, My GlobalPing effortlessly supports both the Internet (we DN42 people also call it the 'Clearnet') and DN42, so you can get a clear picture of how packets traverse the BGP forwarding path. It's a handy learning tool to help you understand networking and routing better.
+In addition, My GlobalPing supports the Internet (also referred as 'Clearnet', in DN42) as well as DN42, at no hassle. It enables you to have a clear picture of how packets traverse the BGP forwarding path. It's a handy learning tool to help you understand networking and routing better.
 
 You can quickly get hands-on with it to see how it works by visiting my own deployed instance of My GlobalPing at the top right of the page, or just click [here](https://globalping.netneighbor.me).
 
