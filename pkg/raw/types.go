@@ -10,3 +10,4 @@ const ipv6HeaderLen int = 40
 const headerSizeICMP int = 8
 const protocolNumberICMPv4 int = 1
 const protocolNumberICMPv6 int = 58
+const icmpCodeFragmentationNeeded int = 4

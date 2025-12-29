@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -116,54 +118,50 @@ func (icmp4tr *UDPTransceiver) Run(ctx context.Context) error {
 								continue
 							}
 
-							// Check if it's Code 4 (Fragmentation Needed / Packet Too Big)
-							// The MTU is stored in bytes 6-7 of the ICMP message header (big-endian)
-							if receiveMsg.Code == 4 && nBytes >= 8 {
-								mtu := int(rb[6])<<8 | int(rb[7])
-								replyObject.SetMTUTo = &mtu
-							}
-
-							// Extract original ICMP message from Destination Unreachable body
-							if len(dstUnreachBody.Data) < ipv4HeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
-								continue
-							}
-
-							// Skip IP header (minimum 20 bytes, but check IHL field for actual length)
-							ipHeaderLen := int(dstUnreachBody.Data[0]&0x0F) * 4
-							if ipHeaderLen < 20 {
-								ipHeaderLen = 20
-							}
-							if replyObject.SetMTUTo != nil {
-								newMTU := *replyObject.SetMTUTo
-								shrinkTo := newMTU - ipHeaderLen - headerSizeICMP
-								if shrinkTo < 0 {
-									shrinkTo = 0
+							switch receiveMsg.Code {
+							case icmpCodeFragmentationNeeded:
+								if nBytes >= 8 {
+									mtu := int(rb[6])<<8 | int(rb[7])
+									replyObject.SetMTUTo = &mtu
 								}
-								replyObject.ShrinkICMPPayloadTo = &shrinkTo
-							}
 
-							if len(dstUnreachBody.Data) < ipHeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v", receiveMsg)
-								continue
-							}
+								if len(dstUnreachBody.Data) < ipv4HeaderLen+headerSizeICMP {
+									log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
+									continue
+								}
 
-							// Parse the original ICMP message (protocol 1 for ICMP)
-							originalICMPData := dstUnreachBody.Data[ipHeaderLen:]
-							originalICMPMsg, err := icmp.ParseMessage(protocolNumberICMPv4, originalICMPData)
-							if err != nil {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v error: %+v", receiveMsg, err)
-								continue
-							}
+								packet := gopacket.NewPacket(dstUnreachBody.Data, layers.LayerTypeIPv4, gopacket.Default)
 
-							echoBody, ok := originalICMPMsg.Body.(*icmp.Echo)
-							if !ok {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v", receiveMsg)
-								continue
-							}
+								originIPLayer := packet.Layer(layers.LayerTypeIPv4)
+								if originIPLayer == nil {
+									log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
+									continue
+								}
 
-							replyObject.Seq = echoBody.Seq
-							replyObject.ID = echoBody.ID
+								ipHeaderLen := int(originIPLayer.(*layers.IPv4).IHL) * 4
+								if ipHeaderLen < 20 {
+									log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
+									continue
+								}
+
+								if replyObject.SetMTUTo != nil {
+									newMTU := *replyObject.SetMTUTo
+									shrinkTo := newMTU - ipHeaderLen - headerSizeICMP
+									if shrinkTo < 0 {
+										shrinkTo = 0
+									}
+									replyObject.ShrinkICMPPayloadTo = &shrinkTo
+								}
+
+								originICMPLayer := packet.Layer(layers.LayerTypeICMPv4)
+								if originICMPLayer == nil {
+									log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
+									continue
+								}
+
+								replyObject.Seq = int(originICMPLayer.(*layers.ICMPv4).Seq)
+								replyObject.ID = int(originICMPLayer.(*layers.ICMPv4).Id)
+							}
 						case ipv4.ICMPTypeTimeExceeded:
 							ty = ipv4.ICMPTypeTimeExceeded
 
