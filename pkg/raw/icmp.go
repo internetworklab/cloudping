@@ -8,6 +8,8 @@ import (
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -18,11 +20,17 @@ type ICMP4TransceiverConfig struct {
 	ID int
 }
 
+// add this udpbaseport with seq to get the actual udp dst port,
+// e.g. seq = 1, base port = 33433, then real udp dst port = 33433 + 1 = 33434
+const defaultUDPBasePort int = 33433
+
 type ICMPSendRequest struct {
-	Dst  net.IPAddr
-	Seq  int
-	TTL  int
-	Data []byte
+	Dst        net.IPAddr
+	Seq        int
+	TTL        int
+	Data       []byte
+	UseUDP     bool
+	UDPDstPort *int
 }
 
 type ICMPReceiveReply struct {
@@ -45,6 +53,12 @@ type ICMPReceiveReply struct {
 
 	ICMPTypeV4 *ipv4.ICMPType
 	ICMPTypeV6 *ipv6.ICMPType
+
+	ICMPType *int
+	ICMPCode *int
+
+	// IPProtocol that was sent, not reply
+	IPProto int
 
 	SetMTUTo            *int
 	ShrinkICMPPayloadTo *int `json:"-"`
@@ -139,6 +153,158 @@ func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, erro
 	return tracer, nil
 }
 
+type PacketIdentifier struct {
+	Id   int
+	Seq  int
+	PMTU *int
+	TTL  *int
+	// IPProtocol that was sent, not reply
+	IPProto int
+	LastHop bool
+
+	ICMPType *int
+	ICMPCode *int
+}
+
+// with IP reply stripped, remains ICMPv4 PDU
+func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (identifier *PacketIdentifier, err error) {
+	identifier = new(PacketIdentifier)
+
+	thepacket := gopacket.NewPacket(rawICMPReply, layers.LayerTypeICMPv4, gopacket.Default)
+	if thepacket == nil {
+		err = fmt.Errorf("failed to create/decode icmp packet")
+		return identifier, err
+	}
+
+	icmpLayer := thepacket.Layer(layers.LayerTypeICMPv4)
+	if icmpLayer == nil {
+		err = fmt.Errorf("failed to extract icmp layer")
+		return identifier, err
+	}
+
+	icmpPacket, ok := icmpLayer.(*layers.ICMPv4)
+	if !ok {
+		err = fmt.Errorf("failed to cast icmp layer to icmp packet")
+		return identifier, err
+	}
+
+	ty := int(icmpPacket.TypeCode.Type())
+	cd := int(icmpPacket.TypeCode.Code())
+	identifier.ICMPType = &ty
+	identifier.ICMPCode = &cd
+
+	if icmpPacket.TypeCode.Type() == layers.ICMPv4TypeEchoReply {
+		identifier.Id = int(icmpPacket.Id)
+		identifier.Seq = int(icmpPacket.Seq)
+		identifier.IPProto = int(layers.IPProtocolICMPv4)
+		identifier.LastHop = true
+		return identifier, err
+	} else if icmpPacket.TypeCode.Type() == layers.ICMPv4TypeDestinationUnreachable {
+		if icmpPacket.TypeCode.Code() == layers.ICMPv4CodeFragmentationNeeded && len(rawICMPReply) >= headerSizeICMP {
+			pmtu := int(rawICMPReply[6])<<8 | int(rawICMPReply[7])
+			identifier.PMTU = &pmtu
+		}
+
+		originPacket := gopacket.NewPacket(rawICMPReply, layers.LayerTypeIPv4, gopacket.Default)
+		if originPacket == nil {
+			err = fmt.Errorf("failed to create/decode origin ip packet")
+			return identifier, err
+		}
+
+		originIPLayer := originPacket.Layer(layers.LayerTypeIPv4)
+		if originIPLayer == nil {
+			err = fmt.Errorf("failed to extract origin ip layer")
+			return identifier, err
+		}
+
+		originIPPacket, ok := originIPLayer.(*layers.IPv4)
+		if !ok {
+			err = fmt.Errorf("failed to cast origin ip layer to origin ip packet")
+			return identifier, err
+		}
+		ttl := int(originIPPacket.TTL)
+		identifier.TTL = &ttl
+		identifier.IPProto = int(originIPPacket.Protocol)
+
+		if originIPPacket.Protocol == layers.IPProtocolICMPv4 {
+			originICMPLayer := originPacket.Layer(layers.LayerTypeICMPv4)
+			if originICMPLayer == nil {
+				err = fmt.Errorf("failed to extract origin icmp layer")
+				return identifier, err
+			}
+
+			originICMPPacket, ok := originICMPLayer.(*layers.ICMPv4)
+			if !ok {
+				err = fmt.Errorf("failed to cast origin icmp layer to origin icmp packet")
+				return identifier, err
+			}
+
+			identifier.Id = int(originICMPPacket.Id)
+			identifier.Seq = int(originICMPPacket.Seq)
+			return identifier, err
+		} else if originIPPacket.Protocol == layers.IPProtocolUDP {
+			originUDPLayer := originPacket.Layer(layers.LayerTypeUDP)
+			if originUDPLayer == nil {
+				err = fmt.Errorf("failed to extract origin udp layer")
+				return identifier, err
+			}
+
+			originUDPPacket, ok := originUDPLayer.(*layers.UDP)
+			if !ok {
+				err = fmt.Errorf("failed to cast origin udp layer to origin udp packet")
+				return identifier, err
+			}
+			identifier.Id = int(originUDPPacket.SrcPort)
+			identifier.Seq = int(originUDPPacket.DstPort) - baseDstPort
+			identifier.LastHop = icmpPacket.TypeCode.Code() == layers.ICMPv4CodePort
+			return identifier, err
+		} else {
+			err = fmt.Errorf("unknown origin ip protocol: %d", originIPPacket.Protocol)
+			return identifier, err
+		}
+	} else if icmpPacket.TypeCode.Type() == layers.ICMPv4TypeTimeExceeded {
+		originPacket := gopacket.NewPacket(rawICMPReply, layers.LayerTypeIPv4, gopacket.Default)
+		if originPacket == nil {
+			err = fmt.Errorf("failed to create/decode origin ip packet")
+			return identifier, err
+		}
+
+		originIPLayer := originPacket.Layer(layers.LayerTypeIPv4)
+		if originIPLayer == nil {
+			err = fmt.Errorf("failed to extract origin ip layer")
+			return identifier, err
+		}
+
+		originIPPacket, ok := originIPLayer.(*layers.IPv4)
+		if !ok {
+			err = fmt.Errorf("failed to cast origin ip layer to origin ip packet")
+			return identifier, err
+		}
+		ttl := int(originIPPacket.TTL)
+		identifier.TTL = &ttl
+		identifier.IPProto = int(originIPPacket.Protocol)
+		identifier.LastHop = false
+
+		originICMPLayer := originPacket.Layer(layers.LayerTypeICMPv4)
+		if originICMPLayer == nil {
+			err = fmt.Errorf("failed to extract origin icmp layer")
+			return identifier, err
+		}
+
+		originICMPPacket, ok := originICMPLayer.(*layers.ICMPv4)
+		if !ok {
+			err = fmt.Errorf("failed to cast origin icmp layer to origin icmp packet")
+			return identifier, err
+		}
+		identifier.Id = int(originICMPPacket.Id)
+		identifier.Seq = int(originICMPPacket.Seq)
+		return identifier, err
+	} else {
+		err = fmt.Errorf("unknown icmp type: %d", icmpPacket.TypeCode.Type())
+		return identifier, err
+	}
+}
+
 func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
@@ -158,14 +324,6 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 		if err := icmp4tr.ipv4PacketConn.SetControlMessage(ipv4.FlagTTL|ipv4.FlagSrc|ipv4.FlagDst|ipv4.FlagInterface, true); err != nil {
 			log.Fatal(err)
-		}
-
-		wm := icmp.Message{
-			Type: ipv4.ICMPTypeEcho, Code: 0,
-			Body: &icmp.Echo{
-				ID:   icmp4tr.id,
-				Data: nil,
-			},
 		}
 
 		bufSize := getMaximumMTU()
@@ -188,12 +346,6 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							break
 						}
 
-						// 1 is the ICMPv4 protocol number in IP header's protocol field
-						receiveMsg, err := icmp.ParseMessage(1, rb[:nBytes])
-						if err != nil {
-							log.Fatalf("failed to parse icmp message: %v", err)
-						}
-
 						receivedAt := time.Now()
 						replyObject := ICMPReceiveReply{
 							ID:         icmp4tr.id,
@@ -208,121 +360,35 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							replyObject.PeerRawIP = ipAddr
 						}
 
-						var ty ipv4.ICMPType
-
-						switch receiveMsg.Type {
-						case ipv4.ICMPTypeDestinationUnreachable:
-							ty = ipv4.ICMPTypeDestinationUnreachable
-							dstUnreachBody, ok := receiveMsg.Body.(*icmp.DstUnreach)
-							if !ok {
-								log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
-								continue
-							}
-
-							// Check if it's Code 4 (Fragmentation Needed / Packet Too Big)
-							// The MTU is stored in bytes 6-7 of the ICMP message header (big-endian)
-							if receiveMsg.Code == 4 && nBytes >= 8 {
-								mtu := int(rb[6])<<8 | int(rb[7])
-								replyObject.SetMTUTo = &mtu
-							}
-
-							// Extract original ICMP message from Destination Unreachable body
-							if len(dstUnreachBody.Data) < ipv4HeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Destination Unreachable body: %+v", receiveMsg)
-								continue
-							}
-
-							// Skip IP header (minimum 20 bytes, but check IHL field for actual length)
-							ipHeaderLen := int(dstUnreachBody.Data[0]&0x0F) * 4
-							if ipHeaderLen < 20 {
-								ipHeaderLen = 20
-							}
-							if replyObject.SetMTUTo != nil {
-								newMTU := *replyObject.SetMTUTo
-								shrinkTo := newMTU - ipHeaderLen - headerSizeICMP
-								if shrinkTo < 0 {
-									shrinkTo = 0
-								}
-								replyObject.ShrinkICMPPayloadTo = &shrinkTo
-							}
-
-							if len(dstUnreachBody.Data) < ipHeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v", receiveMsg)
-								continue
-							}
-
-							// Parse the original ICMP message (protocol 1 for ICMP)
-							originalICMPData := dstUnreachBody.Data[ipHeaderLen:]
-							originalICMPMsg, err := icmp.ParseMessage(protocolNumberICMPv4, originalICMPData)
-							if err != nil {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v error: %+v", receiveMsg, err)
-								continue
-							}
-
-							echoBody, ok := originalICMPMsg.Body.(*icmp.Echo)
-							if !ok {
-								log.Printf("Invalid ICMP Destination Unreachable message: %+v", receiveMsg)
-								continue
-							}
-
-							replyObject.Seq = echoBody.Seq
-							replyObject.ID = echoBody.ID
-						case ipv4.ICMPTypeTimeExceeded:
-							ty = ipv4.ICMPTypeTimeExceeded
-
-							// Extract original ICMP message from TimeExceeded body
-							timeExceededBody, ok := receiveMsg.Body.(*icmp.TimeExceeded)
-							if !ok || len(timeExceededBody.Data) < ipv4HeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Time-Exceeded body: %+v", receiveMsg)
-								continue
-							}
-
-							// Skip IP header (minimum 20 bytes, but check IHL field for actual length)
-							ipHeaderLen := int(timeExceededBody.Data[0]&0x0F) * 4
-							if ipHeaderLen < 20 {
-								ipHeaderLen = 20
-							}
-
-							if len(timeExceededBody.Data) < ipHeaderLen+headerSizeICMP {
-								log.Printf("Invalid ICMP Time-Exceeded message: %+v", receiveMsg)
-								continue
-							}
-
-							// Parse the original ICMP message (protocol 1 for ICMP)
-							originalICMPData := timeExceededBody.Data[ipHeaderLen:]
-							originalICMPMsg, err := icmp.ParseMessage(protocolNumberICMPv4, originalICMPData)
-							if err != nil {
-								log.Printf("Invalid ICMP Time-Exceeded message: %+v error: %+v", receiveMsg, err)
-								continue
-							}
-
-							echoBody, ok := originalICMPMsg.Body.(*icmp.Echo)
-							if !ok {
-								log.Printf("Invalid ICMP Time-Exceeded message: %+v", receiveMsg)
-								continue
-							}
-
-							replyObject.Seq = echoBody.Seq
-							replyObject.ID = echoBody.ID
-						case ipv4.ICMPTypeEchoReply:
-							ty = ipv4.ICMPTypeEchoReply
-							icmpBody, ok := receiveMsg.Body.(*icmp.Echo)
-							if !ok {
-								log.Printf("failed to parse icmp body: %+v", receiveMsg)
-								continue
-							}
-							replyObject.Seq = icmpBody.Seq
-							replyObject.ID = icmpBody.ID
-						default:
-							log.Printf("unknown ICMP message: %+v", receiveMsg)
-							continue
-						}
-						if replyObject.ID != icmp4tr.id {
-							// this packet is not intended for us, silently ignore it
+						pktIdentifier, err := getIDSeqPMTUFromOriginIPPacket4(rb[:nBytes], 0)
+						if err != nil {
+							log.Printf("failed to parse ip packet, skipping: %v", err)
 							continue
 						}
 
-						replyObject.ICMPTypeV4 = &ty
+						if pktIdentifier.Id != icmp4tr.id {
+							log.Printf("packet id mismatch, ignoring: %v", pktIdentifier)
+							continue
+						}
+
+						replyObject.Seq = pktIdentifier.Seq
+						if pktIdentifier.TTL != nil {
+							replyObject.TTL = *pktIdentifier.TTL
+						}
+						if pktIdentifier.PMTU != nil {
+							replyObject.SetMTUTo = pktIdentifier.PMTU
+							shrinkTo := *pktIdentifier.PMTU - ipv4HeaderLen - headerSizeICMP
+							if shrinkTo < 0 {
+								shrinkTo = 0
+							}
+							replyObject.ShrinkICMPPayloadTo = &shrinkTo
+						}
+						// pure icmp packet, with ip header stripped
+						replyObject.Size = nBytes
+						replyObject.IPProto = pktIdentifier.IPProto
+						replyObject.ICMPType = pktIdentifier.ICMPType
+						replyObject.ICMPCode = pktIdentifier.ICMPCode
+
 						replysSubCh <- replyObject
 						markAsReceivedBytes(ctx, nBytes)
 						break
@@ -342,15 +408,46 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 						return
 					}
 
-					wm.Body.(*icmp.Echo).Seq = req.Seq
-					wm.Body.(*icmp.Echo).Data = req.Data
-					wb, err := wm.Marshal(nil)
-					if err != nil {
-						log.Fatalf("failed to marshal icmp message: %v", err)
-					}
+					var wb []byte = nil
+					var err error = nil
+					if req.UseUDP {
+						udpDstPort := -1
+						if req.UDPDstPort != nil {
+							udpDstPort = *req.UDPDstPort
+						} else {
+							udpDstPort = defaultUDPBasePort + req.Seq
+						}
 
-					if err := icmp4tr.ipv4PacketConn.SetTTL(req.TTL); err != nil {
-						log.Fatalf("failed to set TTL to %v: %v, req: %+v", req.TTL, err, req)
+						udpLayer := &layers.UDP{
+							SrcPort: layers.UDPPort(icmp4tr.id),
+							DstPort: layers.UDPPort(udpDstPort),
+						}
+						buf := gopacket.NewSerializeBuffer()
+						opts := gopacket.SerializeOptions{}
+						err = gopacket.SerializeLayers(buf, opts, udpLayer)
+						if err != nil {
+							log.Fatalf("failed to serialize udp layer: %v", err)
+						}
+						wb = buf.Bytes()
+					} else {
+						wm := icmp.Message{
+							Type: ipv4.ICMPTypeEcho, Code: 0,
+							Body: &icmp.Echo{
+								ID:   icmp4tr.id,
+								Data: nil,
+							},
+						}
+
+						wm.Body.(*icmp.Echo).Seq = req.Seq
+						wm.Body.(*icmp.Echo).Data = req.Data
+						wb, err = wm.Marshal(nil)
+						if err != nil {
+							log.Fatalf("failed to marshal icmp message: %v", err)
+						}
+
+						if err := icmp4tr.ipv4PacketConn.SetTTL(req.TTL); err != nil {
+							log.Fatalf("failed to set TTL to %v: %v, req: %+v", req.TTL, err, req)
+						}
 					}
 
 					dst := req.Dst
