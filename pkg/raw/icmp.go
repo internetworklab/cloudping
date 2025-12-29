@@ -157,7 +157,7 @@ type PacketIdentifier struct {
 	Id   int
 	Seq  int
 	PMTU *int
-	TTL  *int
+
 	// IPProtocol that was sent, not reply
 	IPProto int
 	LastHop bool
@@ -222,8 +222,6 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 			err = fmt.Errorf("failed to cast origin ip layer to origin ip packet")
 			return identifier, err
 		}
-		ttl := int(originIPPacket.TTL)
-		identifier.TTL = &ttl
 		identifier.IPProto = int(originIPPacket.Protocol)
 
 		if originIPPacket.Protocol == layers.IPProtocolICMPv4 {
@@ -280,8 +278,6 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 			err = fmt.Errorf("failed to cast origin ip layer to origin ip packet")
 			return identifier, err
 		}
-		ttl := int(originIPPacket.TTL)
-		identifier.TTL = &ttl
 		identifier.IPProto = int(originIPPacket.Protocol)
 		identifier.LastHop = false
 
@@ -372,9 +368,6 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 						}
 
 						replyObject.Seq = pktIdentifier.Seq
-						if pktIdentifier.TTL != nil {
-							replyObject.TTL = *pktIdentifier.TTL
-						}
 						if pktIdentifier.PMTU != nil {
 							replyObject.SetMTUTo = pktIdentifier.PMTU
 							shrinkTo := *pktIdentifier.PMTU - ipv4HeaderLen - headerSizeICMP

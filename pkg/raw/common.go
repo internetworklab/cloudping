@@ -2,6 +2,7 @@ package raw
 
 import (
 	"fmt"
+	"log"
 	"net"
 
 	"context"
@@ -57,12 +58,14 @@ func setDFBit(conn net.PacketConn) error {
 func markAsSentBytes(ctx context.Context, n int) {
 	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
 	if commonLabels == nil {
-		panic("commonLabels is nil")
+		log.Println("commonLabels is nil, wont record sent bytes a prometheus metrics")
+		return
 	}
 
 	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
 	if counterStore == nil {
-		panic("counterStore is nil")
+		log.Println("counterStore is nil, wont record sent bytes as prometheus metrics")
+		return
 	}
 	counterStore.NumBytesSent.With(commonLabels).Add(float64(n))
 }
@@ -70,11 +73,13 @@ func markAsSentBytes(ctx context.Context, n int) {
 func markAsReceivedBytes(ctx context.Context, n int) {
 	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
 	if commonLabels == nil {
-		panic("commonLabels is nil")
+		log.Println("commonLabels is nil, wont record received bytes as prometheus metrics")
+		return
 	}
 	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
 	if counterStore == nil {
-		panic("counterStore is nil")
+		log.Println("counterStore is nil, wont record received bytes as prometheus metrics")
+		return
 	}
 	counterStore.NumBytesReceived.With(commonLabels).Add(float64(n))
 }
