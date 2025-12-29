@@ -25,32 +25,6 @@ type ICMPTrackerEntry struct {
 	Raw          []ICMPReceiveReply
 }
 
-func (itEnt *ICMPTrackerEntry) MarkLastHop(dst net.IPAddr) (clonedICMPTrackerEntry *ICMPTrackerEntry, isLastHop bool) {
-	if itEnt == nil || itEnt.Raw == nil {
-		return nil, false
-	}
-
-	newItEnt := new(ICMPTrackerEntry)
-	*newItEnt = *itEnt
-
-	newItEnt.Raw = make([]ICMPReceiveReply, 0)
-
-	foundLastHop := false
-	for _, icmpReply := range itEnt.Raw {
-
-		clonedICMPReply, isThisLastHop := icmpReply.MarkLastHop(dst)
-		if isThisLastHop {
-			foundLastHop = true
-		}
-
-		if clonedICMPReply != nil {
-			newItEnt.Raw = append(newItEnt.Raw, *clonedICMPReply)
-		}
-	}
-
-	return newItEnt, foundLastHop
-}
-
 func (itEnt *ICMPTrackerEntry) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*ICMPTrackerEntry, error) {
 	wrappedEV := new(ICMPTrackerEntry)
 	*wrappedEV = *itEnt

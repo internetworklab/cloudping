@@ -138,15 +138,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					return
 				case ev := <-tracker.RecvEvC:
 					var wrappedEV *pkgraw.ICMPTrackerEntry = &ev
-					if dst.IP != nil {
-						var foundLastHop bool
-						wrappedEV, foundLastHop = wrappedEV.MarkLastHop(dst)
-						if foundLastHop {
-							if autoTTL, ok := pingRequest.TTL.(*AutoTTL); ok {
-								autoTTL.Reset()
-							}
-						}
-					}
 
 					if sp.IPInfoAdapter != nil {
 						wrappedEV, err = wrappedEV.ResolveIPInfo(ctx, sp.IPInfoAdapter)

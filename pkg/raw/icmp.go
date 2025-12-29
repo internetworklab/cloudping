@@ -70,30 +70,6 @@ type ICMPReceiveReply struct {
 	PeerExactLocation *pkgipinfo.ExactLocation
 }
 
-func (icmpReply *ICMPReceiveReply) MarkLastHop(dst net.IPAddr) (clonedICMPReply *ICMPReceiveReply, isLastHop bool) {
-	if icmpReply == nil {
-		return nil, false
-	}
-	clonedICMPReply = new(ICMPReceiveReply)
-	*clonedICMPReply = *icmpReply
-	if icmpReply.PeerRawIP != nil && dst.IP.Equal(icmpReply.PeerRawIP.IP) {
-		clonedICMPReply.LastHop = true
-		return clonedICMPReply, true
-	}
-
-	if icmpReply.PeerRaw != nil && icmpReply.PeerRaw.String() == dst.IP.String() {
-		clonedICMPReply.LastHop = true
-		return clonedICMPReply, true
-	}
-
-	if dst.String() == icmpReply.Peer {
-		clonedICMPReply.LastHop = true
-		return clonedICMPReply, true
-	}
-	clonedICMPReply.LastHop = false
-	return clonedICMPReply, false
-}
-
 func (icmpReply *ICMPReceiveReply) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*ICMPReceiveReply, error) {
 	clonedICMPReply := new(ICMPReceiveReply)
 	*clonedICMPReply = *icmpReply
@@ -381,6 +357,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 						replyObject.IPProto = pktIdentifier.IPProto
 						replyObject.ICMPType = pktIdentifier.ICMPType
 						replyObject.ICMPCode = pktIdentifier.ICMPCode
+						replyObject.LastHop = pktIdentifier.LastHop
 
 						replysSubCh <- replyObject
 						markAsReceivedBytes(ctx, nBytes)
