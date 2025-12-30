@@ -2,7 +2,6 @@ package raw
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -135,25 +134,6 @@ func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, erro
 	}
 
 	return tracer, nil
-}
-
-type PacketIdentifier struct {
-	Id   int
-	Seq  int
-	PMTU *int
-
-	// IPProtocol that was sent, not reply
-	IPProto int
-	LastHop bool
-
-	ICMPType *int
-	ICMPCode *int
-}
-
-func (pktId *PacketIdentifier) String() string {
-	// json bytes, jb for short.
-	jb, _ := json.Marshal(pktId)
-	return string(jb)
 }
 
 func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
