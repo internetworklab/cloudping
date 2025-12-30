@@ -1,7 +1,6 @@
 package raw
 
 import (
-	"fmt"
 	"log"
 	"net"
 
@@ -10,7 +9,6 @@ import (
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sys/unix"
 )
 
 func getMaximumMTU() int {
@@ -30,28 +28,9 @@ func getMaximumMTU() int {
 	return maximumMTU
 }
 
-// setDFBit sets the Don't Fragment (DF) bit on the IPv4 packet connection
-// by setting the IP_MTU_DISCOVER socket option to IP_PMTUDISC_DO.
-// This ensures that routers will send ICMP errors instead of fragmenting packets.
 func setDFBit(conn net.PacketConn) error {
-	// Get the underlying syscall.RawConn
-	rawConn, err := conn.(*net.IPConn).SyscallConn()
-	if err != nil {
-		return fmt.Errorf("failed to get raw connection: %v", err)
-	}
-
-	var setErr error
-	err = rawConn.Control(func(fd uintptr) {
-		// Set IP_MTU_DISCOVER to IP_PMTUDISC_DO to enable DF bit
-		// IP_PMTUDISC_DO = 2 means "Always set DF"
-		setErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_MTU_DISCOVER, unix.IP_PMTUDISC_DO)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to control raw connection: %v", err)
-	}
-	if setErr != nil {
-		return fmt.Errorf("failed to set DF bit: %v", setErr)
-	}
+	// deprecated, we now compose the entire ip packet, including ip header,
+	// so, we no longer need this.
 	return nil
 }
 

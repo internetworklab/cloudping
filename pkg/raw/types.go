@@ -7,6 +7,7 @@ type GeneralICMPTransceiver interface {
 
 const ipv4HeaderLen int = 20
 const ipv6HeaderLen int = 40
+const udpHeaderLen int = 8
 const headerSizeICMP int = 8
 const protocolNumberICMPv4 int = 1
 const protocolNumberICMPv6 int = 58

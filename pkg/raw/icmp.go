@@ -107,10 +107,7 @@ func (icmpReply *ICMPReceiveReply) ResolveRDNS(ctx context.Context, resolver *ne
 }
 
 type ICMP4Transceiver struct {
-	id             int
-	packetConn     net.PacketConn
-	ipv4PacketConn *ipv4.PacketConn
-	ipv4RawConn    *ipv4.RawConn
+	id int
 
 	// User send requests to here, we retrieve the request,
 	// then we translate it to the wire format.
@@ -291,31 +288,23 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to listen on packet:icmp: %v", err)
 	}
 
+	// Set the DF (Don't Fragment) bit to prevent routers from fragmenting packets
+	// If fragmentation is needed, routers will send ICMP errors instead
+	if err := setDFBit(conn); err != nil {
+		log.Fatalf("failed to set DF bit: %v", err)
+	}
+
 	// Create a raw IP connection for sending UDP packets
 	rawConn, err := ipv4.NewRawConn(conn)
 	if err != nil {
 		return fmt.Errorf("failed to create raw connection: %v", err)
 	}
 
+	if err := rawConn.SetControlMessage(ipv4.FlagTTL|ipv4.FlagSrc|ipv4.FlagDst|ipv4.FlagInterface, true); err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
-		defer conn.Close()
-		defer rawConn.Close()
-
-		icmp4tr.packetConn = conn
-		icmp4tr.ipv4PacketConn = ipv4.NewPacketConn(conn)
-		if err != nil {
-			log.Fatalf("failed to create raw connection: %v", err)
-		}
-
-		// Set the DF (Don't Fragment) bit to prevent routers from fragmenting packets
-		// If fragmentation is needed, routers will send ICMP errors instead
-		if err := setDFBit(conn); err != nil {
-			log.Fatalf("failed to set DF bit: %v", err)
-		}
-
-		if err := icmp4tr.ipv4PacketConn.SetControlMessage(ipv4.FlagTTL|ipv4.FlagSrc|ipv4.FlagDst|ipv4.FlagInterface, true); err != nil {
-			log.Fatal(err)
-		}
 
 		bufSize := getMaximumMTU()
 		rb := make([]byte, bufSize)
@@ -328,7 +317,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 					return
 				case replysSubCh := <-icmp4tr.ReceiveC:
 					for {
-						nBytes, ctrlMsg, peerAddr, err := icmp4tr.ipv4PacketConn.ReadFrom(rb)
+						hdr, payload, ctrlMsg, err := rawConn.ReadFrom(rb)
 						if err != nil {
 							if err, ok := err.(net.Error); ok && err.Timeout() {
 								continue
@@ -337,21 +326,21 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							break
 						}
 
+						nBytes := hdr.TotalLen
+
 						receivedAt := time.Now()
 						replyObject := ICMPReceiveReply{
 							ID:         icmp4tr.id,
 							Size:       nBytes,
 							ReceivedAt: receivedAt,
-							Peer:       peerAddr.String(),
+							Peer:       hdr.Src.String(),
 							TTL:        ctrlMsg.TTL,
 							Seq:        -1, // if can't determine, use -1
-							PeerRaw:    peerAddr,
 						}
-						if ipAddr, ok := peerAddr.(*net.IPAddr); ok {
-							replyObject.PeerRawIP = ipAddr
-						}
+						replyObject.PeerRaw = &net.IPAddr{IP: hdr.Src}
+						replyObject.PeerRawIP = &net.IPAddr{IP: hdr.Src}
 
-						pktIdentifier, err := getIDSeqPMTUFromOriginIPPacket4(rb[:nBytes], 0)
+						pktIdentifier, err := getIDSeqPMTUFromOriginIPPacket4(payload, 0)
 						if err != nil {
 							log.Printf("failed to parse ip packet, skipping: %v", err)
 							continue
@@ -389,6 +378,9 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 
 		// launch sending goroutine
 		go func() {
+			defer conn.Close()
+			defer rawConn.Close()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -407,13 +399,26 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 						} else {
 							udpDstPort = defaultUDPBasePort + req.Seq
 						}
-						log.Printf("srcPort: %d", icmp4tr.id)
-						log.Printf("udpDstPort: %d", udpDstPort)
 
 						udpLayer := &layers.UDP{
 							SrcPort: layers.UDPPort(icmp4tr.id),
 							DstPort: layers.UDPPort(udpDstPort),
 						}
+
+						udpLayer.Payload = req.Data
+						maxPayloadLen := 65535-udpHeaderLen
+						if len(udpLayer.Payload) > maxPayloadLen {
+							udpLayer.Payload = udpLayer.Payload[:maxPayloadLen]
+							log.Printf("truncated udp payload to %d bytes", maxPayloadLen)
+						}
+
+						udpTotalLen := udpHeaderLen + len(udpLayer.Payload)
+						udpLayer.Length = uint16(udpTotalLen)
+						if int(udpTotalLen) != int(udpLayer.Length) {
+							log.Printf("udp total length mismatch, the packet will be dropped, expected: %d, got: %d", udpTotalLen, udpLayer.Length)
+							continue
+						}
+
 						buf := gopacket.NewSerializeBuffer()
 						opts := gopacket.SerializeOptions{}
 						err = gopacket.SerializeLayers(buf, opts, udpLayer)
@@ -421,61 +426,42 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) error {
 							log.Fatalf("failed to serialize udp layer: %v", err)
 						}
 						wb = buf.Bytes()
-
-						// Append UDP payload data if present
-						if req.Data != nil && len(req.Data) > 0 {
-							wb = append(wb, req.Data...)
-							// Update UDP length field (bytes 4-5) to include header + payload
-							udpLen := uint16(len(wb))
-							wb[4] = byte(udpLen >> 8)
-							wb[5] = byte(udpLen & 0xff)
-						}
-
-						// Create IP header for raw UDP packet
-						ipHeader := &ipv4.Header{
-							Version:  4,
-							Len:      ipv4.HeaderLen,
-							TotalLen: ipv4.HeaderLen + len(wb),
-							TTL:      req.TTL,
-							Protocol: 17, // UDP IANA protocol number
-							Dst:      req.Dst.IP,
-							// Src will be filled by kernel based on routing
-							Src: net.IPv4zero,
-						}
-
-						// Send raw UDP packet using RawConn
-						err = icmp4tr.ipv4RawConn.WriteTo(ipHeader, wb, nil)
-						if err != nil {
-							log.Fatalf("failed to write raw UDP packet: %v", err)
-						}
-						markAsSentBytes(ctx, ipv4.HeaderLen+len(wb))
 					} else {
 						wm := icmp.Message{
-							Type: ipv4.ICMPTypeEcho, Code: 0,
+							Type: ipv4.ICMPTypeEcho,
+							Code: 0,
 							Body: &icmp.Echo{
 								ID:   icmp4tr.id,
-								Data: nil,
+								Seq:  req.Seq,
+								Data: req.Data,
 							},
 						}
-
-						wm.Body.(*icmp.Echo).Seq = req.Seq
-						wm.Body.(*icmp.Echo).Data = req.Data
 						wb, err = wm.Marshal(nil)
 						if err != nil {
 							log.Fatalf("failed to marshal icmp message: %v", err)
 						}
-
-						if err := icmp4tr.ipv4PacketConn.SetTTL(req.TTL); err != nil {
-							log.Fatalf("failed to set TTL to %v: %v, req: %+v", req.TTL, err, req)
-						}
-
-						dst := req.Dst
-						nBytes, err := icmp4tr.ipv4PacketConn.WriteTo(wb, nil, &dst)
-						if err != nil {
-							log.Fatalf("failed to write to connection: %v", err)
-						}
-						markAsSentBytes(ctx, nBytes)
 					}
+
+					iph := &ipv4.Header{
+						Version:  ipv4.Version,
+						Len:      ipv4.HeaderLen,
+						TotalLen: ipv4.HeaderLen + len(wb),
+						TTL:      req.TTL,
+						Flags:    ipv4.DontFragment,
+						Dst:      req.Dst.IP,
+					}
+					if req.UseUDP {
+						iph.Protocol = int(layers.IPProtocolUDP)
+					} else {
+						iph.Protocol = int(layers.IPProtocolICMPv4)
+					}
+					var cm *ipv4.ControlMessage = nil
+					if err := rawConn.WriteTo(iph, wb, cm); err != nil {
+						log.Fatalf("failed to write to connection: %v", err)
+						continue
+					}
+
+					markAsSentBytes(ctx, iph.TotalLen)
 				}
 			}
 		}()
