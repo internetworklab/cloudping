@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -87,7 +86,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		}
 		dst := *dstPtr
 
-		icmpId := 1024 + rand.Intn(0x10000-1024)
 		useUDP := sp.PingRequest.L3PacketType != nil && *sp.PingRequest.L3PacketType == "udp"
 		udpPort := sp.PingRequest.UDPDstPort
 
@@ -95,7 +93,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		var transceiverErrCh <-chan error
 		if dst.IP.To4() != nil {
 			icmp4tr, err := pkgraw.NewICMP4Transceiver(pkgraw.ICMP4TransceiverConfig{
-				ID:          icmpId,
 				UDPBasePort: udpPort,
 				UseUDP:      useUDP,
 			})
@@ -106,7 +103,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			transceiver = icmp4tr
 		} else {
 			icmp6tr, err := pkgraw.NewICMP6Transceiver(pkgraw.ICMP6TransceiverConfig{
-				UseUDP: useUDP,
+				UseUDP:      useUDP,
+				UDPBasePort: udpPort,
 			})
 			if err != nil {
 				log.Fatalf("failed to create ICMP6 transceiver: %v", err)
