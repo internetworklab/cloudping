@@ -159,3 +159,9 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 		return identifier, err
 	}
 }
+
+func extractPacketInfoFromOriginIP6(originIPPacketRaw []byte, baseDstPort int) (identifier *PacketIdentifier, err error) {
+	identifier = new(PacketIdentifier)
+	// todo: implement this
+	return identifier, nil
+}
