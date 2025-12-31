@@ -188,8 +188,8 @@ func extractPacketInfoFromOriginIP6(originIPPacketRaw []byte, baseDstPort int) (
 			return nil, err
 		}
 
-		if originICMPMsg.Type != ipv6.ICMPTypeEchoReply {
-			err = fmt.Errorf("unexpected icmpv6 type: %v", originICMPMsg.Type)
+		if originICMPMsg.Type != ipv6.ICMPTypeEchoRequest {
+			err = fmt.Errorf("unexpected origin icmpv6 type: %v", originICMPMsg.Type)
 			return nil, err
 		}
 

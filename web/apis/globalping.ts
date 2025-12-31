@@ -306,6 +306,8 @@ export type PingRequest = {
 
   preferV4?: boolean;
   preferV6?: boolean;
+
+  l3PacketType?: "icmp" | "udp";
 };
 
 export function generatePingSampleStream(
@@ -322,6 +324,7 @@ export function generatePingSampleStream(
     resolver,
     preferV4,
     preferV6,
+    l3PacketType,
   } = pingReq;
 
   const urlParams = new URLSearchParams();
@@ -349,6 +352,10 @@ export function generatePingSampleStream(
   }
   if (preferV6 !== undefined && preferV6 !== null && preferV6) {
     urlParams.set("preferV6", "true");
+  }
+
+  if (l3PacketType !== undefined && l3PacketType !== null) {
+    urlParams.set("l3PacketType", l3PacketType);
   }
 
   const headers = new Headers();

@@ -106,8 +106,6 @@ export default function Home() {
     headerCardStyles = [...headerCardStyles, { width: "80%" }];
   }
 
-  const [taskType, setTaskType] = useState<"ping" | "traceroute">("ping");
-
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
 
   return (
@@ -132,56 +130,6 @@ export default function Home() {
                 }}
               >
                 <Typography variant="h6">GlobalPing</Typography>
-                <RadioGroup
-                  value={taskType}
-                  onChange={(e) =>
-                    setTaskType(e.target.value as "ping" | "traceroute")
-                  }
-                  row
-                >
-                  <FormControlLabel
-                    value="ping"
-                    control={<Radio />}
-                    label="Ping"
-                  />
-                  <FormControlLabel
-                    value="traceroute"
-                    control={<Radio />}
-                    label="Traceroute"
-                  />
-                </RadioGroup>
-                <FormGroup row>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={!!pendingTask.preferV4}
-                        onChange={(_, ckd) => {
-                          setPendingTask((prev) => ({
-                            ...prev,
-                            preferV4: !!ckd,
-                            preferV6: ckd ? false : prev.preferV6,
-                          }));
-                        }}
-                      />
-                    }
-                    label="Prefer V4"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={!!pendingTask.preferV6}
-                        onChange={(_, ckd) => {
-                          setPendingTask((prev) => ({
-                            ...prev,
-                            preferV4: ckd ? false : prev.preferV4,
-                            preferV6: !!ckd,
-                          }));
-                        }}
-                      />
-                    }
-                    label="Prefer V6"
-                  />
-                </FormGroup>
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 {repoAddr !== "" && (
@@ -210,7 +158,6 @@ export default function Home() {
                       sources: srcs,
                       targets: tgts,
                       taskId: getNextId(onGoingTasks),
-                      type: taskType,
                     }));
                     setOpenTaskConfirmDialog(true);
                   }}
@@ -218,6 +165,80 @@ export default function Home() {
                   Add Task
                 </Button>
               </Box>
+            </Box>
+            <Box
+              sx={{ marginTop: 2, display: "flex", gap: 2, flexWrap: "wrap" }}
+            >
+              <RadioGroup
+                value={pendingTask.type}
+                onChange={(e) =>
+                  setPendingTask((prev) => ({
+                    ...prev,
+                    type: e.target.value as "ping" | "traceroute",
+                    useUDP:
+                      e.target.value !== "traceroute" ? false : prev.useUDP,
+                  }))
+                }
+                row
+              >
+                <FormControlLabel
+                  value="ping"
+                  control={<Radio />}
+                  label="Ping"
+                />
+                <FormControlLabel
+                  value="traceroute"
+                  control={<Radio />}
+                  label="Traceroute"
+                />
+              </RadioGroup>
+              <FormGroup row>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={!!pendingTask.preferV4}
+                      onChange={(_, ckd) => {
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          preferV4: !!ckd,
+                          preferV6: ckd ? false : prev.preferV6,
+                        }));
+                      }}
+                    />
+                  }
+                  label="Prefer V4"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={!!pendingTask.preferV6}
+                      onChange={(_, ckd) => {
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          preferV4: ckd ? false : prev.preferV4,
+                          preferV6: !!ckd,
+                        }));
+                      }}
+                    />
+                  }
+                  label="Prefer V6"
+                />
+                <FormControlLabel
+                  disabled={pendingTask.type !== "traceroute"}
+                  control={
+                    <Checkbox
+                      checked={!!pendingTask.useUDP}
+                      onChange={(_, ckd) => {
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          useUDP: !!ckd,
+                        }));
+                      }}
+                    />
+                  }
+                  label="Use UDP"
+                />
+              </FormGroup>
             </Box>
             <Box sx={{ marginTop: 2 }}>
               <SourcesSelector
@@ -238,12 +259,12 @@ export default function Home() {
               <TextField
                 variant="standard"
                 placeholder={
-                  taskType === "ping"
+                  pendingTask.type === "ping"
                     ? "Targets, separated by comma"
                     : "Specify a single target"
                 }
                 fullWidth
-                label={taskType === "ping" ? "Targets" : "Target"}
+                label={pendingTask.type === "ping" ? "Targets" : "Target"}
                 value={targetsInput}
                 onChange={(e) => setTargetsInput(e.target.value)}
               />

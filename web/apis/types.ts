@@ -7,6 +7,7 @@ export type PendingTask = {
   type: PingTaskType;
   preferV4?: boolean;
   preferV6?: boolean;
+  useUDP?: boolean;
 };
 
 export type ExactLocation = {
