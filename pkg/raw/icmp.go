@@ -202,7 +202,6 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 					}
 
 					if pktIdentifier.Id != traceId {
-						log.Printf("packet id mismatch, ignoring: %v", pktIdentifier)
 						continue
 					}
 
