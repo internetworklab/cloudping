@@ -177,8 +177,8 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 						if err, ok := err.(net.Error); ok && err.Timeout() {
 							continue
 						}
-						log.Printf("failed to read from connection: %v", err)
-						break
+						errCh <- fmt.Errorf("failed to read from connection: %v", err)
+						return
 					}
 
 					nBytes := hdr.TotalLen
