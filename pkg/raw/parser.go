@@ -3,6 +3,7 @@ package raw
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -29,8 +30,8 @@ func (pktId *PacketIdentifier) String() string {
 	return string(jb)
 }
 
-func extractPacketInfoFromOriginIP4(originIPPacketRaw []byte, basePort int) (identifier *PacketIdentifier, err error) {
-	identifier = new(PacketIdentifier)
+func extractPacketInfoFromOriginIP4(originIPPacketRaw []byte, basePort int) (*PacketIdentifier, error) {
+	identifier := new(PacketIdentifier)
 
 	if originIPPacketRaw == nil {
 		return nil, fmt.Errorf("origin IP packet raw is nil")
@@ -38,20 +39,17 @@ func extractPacketInfoFromOriginIP4(originIPPacketRaw []byte, basePort int) (ide
 
 	originPacket := gopacket.NewPacket(originIPPacketRaw, layers.LayerTypeIPv4, gopacket.Default)
 	if originPacket == nil {
-		err = fmt.Errorf("failed to create/decode origin ip packet")
-		return nil, err
+		return nil, fmt.Errorf("failed to create/decode origin ip packet")
 	}
 
 	originIPLayer := originPacket.Layer(layers.LayerTypeIPv4)
 	if originIPLayer == nil {
-		err = fmt.Errorf("failed to extract origin ip layer")
-		return nil, err
+		return nil, fmt.Errorf("failed to extract origin ip layer")
 	}
 
 	originIPPacket, ok := originIPLayer.(*layers.IPv4)
 	if !ok {
-		err = fmt.Errorf("failed to cast origin ip layer to origin ip packet")
-		return nil, err
+		return nil, fmt.Errorf("failed to cast origin ip layer to origin ip packet")
 	}
 
 	identifier.IPProto = int(originIPPacket.Protocol)
@@ -59,37 +57,33 @@ func extractPacketInfoFromOriginIP4(originIPPacketRaw []byte, basePort int) (ide
 	if originIPPacket.Protocol == layers.IPProtocolICMPv4 {
 		originICMPLayer := originPacket.Layer(layers.LayerTypeICMPv4)
 		if originICMPLayer == nil {
-			err = fmt.Errorf("failed to extract origin icmp layer")
-			return nil, err
+			return nil, fmt.Errorf("failed to extract origin icmp layer")
 		}
 
 		originICMPPacket, ok := originICMPLayer.(*layers.ICMPv4)
 		if !ok {
-			err = fmt.Errorf("failed to cast origin icmp layer to origin icmp packet")
-			return nil, err
+			return nil, fmt.Errorf("failed to cast origin icmp layer to origin icmp packet")
 		}
 
 		identifier.Id = int(originICMPPacket.Id)
 		identifier.Seq = int(originICMPPacket.Seq)
-		return nil, err
+		return identifier, nil
 	} else if originIPPacket.Protocol == layers.IPProtocolUDP {
 		originUDPLayer := originPacket.Layer(layers.LayerTypeUDP)
 		if originUDPLayer == nil {
-			err = fmt.Errorf("failed to extract origin udp layer")
-			return nil, err
+			return nil, fmt.Errorf("failed to extract origin udp layer")
 		}
 
 		originUDPPacket, ok := originUDPLayer.(*layers.UDP)
 		if !ok {
-			err = fmt.Errorf("failed to cast origin udp layer to origin udp packet")
-			return nil, err
+			return nil, fmt.Errorf("failed to cast origin udp layer to origin udp packet")
 		}
 		identifier.Id = int(originUDPPacket.SrcPort)
 		identifier.Seq = int(originUDPPacket.DstPort) - basePort
-		return identifier, err
+
+		return identifier, nil
 	} else {
-		err = fmt.Errorf("unknown origin ip protocol: %d", originIPPacket.Protocol)
-		return identifier, err
+		return identifier, fmt.Errorf("unknown origin ip protocol: %d", originIPPacket.Protocol)
 	}
 }
 
@@ -150,6 +144,8 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract origin packet info from icmp error message: %w", err)
 		}
+
+		log.Printf("[DBG] subIdentifier: %s", subIdentifier.String())
 
 		identifier.IPProto = subIdentifier.IPProto
 		identifier.LastHop = false

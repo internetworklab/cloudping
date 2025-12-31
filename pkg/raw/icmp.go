@@ -557,6 +557,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 			}
 			ipv6PacketConn = ipv6.NewPacketConn(c)
 		}
+		traceIdCh <- traceId
 
 		var wcm ipv6.ControlMessage
 		maxPayloadLen := 65535 - ipv6HeaderLen - udpHeaderLen
