@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
@@ -118,6 +119,10 @@ type ICMPTracker struct {
 	// Receiving Events
 	// A empty array of ReceivedAt means timeout
 	RecvEvC chan ICMPTrackerEntry
+
+	closed         bool
+	closeProtector sync.Mutex
+	closeCh        chan interface{}
 }
 
 type ICMPTrackerConfig struct {
@@ -127,10 +132,12 @@ type ICMPTrackerConfig struct {
 
 func NewICMPTracker(config *ICMPTrackerConfig) (*ICMPTracker, error) {
 	it := &ICMPTracker{
-		store:       make(map[int]*ICMPTrackerEntry),
-		serviceChan: make(chan chan ServiceRequest),
-		RecvEvC:     make(chan ICMPTrackerEntry, config.TimeoutChannelEventBufferSize),
-		pktTimeout:  config.PacketTimeout,
+		store:          make(map[int]*ICMPTrackerEntry),
+		serviceChan:    make(chan chan ServiceRequest),
+		RecvEvC:        make(chan ICMPTrackerEntry, config.TimeoutChannelEventBufferSize),
+		pktTimeout:     config.PacketTimeout,
+		closeCh:        make(chan interface{}),
+		closeProtector: sync.Mutex{},
 	}
 	return it, nil
 }
@@ -139,12 +146,15 @@ func NewICMPTracker(config *ICMPTrackerConfig) (*ICMPTracker, error) {
 func (it *ICMPTracker) Run(ctx context.Context) {
 	go func() {
 		defer close(it.serviceChan)
+		defer close(it.RecvEvC)
 
 		for {
 			serviceSubCh := make(chan ServiceRequest)
 
 			select {
 			case <-ctx.Done():
+				return
+			case <-it.closeCh:
 				return
 			case it.serviceChan <- serviceSubCh:
 				serviceReq := <-serviceSubCh
@@ -207,6 +217,10 @@ func (it *ICMPTracker) handleTimeout(seq int) {
 	defer close(requestCh)
 
 	fn := func(ctx context.Context) error {
+		if it.closed {
+			return fmt.Errorf("engine is closed")
+		}
+
 		if ent, ok := it.store[seq]; ok && ent != nil {
 			it.doHandleTimeout(ent)
 		}
@@ -292,11 +306,14 @@ func (it *ICMPTracker) MarkSent(seq int, ttl int) error {
 	requestCh, ok := <-it.serviceChan
 	if !ok {
 		// engine is already shutdown
-		return nil
+		return fmt.Errorf("engine is closed")
 	}
 	defer close(requestCh)
 
 	fn := func(ctx context.Context) error {
+		if it.closed {
+			return fmt.Errorf("engine is closed")
+		}
 
 		ent := &ICMPTrackerEntry{
 			Seq:    seq,
@@ -338,6 +355,10 @@ func (it *ICMPTracker) MarkReceived(seq int, raw ICMPReceiveReply) error {
 	defer close(requestCh)
 
 	fn := func(ctx context.Context) error {
+		if it.closed {
+			return fmt.Errorf("engine is closed")
+		}
+
 		if ent, ok := it.store[seq]; ok {
 			if ent.Timer != nil {
 				ent.Timer.Stop()
@@ -378,7 +399,13 @@ func (it *ICMPTracker) MarkReceived(seq int, raw ICMPReceiveReply) error {
 }
 
 // no more events will be generated and no more packets will be tracked !
-func (it *ICMPTracker) FlushAndClose() error {
+func (it *ICMPTracker) ForgetAllAndClose() error {
+	it.closeProtector.Lock()
+	defer it.closeProtector.Unlock()
+	if it.closed {
+		return fmt.Errorf("engine is already closed")
+	}
+
 	requestCh, ok := <-it.serviceChan
 	if !ok {
 		// engine is already shutdown
@@ -387,9 +414,12 @@ func (it *ICMPTracker) FlushAndClose() error {
 	defer close(requestCh)
 
 	fn := func(ctx context.Context) error {
+
+		// after marked as closed, future incoming requests will be rejected
+		it.closed = true
+
 		for _, ent := range it.store {
 			ent.Timer.Stop()
-			it.doHandleTimeout(ent)
 		}
 		return nil
 	}
@@ -403,5 +433,8 @@ func (it *ICMPTracker) FlushAndClose() error {
 	if err != nil {
 		return fmt.Errorf("failed to flush and close tracker: %v", err)
 	}
+
+	close(it.closeCh)
+
 	return nil
 }

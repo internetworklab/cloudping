@@ -189,7 +189,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		go func() {
 			log.Printf("ICMPReceiving goroutine for %s is started", dst.String())
 			defer log.Printf("ICMPReceiving goroutine for %s is exitting", dst.String())
-			defer tracker.FlushAndClose()
+			defer tracker.ForgetAllAndClose()
 
 			for reply := range transceiver.GetReceiver() {
 				tracker.MarkReceived(reply.Seq, reply)
@@ -235,7 +235,10 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					}
 
 					senderCh <- req
-					tracker.MarkSent(req.Seq, req.TTL)
+					if err := tracker.MarkSent(req.Seq, req.TTL); err != nil {
+						log.Printf("failed to mark sent: %v", err)
+						return
+					}
 					counterStore.NumPktsSent.With(commonLabels).Add(1.0)
 
 					numPktsSent++
