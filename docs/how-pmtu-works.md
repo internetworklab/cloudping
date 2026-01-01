@@ -6,7 +6,7 @@ Most of the time MTU shall not trouble us, because standards, autoconfigurations
 
 However, things quickly become different when tunnels (or extra layer of encapsulation) are introduced, especially when playing with virtual links or custom routings. A Tunnel outgoing interface prepends some encapsulation (like tags, labels, headers in their own) in front of the original packet to conceal the address header fields to create a virutalized and free addressing space (so that we can play with some custom routing stuffs), the encapsulation itself also cost some overheads, so the simple rule of 1500 MTU no longer works.
 
-Working out (also knows how to working out) the correct path is important, because an interface configured with in-correct MTU might siliently drop packets, causing import messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
+Working out (also knows how to working out) the correct path MTU is important, because an interface configured with in-correct MTU might siliently drop packets, causing import messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
 
 In this article we gonna mimics the scenario where some interfaces has non-standard MTU configured, and we will see how to probing out the correct MTU step by step that can make the packet pass through all the interfaces along the path with no problem.
 
