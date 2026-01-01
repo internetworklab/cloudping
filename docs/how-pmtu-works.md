@@ -67,6 +67,8 @@ ping -i 0.2 -c2 192.168.7.2
 
 ## Probing Path MTU
 
+### Probing Path MTU With Manual Approach
+
 To start probing MTU, let's say the MTU for the nexthop interface is 1500, so, start with our probing mtu be 1500:
 
 ```shell
@@ -114,6 +116,23 @@ PING 192.168.7.2 (192.168.7.2) 1322(1350) bytes of data.
 --- 192.168.7.2 ping statistics ---
 1 packets transmitted, 1 received, 0% packet loss, time 0ms
 rtt min/avg/max/mdev = 0.171/0.171/0.171/0.000 ms
+```
+
+### Probing With Automatic Approach
+
+With command:
+
+```shell
+traceroute --mtu 192.168.7.2
+```
+
+You get this output:
+
+```
+traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
+ 1  192.168.5.2 (192.168.5.2)  0.088 ms F=1500  0.074 ms  0.015 ms
+ 2  192.168.6.2 (192.168.6.2)  0.030 ms F=1370  0.093 ms  0.026 ms
+ 3  192.168.7.2 (192.168.7.2)  0.030 ms F=1350  0.101 ms  0.051 ms
 ```
 
 ## Clean Up
