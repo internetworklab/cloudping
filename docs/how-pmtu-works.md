@@ -135,6 +135,20 @@ traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
  3  192.168.7.2 (192.168.7.2)  0.030 ms F=1350  0.101 ms  0.051 ms
 ```
 
+### Kernel's PMTU Cache
+
+Once the Path MTU is probed, the kernel might cache the PMTU result for you, you can then adjust the mtu of the nexthop interface(s) accordingly:
+
+```
+ip r get 192.168.7.2
+192.168.7.2 via 192.168.5.2 dev v-ns1 src 192.168.5.1 uid 0
+    cache expires 381sec mtu 1350
+
+## maybe proceed with
+# ip l set v-ns1 mtu 1350
+## so that it can reach the final target 192.168.7.2 at no hassle.
+```
+
 ## Clean Up
 
 ```shell
