@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	cryptoRand "crypto/rand"
+
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
@@ -111,9 +113,14 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			transceiver = icmp6tr
 		}
 
-		payload := make([]byte, 0)
+		payloadLen := 0
 		if pingRequest.RandomPayloadSize != nil && *pingRequest.RandomPayloadSize > 0 {
-			payload = make([]byte, int(math.Min(float64(pkgutils.GetMinimumMTU()), float64(*pingRequest.RandomPayloadSize))))
+			payloadLen = *pingRequest.RandomPayloadSize
+		}
+		payloadLen = int(math.Max(0, math.Min(float64(pkgutils.GetMinimumMTU()), float64(payloadLen))))
+		payload := make([]byte, payloadLen)
+		if len(payload) > 0 {
+			cryptoRand.Read(payload)
 		}
 
 		type SendControl struct {
@@ -256,5 +263,3 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 
 	return outputEVChan
 }
-
-// cryptoRand.Read(pm.data)
