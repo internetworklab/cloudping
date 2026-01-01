@@ -123,7 +123,8 @@ rtt min/avg/max/mdev = 0.171/0.171/0.171/0.000 ms
 With command:
 
 ```shell
-traceroute --mtu 192.168.7.2
+traceroute --mtu 192.168.7.2   
+## or tracepath -n 192.168.7.2  # depending on what is installed
 ```
 
 You get this output:
