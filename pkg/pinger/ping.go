@@ -121,12 +121,10 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		ttlCh := make(chan int, 1)
 		ttlCh <- pingRequest.TTL.GetNext()
 
-		waitForICMPEVGenGoroutine := sync.WaitGroup{}
-
-		waitForICMPEVGenGoroutine.Add(1)
+		waitForEVGenCh := make(chan interface{})
 		go func() {
 			log.Printf("ICMP Event-generating goroutine for %s is started", dst.String())
-			defer waitForICMPEVGenGoroutine.Done()
+			defer close(waitForEVGenCh)
 			defer close(ttlCh)
 			defer log.Printf("ICMP Event-generating goroutine for %s is exitting", dst.String())
 
@@ -135,7 +133,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				case <-ctx.Done():
 					log.Printf("In ICMP Event-generating goroutine for %s, got context done", dst.String())
 					return
-				case ev := <-tracker.RecvEvC:
+				case ev, ok := <-tracker.RecvEvC:
+					if !ok {
+						// means that the tracker is no longer usable
+						log.Printf("the ICMP event tracker is confirmed to be closed")
+						return
+					}
+
 					var wrappedEV *pkgraw.ICMPTrackerEntry = &ev
 
 					if wrappedEV.FoundLastHop() {
@@ -182,7 +186,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 
 		}()
 
-
 		go func() {
 			log.Printf("ICMPReceiving goroutine for %s is started", dst.String())
 			defer log.Printf("ICMPReceiving goroutine for %s is exitting", dst.String())
@@ -197,8 +200,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		go func() {
 			log.Printf("ICMPSending goroutine for %s is started", dst.String())
 			defer log.Printf("ICMPSending goroutine for %s is exitting", dst.String())
+			defer transceiver.Close()
 
-			
 			numPktsSent := 0
 			for {
 				select {
@@ -224,7 +227,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						req.Data = payloadManager.GetPayload()
 					}
 
-					senderCh, ok := <- transceiver.GetSender()
+					senderCh, ok := <-transceiver.GetSender()
 					if !ok {
 						// the transceiver no longer accepts new requests
 						log.Printf("In ICMPSending goroutine for %s, transceiver no longer accepts new requests", dst.String())
@@ -246,7 +249,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			}
 		}()
 
-		waitForICMPEVGenGoroutine.Wait()
+		<-waitForEVGenCh
 	}()
 
 	return outputEVChan

@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
@@ -28,49 +29,6 @@ type ICMP4TransceiverConfig struct {
 // add this udpbaseport with seq to get the actual udp dst port,
 // e.g. seq = 1, base port = 33433, then real udp dst port = 33433 + 1 = 33434
 const defaultUDPBasePort int = 33433
-
-type ICMPSendRequest struct {
-	Dst  net.IPAddr
-	Seq  int
-	TTL  int
-	Data []byte
-}
-
-type ICMPReceiveReply struct {
-	ID   int
-	Size int
-	Seq  int
-	TTL  int
-
-	// the Src of the icmp echo reply, in string
-	Peer string
-
-	PeerRawIP *net.IPAddr `json:"-"`
-
-	LastHop bool
-
-	PeerRDNS []string
-
-	ReceivedAt time.Time
-
-	// ICMPv4 and ICMPv6 has different semantics for Type and Code,
-	// so a dedicated field for indicating IP version is needed.
-	INetFamily int
-	ICMPType   *int
-	ICMPCode   *int
-
-	// IPProtocol that was sent, not reply
-	IPProto int
-
-	SetMTUTo            *int
-	ShrinkICMPPayloadTo *int `json:"-"`
-
-	// below are left for ip information provider
-	PeerASN           *string
-	PeerLocation      *string
-	PeerISP           *string
-	PeerExactLocation *pkgipinfo.ExactLocation
-}
 
 func (icmpReply *ICMPReceiveReply) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*ICMPReceiveReply, error) {
 	clonedICMPReply := new(ICMPReceiveReply)
@@ -115,15 +73,21 @@ type ICMP4Transceiver struct {
 	SendC chan chan ICMPSendRequest
 
 	ReceiveC chan ICMPReceiveReply
+
+	closed         bool
+	closeCh        chan interface{}
+	closeProtector sync.Mutex
 }
 
 func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, error) {
 
 	tracer := &ICMP4Transceiver{
-		SendC:       make(chan chan ICMPSendRequest),
-		ReceiveC:    make(chan ICMPReceiveReply),
-		udpBasePort: defaultUDPBasePort,
-		useUDP:      config.UseUDP,
+		SendC:          make(chan chan ICMPSendRequest),
+		ReceiveC:       make(chan ICMPReceiveReply),
+		udpBasePort:    defaultUDPBasePort,
+		useUDP:         config.UseUDP,
+		closeCh:        make(chan interface{}),
+		closeProtector: sync.Mutex{},
 	}
 	if config.UDPBasePort != nil {
 		tracer.udpBasePort = *config.UDPBasePort
@@ -159,7 +123,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 	}
 
 	// launch receiving goroutine
-	// then the context is Done, the sending goroutine will exit, which also close the PacketConn by the way, once the PacketConn is closed, 
+	// then the context is Done, the sending goroutine will exit, which also close the PacketConn by the way, once the PacketConn is closed,
 	// ReadFrom will result in error, so this receiving goroutine will return as well.
 	// Event chain: context done (or cancel) -> sending goroutine exit -> PacketConn close -> ReadFrom error -> receiving goroutine return
 	go func() {
@@ -233,6 +197,9 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 			reqCh := make(chan ICMPSendRequest)
 			select {
 			case <-ctx.Done():
+				return
+			case <-icmp4tr.closeCh:
+				icmp4tr.closed = true
 				return
 			case icmp4tr.SendC <- reqCh:
 				req, ok := <-reqCh
@@ -316,6 +283,17 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 	return errCh
 }
 
+func (icmp4tr *ICMP4Transceiver) Close() error {
+	icmp4tr.closeProtector.Lock()
+	defer icmp4tr.closeProtector.Unlock()
+	if icmp4tr.closed {
+		return fmt.Errorf("icmp4 transceiver is already closed")
+	}
+
+	close(icmp4tr.closeCh)
+	return nil
+}
+
 func (icmp4tr *ICMP4Transceiver) GetSender() <-chan chan ICMPSendRequest {
 	return icmp4tr.SendC
 }
@@ -337,6 +315,10 @@ type ICMP6Transceiver struct {
 	SendC chan chan ICMPSendRequest
 
 	ReceiveC chan ICMPReceiveReply
+
+	closed         bool
+	closeProtector sync.Mutex
+	closeCh        chan interface{}
 }
 
 func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, error) {
@@ -556,6 +538,9 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 			select {
 			case <-ctx.Done():
 				return
+			case <-icmp6tr.closeCh:
+				icmp6tr.closed = true
+				return
 			case icmp6tr.SendC <- reqCh:
 				req, ok := <-reqCh
 				if !ok {
@@ -611,10 +596,21 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 	return errCh
 }
 
-func (icmp6tr *ICMP6Transceiver) GetSender() <- chan chan ICMPSendRequest {
+func (icmp6tr *ICMP6Transceiver) GetSender() <-chan chan ICMPSendRequest {
 	return icmp6tr.SendC
 }
 
 func (icmp6tr *ICMP6Transceiver) GetReceiver() <-chan ICMPReceiveReply {
 	return icmp6tr.ReceiveC
+}
+
+func (icmp6tr *ICMP6Transceiver) Close() error {
+	icmp6tr.closeProtector.Lock()
+	defer icmp6tr.closeProtector.Unlock()
+	if icmp6tr.closed {
+		return fmt.Errorf("icmp6 transceiver is already closed")
+	}
+
+	close(icmp6tr.closeCh)
+	return nil
 }

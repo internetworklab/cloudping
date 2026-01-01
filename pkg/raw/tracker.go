@@ -183,6 +183,21 @@ func (it *ICMPTracker) cleanupEntry(seq int) {
 	}
 }
 
+func (it *ICMPTracker) doHandleTimeout(ent *ICMPTrackerEntry) {
+	if it == nil || ent == nil {
+		return
+	}
+	if len(ent.ReceivedAt) > 0 {
+		return
+	}
+	it.ackedSeq++
+	if clone := ent.ReadonlyClone(); clone != nil {
+		go func(ent ICMPTrackerEntry) {
+			it.RecvEvC <- ent
+		}(*clone)
+	}
+}
+
 func (it *ICMPTracker) handleTimeout(seq int) {
 	requestCh, ok := <-it.serviceChan
 	if !ok {
@@ -192,16 +207,8 @@ func (it *ICMPTracker) handleTimeout(seq int) {
 	defer close(requestCh)
 
 	fn := func(ctx context.Context) error {
-		if ent, ok := it.store[seq]; ok {
-			if len(ent.ReceivedAt) > 0 {
-				return nil
-			}
-			it.ackedSeq++
-			if clone := ent.ReadonlyClone(); clone != nil {
-				go func(ent ICMPTrackerEntry) {
-					it.RecvEvC <- ent
-				}(*clone)
-			}
+		if ent, ok := it.store[seq]; ok && ent != nil {
+			it.doHandleTimeout(ent)
 		}
 		delete(it.store, seq)
 		return nil
@@ -370,6 +377,31 @@ func (it *ICMPTracker) MarkReceived(seq int, raw ICMPReceiveReply) error {
 	return nil
 }
 
-func (it *ICMPTracker) FlushAndClose() {
-	// todo
+// no more events will be generated and no more packets will be tracked !
+func (it *ICMPTracker) FlushAndClose() error {
+	requestCh, ok := <-it.serviceChan
+	if !ok {
+		// engine is already shutdown
+		return fmt.Errorf("engine is already closed")
+	}
+	defer close(requestCh)
+
+	fn := func(ctx context.Context) error {
+		for _, ent := range it.store {
+			ent.Timer.Stop()
+			it.doHandleTimeout(ent)
+		}
+		return nil
+	}
+
+	req := ServiceRequest{
+		Func:   fn,
+		Result: make(chan error),
+	}
+	requestCh <- req
+	err := <-req.Result
+	if err != nil {
+		return fmt.Errorf("failed to flush and close tracker: %v", err)
+	}
+	return nil
 }
