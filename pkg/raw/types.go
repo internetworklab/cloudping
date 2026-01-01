@@ -12,6 +12,7 @@ type ICMPSendRequest struct {
 	Seq  int
 	TTL  int
 	Data []byte
+	PMTU *int
 }
 
 type ICMPReceiveReply struct {
@@ -58,10 +59,5 @@ type GeneralICMPTransceiver interface {
 	Close() error
 }
 
-const ipv4HeaderLen int = 20
-const ipv6HeaderLen int = 40
 const udpHeaderLen int = 8
 const headerSizeICMP int = 8
-const protocolNumberICMPv4 int = 1
-const protocolNumberICMPv6 int = 58
-const icmpCodeFragmentationNeeded int = 4

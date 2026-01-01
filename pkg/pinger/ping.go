@@ -2,13 +2,11 @@ package pinger
 
 import (
 	"context"
-	cryptoRand "crypto/rand"
 	"fmt"
 	"log"
 	"math"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
@@ -113,19 +111,27 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			transceiver = icmp6tr
 		}
 
-		var payloadManager *PayloadManager
-		if pingRequest.RandomPayloadSize != nil {
-			payloadManager = NewPayloadManager(*pingRequest.RandomPayloadSize)
+		payload := make([]byte, 0)
+		if pingRequest.RandomPayloadSize != nil && *pingRequest.RandomPayloadSize > 0 {
+			payload = make([]byte, int(math.Min(float64(pkgutils.GetMinimumMTU()), float64(*pingRequest.RandomPayloadSize))))
 		}
 
-		ttlCh := make(chan int, 1)
-		ttlCh <- pingRequest.TTL.GetNext()
+		type SendControl struct {
+			PMTU *int
+			TTL  int
+		}
+
+		ctrlSignals := make(chan SendControl, 1)
+		ctrlSignals <- SendControl{
+			PMTU: nil,
+			TTL:  pingRequest.TTL.GetNext(),
+		}
 
 		waitForEVGenCh := make(chan interface{})
 		go func() {
 			log.Printf("ICMP Event-generating goroutine for %s is started", dst.String())
 			defer close(waitForEVGenCh)
-			defer close(ttlCh)
+			defer close(ctrlSignals)
 			defer log.Printf("ICMP Event-generating goroutine for %s is exitting", dst.String())
 
 			for {
@@ -162,15 +168,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						err = nil
 					}
 
-					if payloadManager != nil {
-						for _, icmpReply := range wrappedEV.Raw {
-							if icmpReply.SetMTUTo != nil && icmpReply.ShrinkICMPPayloadTo != nil {
-								log.Printf("[DBG] Shrinking payload due to PMTU msg: SetMTUTo=%d, ShrinkICMPPayloadTo=%d, dst=%s", *icmpReply.SetMTUTo, *icmpReply.ShrinkICMPPayloadTo, dst.String())
-								payloadManager.Shrink(icmpReply.ShrinkICMPPayloadTo)
-							}
-						}
-					}
-
 					outputEVChan <- PingEvent{Data: wrappedEV}
 
 					if pingRequest.TotalPkts != nil && tracker.GetUnAcked() == 0 && tracker.GetAckedSeq() == *pingRequest.TotalPkts {
@@ -179,11 +176,12 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						return
 					}
 
-					ttlCh <- pingRequest.TTL.GetNext()
+					ctrlSignals <- SendControl{
+						PMTU: wrappedEV.GetPMTU(),
+						TTL:  pingRequest.TTL.GetNext(),
+					}
 				}
-
 			}
-
 		}()
 
 		go func() {
@@ -192,7 +190,10 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			defer tracker.ForgetAllAndClose()
 
 			for reply := range transceiver.GetReceiver() {
-				tracker.MarkReceived(reply.Seq, reply)
+				if err := tracker.MarkReceived(reply.Seq, reply); err != nil {
+					log.Printf("failed to mark received: %v", err)
+					return
+				}
 				counterStore.NumPktsReceived.With(commonLabels).Add(1.0)
 			}
 		}()
@@ -211,20 +212,18 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 				case err := <-transceiverErrCh:
 					log.Printf("In ICMPSending goroutine for %s, got transceiver error: %v", dst.String(), err)
 					return
-				case ttl, ok := <-ttlCh:
+				case ctrlSignal, ok := <-ctrlSignals:
 					if !ok {
 						log.Printf("In ICMPSending goroutine for %s, no more TTL values will be generated", dst.String())
 						return
 					}
 
 					req := pkgraw.ICMPSendRequest{
-						Seq: numPktsSent + 1,
-						TTL: ttl,
-						Dst: dst,
-					}
-
-					if payloadManager != nil {
-						req.Data = payloadManager.GetPayload()
+						Seq:  numPktsSent + 1,
+						TTL:  ctrlSignal.TTL,
+						Dst:  dst,
+						Data: payload,
+						PMTU: ctrlSignal.PMTU,
 					}
 
 					senderCh, ok := <-transceiver.GetSender()
@@ -258,39 +257,4 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 	return outputEVChan
 }
 
-type PayloadManager struct {
-	data []byte
-	lock sync.Mutex
-}
-
-func NewPayloadManager(size int) *PayloadManager {
-	pm := &PayloadManager{
-		lock: sync.Mutex{},
-	}
-	pm.data = make([]byte, size)
-	cryptoRand.Read(pm.data)
-
-	return pm
-}
-
-func (pm *PayloadManager) GetPayload() []byte {
-	pm.lock.Lock()
-	defer pm.lock.Unlock()
-
-	return pm.data
-}
-
-func (pm *PayloadManager) Shrink(shrinkTo *int) {
-	pm.lock.Lock()
-	defer pm.lock.Unlock()
-
-	if shrinkTo == nil {
-		return
-	}
-	originalSize := len(pm.data)
-	if *shrinkTo >= originalSize {
-		return
-	}
-	pm.data = pm.data[:*shrinkTo]
-	log.Printf("[DBG] Shrunk payload from %d to %d bytes, shrinkTo=%d", originalSize, *shrinkTo, *shrinkTo)
-}
+// cryptoRand.Read(pm.data)

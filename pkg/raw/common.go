@@ -2,37 +2,17 @@ package raw
 
 import (
 	"log"
-	"net"
+	"math"
 
 	"context"
 
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"github.com/google/gopacket/layers"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
-
-func getMaximumMTU() int {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		panic(err)
-	}
-	maximumMTU := -1
-	for _, iface := range ifaces {
-		if iface.MTU > maximumMTU {
-			maximumMTU = iface.MTU
-		}
-	}
-	if maximumMTU == -1 {
-		panic("can't determine maximum MTU")
-	}
-	return maximumMTU
-}
-
-func setDFBit(conn net.PacketConn) error {
-	// deprecated, we now compose the entire ip packet, including ip header,
-	// so, we no longer need this.
-	return nil
-}
 
 func markAsSentBytes(ctx context.Context, n int) {
 	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
@@ -61,4 +41,41 @@ func markAsReceivedBytes(ctx context.Context, n int) {
 		return
 	}
 	counterStore.NumBytesReceived.With(commonLabels).Add(float64(n))
+}
+
+// ipVersion: 4 or 6
+// ipprotoNum: for IPv4, it's the iana ipprotocol number, for IPv6, it's the NextHeader field value
+func getMaxPayloadLen(ipVersion int, ipprotoNum int, pmtu *int) int {
+	minMTU := pkgutils.GetMinimumMTU()
+	if pmtu != nil {
+		if *pmtu >= 0 && *pmtu < minMTU {
+			minMTU = *pmtu
+		}
+	}
+
+	switch ipVersion {
+	case ipv4.Version:
+		switch ipprotoNum {
+		case int(layers.IPProtocolICMPv4):
+			return int(math.Max(0, float64(minMTU-ipv4.HeaderLen-headerSizeICMP)))
+		case int(layers.IPProtocolUDP):
+			return int(math.Max(0, float64(minMTU-ipv4.HeaderLen-udpHeaderLen)))
+		default:
+			log.Printf("unknown ip protocol number: %d", ipprotoNum)
+			return 0
+		}
+	case ipv6.Version:
+		switch ipprotoNum {
+		case int(layers.IPProtocolICMPv6):
+			return int(math.Max(0, float64(minMTU-ipv6.HeaderLen-headerSizeICMP)))
+		case int(layers.IPProtocolUDP):
+			return int(math.Max(0, float64(minMTU-ipv6.HeaderLen-udpHeaderLen)))
+		default:
+			log.Printf("unknown ip protocol number: %d", ipprotoNum)
+			return 0
+		}
+	default:
+		log.Printf("unknown ip version: %d", ipVersion)
+		return 0
+	}
 }

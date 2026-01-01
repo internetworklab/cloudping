@@ -40,6 +40,21 @@ func (itEnt *ICMPTrackerEntry) FoundLastHop() bool {
 	return false
 }
 
+func (itEnt *ICMPTrackerEntry) GetPMTU() *int {
+	if itEnt == nil {
+		return nil
+	}
+	var pmtu *int = nil
+	for _, reply := range itEnt.Raw {
+		if reply.SetMTUTo != nil && *reply.SetMTUTo > 0 {
+			pmtu = new(int)
+			*pmtu = *reply.SetMTUTo
+		}
+	}
+
+	return pmtu
+}
+
 func (itEnt *ICMPTrackerEntry) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*ICMPTrackerEntry, error) {
 	wrappedEV := new(ICMPTrackerEntry)
 	*wrappedEV = *itEnt
