@@ -328,10 +328,12 @@ type ICMP6Transceiver struct {
 
 func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, error) {
 	tracer := &ICMP6Transceiver{
-		SendC:       make(chan chan ICMPSendRequest),
-		ReceiveC:    make(chan ICMPReceiveReply),
-		useUDP:      config.UseUDP,
-		udpBasePort: defaultUDPBasePort,
+		SendC:          make(chan chan ICMPSendRequest),
+		ReceiveC:       make(chan ICMPReceiveReply),
+		useUDP:         config.UseUDP,
+		udpBasePort:    defaultUDPBasePort,
+		closeCh:        make(chan interface{}),
+		closeProtector: sync.Mutex{},
 	}
 	if config.UDPBasePort != nil {
 		tracer.udpBasePort = *config.UDPBasePort
