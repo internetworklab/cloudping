@@ -132,7 +132,11 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			if useUDP {
 				ipProtoNum = int(layers.IPProtocolUDP)
 			}
-			payloadLen = pkgraw.GetMaxPayloadLen(ipVersion, ipProtoNum, nil, nexthopMTU)
+			maxPayloadLen := pkgraw.GetMaxPayloadLen(ipVersion, ipProtoNum, nil, nexthopMTU)
+			if payloadLen > maxPayloadLen {
+				payloadLen = maxPayloadLen
+				log.Printf("truncated payload length to %d bytes", payloadLen)
+			}
 			payload = make([]byte, payloadLen)
 			if len(payload) > 0 {
 				cryptoRand.Read(payload)
