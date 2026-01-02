@@ -14,8 +14,11 @@ import (
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
+	"github.com/google/gopacket/layers"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -117,13 +120,23 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		if pingRequest.RandomPayloadSize != nil && *pingRequest.RandomPayloadSize > 0 {
 			payloadLen = *pingRequest.RandomPayloadSize
 		}
-
 		nexthopMTU := pkgutils.GetNexthopMTU(dst.IP)
-
-		payloadLen = int(math.Max(0, math.Min(float64(nexthopMTU), float64(payloadLen))))
-		payload := make([]byte, payloadLen)
-		if len(payload) > 0 {
-			cryptoRand.Read(payload)
+		var payload []byte = nil
+		if payloadLen > 0 {
+			ipVersion := ipv4.Version
+			ipProtoNum := int(layers.IPProtocolICMPv4)
+			if dst.IP.To4() == nil {
+				ipVersion = ipv6.Version
+				ipProtoNum = int(layers.IPProtocolICMPv6)
+			}
+			if useUDP {
+				ipProtoNum = int(layers.IPProtocolUDP)
+			}
+			payloadLen = pkgraw.GetMaxPayloadLen(ipVersion, ipProtoNum, nil, nexthopMTU)
+			payload = make([]byte, payloadLen)
+			if len(payload) > 0 {
+				cryptoRand.Read(payload)
+			}
 		}
 
 		type SendControl struct {

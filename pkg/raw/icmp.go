@@ -219,7 +219,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 					}
 
 					udpLayer.Payload = req.Data
-					maxPayloadLen := getMaxPayloadLen(ipv4.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
+					maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
 					if len(udpLayer.Payload) > maxPayloadLen {
 						udpLayer.Payload = udpLayer.Payload[:maxPayloadLen]
 						log.Printf("truncated udp payload to %d bytes", maxPayloadLen)
@@ -247,7 +247,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 						Seq:  req.Seq,
 						Data: req.Data,
 					}
-					maxPayloadLen := getMaxPayloadLen(ipv4.Version, int(layers.IPProtocolICMPv4), req.PMTU, req.NexthopMTU)
+					maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolICMPv4), req.PMTU, req.NexthopMTU)
 					if len(icmpEcho.Data) > maxPayloadLen {
 						icmpEcho.Data = icmpEcho.Data[:maxPayloadLen]
 						log.Printf("truncated icmp echo payload to %d bytes", maxPayloadLen)
@@ -404,7 +404,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 			receivedAt := time.Now()
 			replyObject := ICMPReceiveReply{
-				Size:       nBytes,
+				Size:       nBytes + ipv6.HeaderLen,
 				ReceivedAt: receivedAt,
 				Peer:       peerAddr.String(),
 				TTL:        ctrlMsg.HopLimit,
@@ -560,7 +560,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 						Port: icmp6tr.udpBasePort + req.Seq,
 					}
 
-					maxPayloadLen := getMaxPayloadLen(ipv6.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
+					maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
 					wb = req.Data
 					if len(wb) > maxPayloadLen {
 						wb = wb[:maxPayloadLen]
@@ -572,7 +572,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 						Seq:  req.Seq,
 						Data: req.Data,
 					}
-					maxPayloadLen := getMaxPayloadLen(ipv6.Version, int(layers.IPProtocolICMPv6), req.PMTU, req.NexthopMTU)
+					maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolICMPv6), req.PMTU, req.NexthopMTU)
 					if len(icmpEcho.Data) > maxPayloadLen {
 						icmpEcho.Data = icmpEcho.Data[:maxPayloadLen]
 						log.Printf("truncated icmp echo payload to %d bytes", maxPayloadLen)
