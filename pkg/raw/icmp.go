@@ -275,7 +275,7 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 				}
 
 				var cm *ipv4.ControlMessage = nil
-				if err := rawConn.WriteTo(iph, wb, cm); err != nil {
+				if err := rawConn.WriteTo(iph, wb, cm); err != nil && isFatalErr(err) {
 					errCh <- fmt.Errorf("failed to write to connection: %v", err)
 					return
 				}
@@ -590,7 +590,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 				wcm.HopLimit = req.TTL
 				nbytes, err := ipv6PacketConn.WriteTo(wb, &wcm, dst)
-				if err != nil {
+				if err != nil && isFatalErr(err) {
 					errCh <- fmt.Errorf("failed to write to connection: %v", err)
 					return
 				}

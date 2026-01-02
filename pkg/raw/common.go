@@ -3,6 +3,7 @@ package raw
 import (
 	"log"
 	"math"
+	"strings"
 
 	"context"
 
@@ -78,4 +79,13 @@ func getMaxPayloadLen(ipVersion int, ipprotoNum int, pmtu *int) int {
 		log.Printf("unknown ip version: %d", ipVersion)
 		return 0
 	}
+}
+
+func isFatalErr(err error) bool {
+	errStr := err.Error()
+	if strings.Contains(errStr, "message too long") {
+		return false
+	}
+
+	return true
 }
