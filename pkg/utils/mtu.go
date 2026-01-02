@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"fmt"
 	"net"
+	"sort"
+
+	"github.com/vishvananda/netlink"
 )
 
 func GetMaximumMTU() int {
@@ -46,4 +50,28 @@ func GetMinimumMTU() int {
 	}
 
 	return minMTU
+}
+
+func GetNexthopMTU(destination net.IP) int {
+	mtus := make([]int, 0)
+	handle, err := netlink.NewHandle()
+	if err != nil {
+		panic(fmt.Errorf("failed to create netlink handle: %v", err))
+	}
+	routes, err := handle.RouteGet(destination)
+	if err != nil {
+		panic(fmt.Errorf("failed to get route for %s: %v", destination, err))
+	}
+	for _, route := range routes {
+		link, err := netlink.LinkByIndex(route.LinkIndex)
+		if err != nil {
+			panic(fmt.Errorf("failed to get link by index %d: %v", route.LinkIndex, err))
+		}
+		mtus = append(mtus, link.Attrs().MTU)
+	}
+	if len(mtus) == 0 {
+		return GetMinimumMTU()
+	}
+	sort.Ints(mtus)
+	return mtus[0]
 }

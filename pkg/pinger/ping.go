@@ -117,7 +117,10 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		if pingRequest.RandomPayloadSize != nil && *pingRequest.RandomPayloadSize > 0 {
 			payloadLen = *pingRequest.RandomPayloadSize
 		}
-		payloadLen = int(math.Max(0, math.Min(float64(pkgutils.GetMinimumMTU()), float64(payloadLen))))
+
+		nexthopMTU := pkgutils.GetNexthopMTU(dst.IP)
+
+		payloadLen = int(math.Max(0, math.Min(float64(nexthopMTU), float64(payloadLen))))
 		payload := make([]byte, payloadLen)
 		if len(payload) > 0 {
 			cryptoRand.Read(payload)
@@ -144,6 +147,9 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			defer close(waitForEVGenCh)
 			defer close(ctrlSignals)
 			defer log.Printf("ICMP Event-generating goroutine for %s is exitting", dst.String())
+
+			var pmtu *int = new(int)
+			*pmtu = nexthopMTU
 
 			for {
 				select {
@@ -189,9 +195,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					}
 
 					<-time.After(time.Duration(pingRequest.IntvMilliseconds) * time.Millisecond)
+					if setMTUTo := wrappedEV.GetPMTU(); setMTUTo != nil {
+						*pmtu = *setMTUTo
+					}
+
 					ctrlSignals <- SendControl{
 						Seq:  *numPktsSent + 1,
-						PMTU: wrappedEV.GetPMTU(),
+						PMTU: pmtu,
 						TTL:  pingRequest.TTL.GetNext(),
 					}
 				}
@@ -233,11 +243,12 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					}
 
 					req := pkgraw.ICMPSendRequest{
-						Seq:  ctrlSignal.Seq,
-						TTL:  ctrlSignal.TTL,
-						Dst:  dst,
-						Data: payload,
-						PMTU: ctrlSignal.PMTU,
+						Seq:        ctrlSignal.Seq,
+						TTL:        ctrlSignal.TTL,
+						Dst:        dst,
+						Data:       payload,
+						PMTU:       ctrlSignal.PMTU,
+						NexthopMTU: nexthopMTU,
 					}
 
 					senderCh, ok := <-transceiver.GetSender()

@@ -8,11 +8,12 @@ import (
 )
 
 type ICMPSendRequest struct {
-	Dst  net.IPAddr
-	Seq  int
-	TTL  int
-	Data []byte
-	PMTU *int
+	Dst        net.IPAddr
+	Seq        int
+	TTL        int
+	Data       []byte
+	PMTU       *int
+	NexthopMTU int
 }
 
 type ICMPReceiveReply struct {
