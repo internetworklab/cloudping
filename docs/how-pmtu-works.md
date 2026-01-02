@@ -6,13 +6,13 @@ Most of the time MTU shall not trouble us, because standards, autoconfigurations
 
 However, things quickly become different when tunnels (or extra layer of encapsulation) are introduced, especially when playing with virtual links or custom routings. A Tunnel outgoing interface prepends some encapsulation (like tags, labels, headers in their own) in front of the original packet to conceal the address header fields to create a virutalized and free addressing space (so that we can play with some custom routing stuffs), the encapsulation itself also cost some overheads, so the simple rule of 1500 MTU no longer works.
 
-Working out (also knows how to working out) the correct path MTU is important, because an interface configured with in-correct MTU might siliently drop packets, causing import messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
+Working out (also knows how to working out) the correct path MTU is important, because an interface configured with in-correct MTU might siliently drop packets, causing important messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
 
-In this article we gonna mimics the scenario where some interfaces has non-standard MTU configured, and we will see how to probing out the correct MTU step by step that can make the packet pass through all the interfaces along the path with no problem.
+In this article we gonna mimics the scenario where some interfaces has non-standard MTU configured, and we will see how to probing out the correct MTU from scratch that can make the packet pass through all the interfaces along the path with no problem.
 
 ![network topology](pmtu-illustration.png)
 
-Create the above lab environment using following commands, we use ns1, ns2, and ns3 for demonstrating purpose and it will delete them and re-create them, proceed with cautious:
+Create the above lab environment using following commands, we use ns1, ns2, and ns3 for demonstrating purpose, and the script will delete them and re-create them, proceed with cautious:
 
 ## Build the Lab
 
@@ -83,6 +83,14 @@ To start probing MTU, let's say the MTU for the nexthop interface is 1500, so, s
 
 ```shell
 ping -c1 -s $((1500-8-20)) -4 -M do 192.168.7.2
+# `-s <size>` specify the size of payload of ICMP echo request message:
+# where 8 bytes for the ICMP header, and 20 bytes for IPv4 header,
+# so `-s $((1500-8-20))` makes the size of IP PDU be exactly our current probing MTU, 1500.
+# Also the probing MTU should start with the MTU of the outgoing interface to the nexthop,
+# for example, if we instead probing another target 172.23.1.2, and the nexthop is connected by utun1
+# and MTU of utun1 is 1420, then we should start with probing MTU of 1420.
+# `-M do` make sure the router middleboxes never try to siliently fragment our packets along the way.
+# and in ipv6, routers just won't fragment packets.
 ```
 
 We got this response:
@@ -94,6 +102,8 @@ From 192.168.5.2 icmp_seq=1 Frag needed and DF set (mtu = 1370)
 --- 192.168.7.2 ping statistics ---
 1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
 ```
+
+We can see that, the packet didn't make itself to the target, it made itself to the nexthop, 192.168.5.2, and the nexthop said the packet too big and the MTU is 1370, shrink your packet into smaller and retry again.
 
 So, adjust the probing mtu to 1370 and go ahead:
 
@@ -111,7 +121,9 @@ From 192.168.6.2 icmp_seq=1 Frag needed and DF set (mtu = 1350)
 1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
 ```
 
-Adjust the probing mtu to 1350 and go ahead:
+So we can see that the packet still did not make itself to the target, the second middlebox router in the path, 192.168.6.2, said the packet is still too big to pass it to the nexthop.
+
+Similarly, we just adjust the probing mtu to 1350 and go ahead:
 
 ```shell
 ping -c1 -s $((1350-8-20)) -4 -M do 192.168.7.2
@@ -181,7 +193,7 @@ traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
  6  * *^C
 ```
 
-Well, the traceroute just stucks here. Clearly, MTU mismatch is likely causing automatic PMTU discovery be broken.
+Well, the traceroute just stucks here. Clearly, MTU mismatch is likely causing automatic PMTU discovery to be broken.
 
 In our case, this is because that the ns2 router thinks that, MTU 1370 is already small enough to let the packet get pass through v-ns3 (which has a MTU of 1500) to reach the nexthop, everything seems alright because 1370 < 1500, except that ns2 has no knowledge of the MTU of the peer side and never knows that 1500 MTU of v-ns3 is actually wrong (because mismatch).
 
@@ -196,7 +208,7 @@ traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
  3  192.168.7.2 (192.168.7.2)  0.037 ms F=1350  0.108 ms  0.028 ms
 ```
 
-Since the MTUs are now matched, automatic PMTU discovery works again.
+Since the MTUs are now lined up, automatic PMTU discovery works again.
 
 ## Clean Up
 
