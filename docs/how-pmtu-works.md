@@ -75,6 +75,37 @@ ping -i 0.2 -c2 192.168.7.1
 ping -i 0.2 -c2 192.168.7.2
 ```
 
+To enable IPv6 connectivity and routing, paste following commands:
+
+```shell
+ip -n ns2 a add fd54:54:54:3::1/64 dev v-ns3
+ip -n ns1 a add fd54:54:54:2::1/64 dev v-ns2
+ip a add fd54:54:54:1::1/64 dev v-ns1
+
+ip -n ns1 a add fd54:54:54:1::2/64 dev eth1
+ip -n ns2 a add fd54:54:54:2::2/64 dev eth1
+ip -n ns3 a add fd54:54:54:3::2/64 dev eth1
+
+sysctl -w net.ipv6.conf.v-ns1.forwarding=1
+ip netns exec ns1 sysctl -w net.ipv6.conf.all.forwarding=1
+ip netns exec ns2 sysctl -w net.ipv6.conf.all.forwarding=1
+
+
+ip -6 -n ns3 r add ::/0 via fd54:54:54:3::1
+ip -6 -n ns2 r add ::/0 via fd54:54:54:2::1
+ip -6 -n ns1 r add ::/0 via fd54:54:54:1::1
+ip -6 -n ns1 r add fd54:54:54:3::/64 via fd54:54:54:2::2
+ip -6 r add fd54:54:54:2::/64 via fd54:54:54:1::2
+ip -6 r add fd54:54:54:3::/64 via fd54:54:54:1::2
+
+ping -i 0.2 -c2 fd54:54:54:1::1
+ping -i 0.2 -c2 fd54:54:54:1::2
+ping -i 0.2 -c2 fd54:54:54:2::1
+ping -i 0.2 -c2 fd54:54:54:2::2
+ping -i 0.2 -c2 fd54:54:54:3::1
+ping -i 0.2 -c2 fd54:54:54:3::2
+```
+
 ## Probing Path MTU
 
 ### Probing Path MTU With Manual Approach
