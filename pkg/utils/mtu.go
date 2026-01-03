@@ -58,6 +58,8 @@ func GetNexthopMTU(destination net.IP) int {
 	if err != nil {
 		panic(fmt.Errorf("failed to create netlink handle: %v", err))
 	}
+	defer handle.Close()
+
 	routes, err := handle.RouteGet(destination)
 	if err != nil {
 		panic(fmt.Errorf("failed to get route for %s: %v", destination, err))
@@ -67,7 +69,12 @@ func GetNexthopMTU(destination net.IP) int {
 		if err != nil {
 			panic(fmt.Errorf("failed to get link by index %d: %v", route.LinkIndex, err))
 		}
-		mtus = append(mtus, link.Attrs().MTU)
+		if linkMtu := link.Attrs().MTU; linkMtu > 0 {
+			mtus = append(mtus, linkMtu)
+		}
+		if routeMtu := route.MTU; routeMtu > 0 {
+			mtus = append(mtus, routeMtu)
+		}
 	}
 	if len(mtus) == 0 {
 		return GetMinimumMTU()

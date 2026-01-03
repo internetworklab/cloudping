@@ -12,6 +12,7 @@ func main() {
 		"1.1.1.1",
 		"192.168.7.2",
 		"192.168.4.2",
+		"fd54:54:54:3::2",
 	}
 	handle, err := netlink.NewHandle()
 	if err != nil {
@@ -30,7 +31,7 @@ func main() {
 				log.Printf("failed to get link by index %d: %v", route.LinkIndex, err)
 				continue
 			}
-			log.Printf("Destination: %s, Gateway: %s, Interface: %s, Interface MTU: %d", destination, route.Gw.String(), link.Attrs().Name, link.Attrs().MTU)
+			log.Printf("Destination: %s, Gateway: %s, Interface: %s, Interface MTU: %d, Route MTU: %d", destination, route.Gw.String(), link.Attrs().Name, link.Attrs().MTU, route.MTU)
 		}
 	}
 
