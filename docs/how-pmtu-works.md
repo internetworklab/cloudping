@@ -6,7 +6,7 @@ Most of the time MTU shall not trouble us, because standards, autoconfigurations
 
 However, things quickly become different when tunnels (or extra layer of encapsulation) are introduced, especially when playing with virtual links or custom routings. A Tunnel outgoing interface prepends some encapsulation (like tags, labels, headers in their own) in front of the original packet to conceal the address header fields to create a virutalized and free addressing space (so that we can play with some custom routing stuffs), the encapsulation itself also cost some overheads, so the simple rule of 1500 MTU no longer applies.
 
-Working out (also knows how to working out) the correct path MTU is important, because an interface configured with incorrect MTU might siliently drop packets, causing important messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
+Working out (also knows how to working out) the correct path MTU is important, because an interface configured with incorrect MTU might silently drops packets, causing important messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
 
 In this article we gonna mimics the scenario where some interfaces has non-standard MTU configured, and we will see how to probing out the correct MTU from scratch that can make the packet pass through all the interfaces along the path with no problem.
 
@@ -120,7 +120,7 @@ ping -c1 -s $((1500-8-20)) -4 -M do 192.168.7.2
 # Also the probing MTU should start with the MTU of the outgoing interface to the nexthop,
 # for example, if we instead probing another target 172.23.1.2, and the nexthop is connected by utun1
 # and MTU of utun1 is 1420, then we should start with probing MTU of 1420.
-# `-M do` make sure the router middleboxes never try to siliently fragment our packets along the way.
+# `-M do` make sure the router middleboxes never try to silently fragment our packets along the way.
 # and in ipv6, routers just won't fragment packets.
 ```
 
@@ -201,7 +201,7 @@ ip r get 192.168.7.2
 
 Next time, say one of your application tries to make a syscall `sendmsg()` to send something to, say, in our example, 192.168.7.2. Well, the kernel will make use of this finding of path MTU as discovered before, said the total length of the packet what your app gonna send is 1500 (bytes) or whatever, the kernel finds that 1500 is already greater than the PMTU cache of 192.168.7.2 which is 1350, so, depends on actual settings (e.g. some per socket options), the kernel might fragment the packets for you before actually send them out, or the kernel may also drop the packet and returns an EMSGSIZE error to the application.
 
-You may ajust the MTU of the nexthop interface(s) accordingly, although mostly you don't have to. Note that, once you decided to ajust the MTU setting of some interface, **make sure all interface MTUs in the point-to-point link (or in the same LAN) are strictly aligned**, in our example, if you changed the MTU of v-ns1 to 1350, then you also have to change the MTU of eth1 in ns2 to 1350 so that they align.
+You may adjust the MTU of the nexthop interface(s) accordingly, although mostly you don't have to. Note that, once you decided to adjust the MTU setting of some interface, **make sure all interface MTUs in the point-to-point link (or in the same LAN) are strictly aligned**, in our example, if you changed the MTU of v-ns1 to 1350, then you also have to change the MTU of eth1 in ns2 to 1350 so that they align.
 
 ## When PMTU Doesn't Work
 
@@ -211,7 +211,7 @@ Beside that, in order to make the entire network functioning properly, for each 
 
 ![mtu does not match](pmtu-doesnt-work.png)
 
-As we saw, the MTU of v-ns3 interface in ns2 has been intentionally adjusted to 1500, which is appearently higher than the MTU of its interface that connects ns1, and most importantly, mis-aligned with the MTU of another end of the point-to-point link which is 1350.
+As we saw, the MTU of v-ns3 interface in ns2 has been intentionally adjusted to 1500, which is apparently higher than the MTU of its interface that connects ns1, and most importantly, mis-aligned with the MTU of another end of the point-to-point link which is 1350.
 
 Let's take a look at traceroute to see if it's still functioning properly:
 
