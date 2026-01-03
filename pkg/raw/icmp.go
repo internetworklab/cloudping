@@ -343,49 +343,106 @@ func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, erro
 	return tracer, nil
 }
 
+func (icmp6tr *ICMP6Transceiver) getSenderAndTraceId() (packetConn net.PacketConn, ipv6PacketConn *ipv6.PacketConn, traceId int, err error) {
+	// var ipv6PacketConn *ipv6.PacketConn
+	// var traceId int
+	// var packetConn net.PacketConn
+	// var err error
+
+	listenConfig := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				// if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_PMTUDISC_PROBE, 1); err != nil {
+				// 	panic(fmt.Errorf("failed to set IPV6_PMTUDISC_PROBE: %v", err))
+				// }
+
+				// see rfc3542, section 11.2 "Sending without Fragmentation"
+				const IPV6_DONTFRAG int = 62
+				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, IPV6_DONTFRAG, 1); err != nil {
+					panic(fmt.Errorf("failed to set IPV6_DONTFRAG (62): %v", err))
+				}
+			})
+		},
+	}
+
+	if icmp6tr.useUDP {
+		packetConn, err = listenConfig.ListenPacket(context.Background(), "udp", "[::]:0")
+		if err != nil {
+			err = fmt.Errorf("failed to listen on udp: %v", err)
+			return
+		}
+
+		udpAddr, ok := packetConn.LocalAddr().(*net.UDPAddr)
+		if !ok {
+			panic("failed to cast local address to *net.UDPAddr")
+		}
+		traceId = udpAddr.Port
+		ipv6PacketConn = ipv6.NewPacketConn(packetConn)
+	} else {
+		traceId = rand.Intn(65536)
+
+		packetConn, err = listenConfig.ListenPacket(context.Background(), "ip6:58", "::") // ICMP for IPv6
+		if err != nil {
+			err = fmt.Errorf("failed to listen on packet:ip6-icmp: %v", err)
+			return
+		}
+		ipv6PacketConn = ipv6.NewPacketConn(packetConn)
+	}
+	return
+}
+
+func (icmp6tr *ICMP6Transceiver) getPacketListener() (net.PacketConn, *ipv6.PacketConn, error) {
+	ip6Icmp := fmt.Sprintf("%d", int(layers.IPProtocolICMPv6))
+	conn, err := net.ListenPacket("ip6:"+ip6Icmp, "::")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to listen on packet:ip6-icmp: %v", err)
+	}
+
+	packetConn := ipv6.NewPacketConn(conn)
+	if err := packetConn.SetControlMessage(ipv6.FlagHopLimit|ipv6.FlagSrc|ipv6.FlagDst|ipv6.FlagInterface|ipv6.FlagPathMTU, true); err != nil {
+		return nil, nil, fmt.Errorf("failed to set control message: %v", err)
+	}
+
+	var f ipv6.ICMPFilter
+	f.SetAll(true)
+	f.Accept(ipv6.ICMPTypeTimeExceeded)
+	f.Accept(ipv6.ICMPTypeEchoReply)
+	f.Accept(ipv6.ICMPTypePacketTooBig)
+
+	// when use udp for traceroute, expect to see a port-unreachable when packet reaches the end
+	f.Accept(ipv6.ICMPTypeDestinationUnreachable)
+	if err := packetConn.SetICMPFilter(&f); err != nil {
+		return nil, nil, fmt.Errorf("failed to set icmp filter: %v", err)
+	}
+
+	return conn, packetConn, nil
+}
+
 func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 	errCh := make(chan error, 2)
-	traceIdCh := make(chan int, 1)
+
+	rb := make([]byte, pkgutils.GetMaximumMTU())
+
+	txPacketConn, txIPv6PacketConn, traceId, err := icmp6tr.getSenderAndTraceId()
+	if err != nil {
+		errCh <- fmt.Errorf("failed to obtain sender PacketConn and ipv6PacketConn: %v", err)
+		return errCh
+	}
+
+	rxPacketConn, rxIPv6PacketConn, err := icmp6tr.getPacketListener()
+	if err != nil {
+		errCh <- fmt.Errorf("failed to obtain packet listener: %v", err)
+		return errCh
+	}
 
 	// launch receiving goroutine
 	go func() {
 		defer close(icmp6tr.ReceiveC)
-
-		rb := make([]byte, pkgutils.GetMaximumMTU())
-
-		ip6Icmp := fmt.Sprintf("%d", int(layers.IPProtocolICMPv6))
-		conn, err := net.ListenPacket("ip6:"+ip6Icmp, "::")
-		if err != nil {
-			errCh <- fmt.Errorf("failed to listen on packet:ip6-icmp: %v", err)
-			return
-		}
-		defer conn.Close()
-
-		packetConn := ipv6.NewPacketConn(conn)
-		if err := packetConn.SetControlMessage(ipv6.FlagHopLimit|ipv6.FlagSrc|ipv6.FlagDst|ipv6.FlagInterface|ipv6.FlagPathMTU, true); err != nil {
-			errCh <- fmt.Errorf("failed to set control message: %v", err)
-			return
-		}
-
-		var f ipv6.ICMPFilter
-		f.SetAll(true)
-		f.Accept(ipv6.ICMPTypeTimeExceeded)
-		f.Accept(ipv6.ICMPTypeEchoReply)
-		f.Accept(ipv6.ICMPTypePacketTooBig)
-
-		// when use udp for traceroute, expect to see a port-unreachable when packet reaches the end
-		f.Accept(ipv6.ICMPTypeDestinationUnreachable)
-		if err := packetConn.SetICMPFilter(&f); err != nil {
-			errCh <- fmt.Errorf("failed to set icmp filter: %v", err)
-			return
-		}
-
-		traceId := <-traceIdCh
+		defer rxPacketConn.Close()
 
 		for {
-			nBytes, ctrlMsg, peerAddr, err := packetConn.ReadFrom(rb)
-			log.Printf("[dbg] nBytes: %d, ctrlMsg: %v, peerAddr: %v, err: %v", nBytes, ctrlMsg, peerAddr, err)
+			nBytes, ctrlMsg, peerAddr, err := rxIPv6PacketConn.ReadFrom(rb)
 
 			if err != nil {
 				if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -508,54 +565,8 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 	// launch sending goroutine
 	go func() {
-		var traceId int
-		var packetConn net.PacketConn
-		var err error
 
-		var ipv6PacketConn *ipv6.PacketConn
-
-		listenConfig := net.ListenConfig{
-			Control: func(network, address string, c syscall.RawConn) error {
-				return c.Control(func(fd uintptr) {
-					// if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_PMTUDISC_PROBE, 1); err != nil {
-					// 	panic(fmt.Errorf("failed to set IPV6_PMTUDISC_PROBE: %v", err))
-					// }
-
-					// see rfc3542, section 11.2 "Sending without Fragmentation"
-					const IPV6_DONTFRAG int = 62
-					if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, IPV6_DONTFRAG, 1); err != nil {
-						panic(fmt.Errorf("failed to set IPV6_DONTFRAG (62): %v", err))
-					}
-				})
-			},
-		}
-
-		if icmp6tr.useUDP {
-			packetConn, err = listenConfig.ListenPacket(context.Background(), "udp", "[::]:0")
-			if err != nil {
-				errCh <- fmt.Errorf("failed to listen on udp: %v", err)
-				return
-			}
-			defer packetConn.Close()
-
-			udpAddr, ok := packetConn.LocalAddr().(*net.UDPAddr)
-			if !ok {
-				panic("failed to cast local address to *net.UDPAddr")
-			}
-			traceId = udpAddr.Port
-			ipv6PacketConn = ipv6.NewPacketConn(packetConn)
-		} else {
-			traceId = rand.Intn(65536)
-
-			c, err := listenConfig.ListenPacket(context.Background(), "ip6:58", "::") // ICMP for IPv6
-			if err != nil {
-				errCh <- fmt.Errorf("failed to listen on packet:ip6-icmp: %v", err)
-				return
-			}
-			defer c.Close()
-			ipv6PacketConn = ipv6.NewPacketConn(c)
-		}
-		traceIdCh <- traceId
+		defer txPacketConn.Close()
 
 		var wcm ipv6.ControlMessage
 		for {
@@ -610,9 +621,8 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 					}
 				}
 
-				time.Sleep(1 * time.Second)
 				wcm.HopLimit = req.TTL
-				nbytes, err := ipv6PacketConn.WriteTo(wb, &wcm, dst)
+				nbytes, err := txIPv6PacketConn.WriteTo(wb, &wcm, dst)
 				if err != nil && isFatalErr(err) {
 					errCh <- fmt.Errorf("failed to write to connection: %v", err)
 					return
