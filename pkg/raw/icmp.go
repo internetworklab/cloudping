@@ -106,7 +106,17 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 		traceId = 1024 + rand.Intn(65536-1024)
 	}
 
-	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
+	listenConfig := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_PROBE); err != nil {
+					panic(fmt.Errorf("failed to set IP_MTU_DISCOVER to IP_PMTUDISC_PROBE: %v", err))
+				}
+			})
+		},
+	}
+
+	conn, err := listenConfig.ListenPacket(context.Background(), "ip4:icmp", "0.0.0.0")
 	if err != nil {
 		errCh <- fmt.Errorf("failed to listen on packet:icmp: %v", err)
 		return errCh
@@ -444,7 +454,6 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 		for {
 			nBytes, ctrlMsg, peerAddr, err := rxIPv6PacketConn.ReadFrom(rb)
-			log.Printf("[dbg] nBytes: %d, ctrlMsg: %v, peerAddr: %v, err: %v", nBytes, ctrlMsg, peerAddr, err)
 
 			if err != nil {
 				if err, ok := err.(net.Error); ok && err.Timeout() {
