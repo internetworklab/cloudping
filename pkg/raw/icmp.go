@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
@@ -362,7 +363,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 		defer conn.Close()
 
 		packetConn := ipv6.NewPacketConn(conn)
-		if err := packetConn.SetControlMessage(ipv6.FlagHopLimit|ipv6.FlagSrc|ipv6.FlagDst|ipv6.FlagInterface, true); err != nil {
+		if err := packetConn.SetControlMessage(ipv6.FlagHopLimit|ipv6.FlagSrc|ipv6.FlagDst|ipv6.FlagInterface|ipv6.FlagPathMTU, true); err != nil {
 			errCh <- fmt.Errorf("failed to set control message: %v", err)
 			return
 		}
@@ -398,6 +399,8 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 				log.Printf("failed to parse icmp message: %v, raw: %v", err, string(rb[:nBytes]))
 				continue
 			}
+
+			log.Printf("[dbg] ctrlMsg.PMTU: %d", ctrlMsg.MTU)
 
 			ty := receiveMsg.Type.Protocol()
 			cd := receiveMsg.Code
@@ -435,7 +438,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 					log.Printf("failed to cast time exceeded body to *icmp.TimeExceeded")
 					continue
 				}
-				originPktIdentifier, err := extractPacketInfoFromOriginIP6(timeExceededMsg.Data, icmp6tr.udpBasePort)
+				originPktIdentifier, err := ExtractPacketInfoFromOriginIP6(timeExceededMsg.Data, icmp6tr.udpBasePort)
 				if err != nil {
 					log.Printf("failed to extract packet info from origin ip6 packet: %v", err)
 					continue
@@ -454,7 +457,7 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 						continue
 					}
 
-					originPktIdentifier, err := extractPacketInfoFromOriginIP6(dstUnreachMsg.Data, icmp6tr.udpBasePort)
+					originPktIdentifier, err := ExtractPacketInfoFromOriginIP6(dstUnreachMsg.Data, icmp6tr.udpBasePort)
 					if err != nil {
 						log.Printf("failed to extract packet info from origin ip6 packet: %v", err)
 						continue
@@ -476,12 +479,14 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 				}
 
 				replyObject.SetMTUTo = &packetTooBigMsg.MTU
+				log.Printf("[dbg] fuck mtu: %d", packetTooBigMsg.MTU)
 
-				originPktIdentifier, err := extractPacketInfoFromOriginIP6(packetTooBigMsg.Data, icmp6tr.udpBasePort)
+				originPktIdentifier, err := ExtractPacketInfoFromOriginIP6(packetTooBigMsg.Data, icmp6tr.udpBasePort)
 				if err != nil {
 					log.Printf("failed to extract packet info from origin ip6 packet: %v", err)
 					continue
 				}
+				log.Printf("[dbg] origin pkt identifier: %v", originPktIdentifier.String())
 
 				replyObject.IPProto = originPktIdentifier.IPProto
 				replyObject.ID = originPktIdentifier.Id
@@ -509,8 +514,24 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 
 		var ipv6PacketConn *ipv6.PacketConn
 
+		listenConfig := net.ListenConfig{
+			Control: func(network, address string, c syscall.RawConn) error {
+				return c.Control(func(fd uintptr) {
+					if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_PMTUDISC_PROBE, 1); err != nil {
+						panic(fmt.Errorf("failed to set IPV6_PMTUDISC_PROBE: %v", err))
+					}
+
+					// see rfc3542, section 11.2 "Sending without Fragmentation"
+					const IPV6_DONTFRAG int = 62
+					if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, IPV6_DONTFRAG, 1); err != nil {
+						panic(fmt.Errorf("failed to set IPV6_DONTFRAG (62): %v", err))
+					}
+				})
+			},
+		}
+
 		if icmp6tr.useUDP {
-			packetConn, err = net.ListenPacket("udp", "[::]:0")
+			packetConn, err = listenConfig.ListenPacket(context.Background(), "udp", "[::]:0")
 			if err != nil {
 				errCh <- fmt.Errorf("failed to listen on udp: %v", err)
 				return
@@ -525,7 +546,8 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 			ipv6PacketConn = ipv6.NewPacketConn(packetConn)
 		} else {
 			traceId = rand.Intn(65536)
-			c, err := net.ListenPacket("ip6:58", "::") // ICMP for IPv6
+
+			c, err := listenConfig.ListenPacket(context.Background(), "ip6:58", "::") // ICMP for IPv6
 			if err != nil {
 				errCh <- fmt.Errorf("failed to listen on packet:ip6-icmp: %v", err)
 				return

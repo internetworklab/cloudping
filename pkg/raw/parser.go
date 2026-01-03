@@ -158,7 +158,7 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 	}
 }
 
-func extractPacketInfoFromOriginIP6(originIPPacketRaw []byte, baseDstPort int) (identifier *PacketIdentifier, err error) {
+func ExtractPacketInfoFromOriginIP6(originIPPacketRaw []byte, baseDstPort int) (identifier *PacketIdentifier, err error) {
 	identifier = new(PacketIdentifier)
 
 	packet := gopacket.NewPacket(originIPPacketRaw, layers.LayerTypeIPv6, gopacket.Default)
