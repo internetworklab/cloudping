@@ -4,9 +4,9 @@ MTU is the maximum size of PDU of layer 3 packets (mainly IP packets) that an in
 
 Most of the time MTU shall not trouble us, because standards, autoconfigurations, iptables stuff and firmware of the ISP residential gateway did some works for us underneath.
 
-However, things quickly become different when tunnels (or extra layer of encapsulation) are introduced, especially when playing with virtual links or custom routings. A Tunnel outgoing interface prepends some encapsulation (like tags, labels, headers in their own) in front of the original packet to conceal the address header fields to create a virutalized and free addressing space (so that we can play with some custom routing stuffs), the encapsulation itself also cost some overheads, so the simple rule of 1500 MTU no longer works.
+However, things quickly become different when tunnels (or extra layer of encapsulation) are introduced, especially when playing with virtual links or custom routings. A Tunnel outgoing interface prepends some encapsulation (like tags, labels, headers in their own) in front of the original packet to conceal the address header fields to create a virutalized and free addressing space (so that we can play with some custom routing stuffs), the encapsulation itself also cost some overheads, so the simple rule of 1500 MTU no longer applies.
 
-Working out (also knows how to working out) the correct path MTU is important, because an interface configured with in-correct MTU might siliently drop packets, causing important messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
+Working out (also knows how to working out) the correct path MTU is important, because an interface configured with incorrect MTU might siliently drop packets, causing important messages be lost. MTU mismatch or misconfiguration might also cause many BGP issues, such as flapping or ghost routes.
 
 In this article we gonna mimics the scenario where some interfaces has non-standard MTU configured, and we will see how to probing out the correct MTU from scratch that can make the packet pass through all the interfaces along the path with no problem.
 
@@ -191,7 +191,7 @@ traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
 
 ### Kernel's PMTU Cache
 
-Once the Path MTU is probed, the kernel might cache the PMTU result for you, you can then adjust the mtu of the nexthop interface(s) accordingly:
+Once the Path MTU is probed, the kernel might cache the PMTU result for you, so that your node don't have to repeat the process described above again and again when it tries to communicate with some target that has smaller interface MTU then its:
 
 ```
 ip r get 192.168.7.2
@@ -199,7 +199,9 @@ ip r get 192.168.7.2
     cache expires 381sec mtu 1350
 ```
 
-Once you decided to ajust the MTU setting of some interface, **make sure all interface MTUs in the point-to-point link (or in the same LAN) are strictly aligned**, in our example, if you changed the MTU of v-ns1 to 1350, then you also have to change the MTU of eth1 in ns2 to 1350 so that they align.
+Next time, say one of your application tries to make a syscall `sendmsg()` to send something to, say, in our example, 192.168.7.2. Well, the kernel will make use of this finding of path MTU as discovered before, said the total length of the packet what your app gonna send is 1500 (bytes) or whatever, the kernel finds that 1500 is already greater than the PMTU cache of 192.168.7.2 which is 1350, so, depends on actual settings (e.g. some per socket options), the kernel might fragment the packets for you before actually send them out, or the kernel may also drop the packet and returns an EMSGSIZE error to the application.
+
+You may ajust the MTU of the nexthop interface(s) accordingly, although mostly you don't have to. Note that, once you decided to ajust the MTU setting of some interface, **make sure all interface MTUs in the point-to-point link (or in the same LAN) are strictly aligned**, in our example, if you changed the MTU of v-ns1 to 1350, then you also have to change the MTU of eth1 in ns2 to 1350 so that they align.
 
 ## When PMTU Doesn't Work
 
@@ -240,6 +242,8 @@ traceroute to 192.168.7.2 (192.168.7.2), 30 hops max, 65000 byte packets
 ```
 
 Since the MTUs are now lined up, automatic PMTU discovery works again.
+
+The way to probe the path MTU we described in this article, is sometimes also known as _the classic PMTU discovery_, and there's also a RFC for that ([rfc1191](https://datatracker.ietf.org/doc/html/rfc1191)). So now we can find that, the classic PMTU discovery does not always works, it's not always reliable, and it should be regarded as some best-effort approach. There's a much more robust way of doing PMTU discovery called _packetized PMTU_ or "Packetization Layer Path MTU Discovery" as describe in [rfc4821](https://datatracker.ietf.org/doc/html/rfc4821), it's also more sophisticated and we might have a look on that in the future.
 
 ## Clean Up
 
