@@ -7,6 +7,13 @@ function getApiEndpoint(): string {
   );
 }
 
+function sortAndDedup(nodes: string[]): string[] {
+  const nodeSet = new Set<string>(nodes);
+  const sorted = Array.from(nodeSet);
+  sorted.sort();
+  return sorted;
+}
+
 export async function getCurrentPingers(
   extraLabels?: Record<string, string>
 ): Promise<string[]> {
@@ -46,7 +53,8 @@ export async function getCurrentPingers(
           }
         }
       }
-      return nodes;
+
+      return sortAndDedup(nodes);
     })
     .catch((err) => {
       console.error("Failed to get current pingers:", err);
