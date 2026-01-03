@@ -42,6 +42,8 @@ type HubCmd struct {
 
 	MinPktInterval string `help:"The minimum interval between packets"`
 	MaxPktTimeout  string `help:"The maximum timeout for a packet"`
+
+	PktCountClamp *int `help:"The maximum number of packets to send for a single ping task"`
 }
 
 func (hubCmd HubCmd) Run() error {
@@ -63,6 +65,10 @@ func (hubCmd HubCmd) Run() error {
 		}
 		log.Printf("Parsed max packet timeout: %s", tmt.String())
 		maxPktTimeout = &tmt
+	}
+
+	if hubCmd.PktCountClamp != nil {
+		log.Printf("PktCountClamp is set to %d", *hubCmd.PktCountClamp)
 	}
 
 	customCAs, err := pkgutils.NewCustomCAPool(hubCmd.PeerCAs)
@@ -103,6 +109,7 @@ func (hubCmd HubCmd) Run() error {
 		OutOfRespondRangePolicy: pkghandler.OutOfRespondRangePolicy(hubCmd.OutOfRespondRangePolicy),
 		MinPktInterval:          minPktInterval,
 		MaxPktTimeout:           maxPktTimeout,
+		PktCountClamp:           hubCmd.PktCountClamp,
 	}
 
 	// muxerPrivate is for privileged rw operations

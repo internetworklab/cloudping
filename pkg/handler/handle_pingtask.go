@@ -32,6 +32,7 @@ type PingTaskHandler struct {
 	OutOfRespondRangePolicy OutOfRespondRangePolicy
 	MinPktInterval          *time.Duration
 	MaxPktTimeout           *time.Duration
+	PktCountClamp           *int
 }
 
 const (
@@ -189,6 +190,16 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	form.IntvMilliseconds = int(getRealPktIntv(r, form, handler.MinPktInterval).Milliseconds())
 	form.PktTimeoutMilliseconds = int(getRealPktTimeout(r, form, handler.MaxPktTimeout).Milliseconds())
+	if handler.PktCountClamp != nil {
+		if form.TotalPkts == nil {
+			form.TotalPkts = new(int)
+			*form.TotalPkts = *handler.PktCountClamp
+			log.Printf("Request from %s has no pkt count specified, clamping to %d", pkgutils.GetRemoteAddr(r), *handler.PktCountClamp)
+		} else if *form.TotalPkts > *handler.PktCountClamp {
+			log.Printf("Request from %s has a too big pkt count %d, clamping to %d", pkgutils.GetRemoteAddr(r), *form.TotalPkts, *handler.PktCountClamp)
+			*form.TotalPkts = *handler.PktCountClamp
+		}
+	}
 
 	pingers := make([]pkgpinger.Pinger, 0)
 	ctx := r.Context()

@@ -3,7 +3,6 @@ package raw
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -144,8 +143,6 @@ func getIDSeqPMTUFromOriginIPPacket4(rawICMPReply []byte, baseDstPort int) (iden
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract origin packet info from icmp error message: %w", err)
 		}
-
-		log.Printf("[DBG] subIdentifier: %s", subIdentifier.String())
 
 		identifier.IPProto = subIdentifier.IPProto
 		identifier.LastHop = false
