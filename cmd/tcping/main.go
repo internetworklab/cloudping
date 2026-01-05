@@ -31,7 +31,9 @@ type PacketInfo struct {
 }
 
 func (pktInfo *PacketInfo) String() string {
-	return fmt.Sprintf("%s:%d -> %s:%d", pktInfo.SrcIP, pktInfo.TCP.SrcPort, pktInfo.DstIP, pktInfo.TCP.DstPort)
+	from := net.JoinHostPort(pktInfo.SrcIP.String(), strconv.Itoa(int(pktInfo.TCP.SrcPort)))
+	to := net.JoinHostPort(pktInfo.DstIP.String(), strconv.Itoa(int(pktInfo.TCP.DstPort)))
+	return fmt.Sprintf("%s -> %s", from, to)
 }
 
 type FilterRequirements struct {
@@ -312,7 +314,9 @@ func NewTCPSYNSentReceipt(request *TCPSYNRequest) *TCPSYNSentReceipt {
 }
 
 func (receipt *TCPSYNSentReceipt) String() string {
-	return fmt.Sprintf("at %s, seq %d, %s:%d -> %s:%d", receipt.SentAt.Format(time.RFC3339Nano), receipt.Seq, receipt.SrcIP, receipt.SrcPort, receipt.Request.DstIP, receipt.Request.DstPort)
+	from := net.JoinHostPort(receipt.SrcIP.String(), strconv.Itoa(receipt.SrcPort))
+	to := net.JoinHostPort(receipt.Request.DstIP.String(), strconv.Itoa(receipt.Request.DstPort))
+	return fmt.Sprintf("at %s, seq %d, %s -> %s", receipt.SentAt.Format(time.RFC3339Nano), receipt.Seq, from, to)
 }
 
 const defaultTTL int = 64
@@ -431,8 +435,8 @@ type Sender interface {
 }
 
 type TCPSYNSender struct {
-	RawConn   *ipv4.RawConn
-	LocalPort int
+	RawConn  *ipv4.RawConn
+	listener net.PacketConn
 }
 
 func (sender *TCPSYNSender) Send(request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
@@ -530,8 +534,13 @@ func (sender *TCPSYNSender) GetPackets() <-chan *PacketInfo {
 	return rbCh
 }
 
+func (sender *TCPSYNSender) Close() error {
+	return sender.listener.Close()
+}
+
 type TCPSYNSender6 struct {
-	RawConn *ipv6.PacketConn
+	RawConn  *ipv6.PacketConn
+	listener net.PacketConn
 }
 
 func (sender *TCPSYNSender6) Send(request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
@@ -607,7 +616,12 @@ func (sender *TCPSYNSender6) GetPackets() <-chan *PacketInfo {
 	go func() {
 		defer close(rbCh)
 
+		if err := rawConn.SetControlMessage(ipv6.FlagHopLimit|ipv6.FlagSrc|ipv6.FlagDst, true); err != nil {
+			log.Printf("failed to set control message: %v", err)
+		}
+
 		for {
+
 			n, cm, src, err := rawConn.ReadFrom(rb)
 			if err != nil {
 				log.Printf("failed to read from raw connection: %v", err)
@@ -633,48 +647,62 @@ func (sender *TCPSYNSender6) GetPackets() <-chan *PacketInfo {
 	return rbCh
 }
 
-func getRawIPv6Conn(ctx context.Context) (net.PacketConn, *ipv6.PacketConn, error) {
+func (sender *TCPSYNSender6) Close() error {
+	return sender.listener.Close()
+}
+
+func NewTCPSYNSender6(ctx context.Context) (*TCPSYNSender6, error) {
 	listenConfig := net.ListenConfig{}
 
 	ipProtoTCP := fmt.Sprintf("%d", int(layers.IPProtocolTCP))
 	ln, err := listenConfig.ListenPacket(ctx, "ip6:"+ipProtoTCP, "::")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
+		return nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
 	}
 
 	log.Printf("listening on %s", ln.LocalAddr().String())
 
 	rawConn := ipv6.NewPacketConn(ln)
 	if rawConn == nil {
-		return nil, nil, fmt.Errorf("failed to create raw connection")
+		return nil, fmt.Errorf("failed to create raw connection")
 	}
 
-	return ln, rawConn, nil
+	sender := &TCPSYNSender6{
+		RawConn:  rawConn,
+		listener: ln,
+	}
+
+	return sender, nil
 }
 
-func getRawIPv4Conn(ctx context.Context) (net.PacketConn, *ipv4.RawConn, error) {
+func NewTCPSYNSender(ctx context.Context) (*TCPSYNSender, error) {
 	listenConfig := net.ListenConfig{}
 
 	ipProtoTCP := fmt.Sprintf("%d", int(layers.IPProtocolTCP))
 	ln, err := listenConfig.ListenPacket(ctx, "ip4:"+ipProtoTCP, "0.0.0.0")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
+		return nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
 	}
 
 	log.Printf("listening on %s", ln.LocalAddr().String())
 
 	rawConn, err := ipv4.NewRawConn(ln)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create raw connection: %v", err)
+		return nil, fmt.Errorf("failed to create raw connection: %v", err)
 	}
 
-	return ln, rawConn, nil
+	sender := &TCPSYNSender{
+		RawConn:  rawConn,
+		listener: ln,
+	}
+
+	return sender, nil
 }
 
 var (
-	hostport           = flag.String("hostport", "127.0.0.1:80", "host:port to ping")
-	intvMs             = flag.Int("intvMs", 1000, "interval between pings in milliseconds")
-	ipFamilyPreference = flag.String("ipFamilyPreference", "ip", "ip family preference: ip, ipv4, or ipv6")
+	hostport = flag.String("hostport", "127.0.0.1:80", "host:port to ping")
+	intvMs   = flag.Int("intvMs", 1000, "interval between pings in milliseconds")
+	inetPref = flag.String("inetPref", "ip", "ip family preference: ip, ipv4, or ipv6")
 )
 
 func init() {
@@ -691,7 +719,7 @@ func main() {
 	}
 
 	resolver := net.DefaultResolver
-	dstIPs, err := resolver.LookupIP(ctx, *ipFamilyPreference, host)
+	dstIPs, err := resolver.LookupIP(ctx, *inetPref, host)
 	if err != nil {
 		log.Fatalf("failed to lookup ip: %v", err)
 	}
@@ -706,30 +734,23 @@ func main() {
 		log.Fatalf("failed to convert port to int: %v", err)
 	}
 
-	addrPair := &net.UDPAddr{IP: dstIP, Port: dstPort}
-	log.Printf("Pinging %s", addrPair.String())
+	log.Printf("Pinging %s", net.JoinHostPort(dstIP.String(), strconv.Itoa(dstPort)))
 
 	var sender Sender
 	if dstIP.To4() == nil {
-		ln6, rawConn6, err := getRawIPv6Conn(ctx)
+		sender6, err := NewTCPSYNSender6(ctx)
 		if err != nil {
-			log.Fatalf("failed to get raw ipv6 connection: %v", err)
+			log.Fatalf("failed to create ipv6 tcp syn sender: %v", err)
 		}
-		log.Printf("raw ipv6 connection created")
-		defer ln6.Close()
-		sender = &TCPSYNSender6{
-			RawConn: rawConn6,
-		}
+		defer sender6.Close()
+		sender = sender6
 	} else {
-		ln, rawConn, err := getRawIPv4Conn(ctx)
+		sender4, err := NewTCPSYNSender(ctx)
 		if err != nil {
-			log.Fatalf("failed to get raw ipv4 connection: %v", err)
+			log.Fatalf("failed to create ipv4 tcp syn sender: %v", err)
 		}
-		log.Printf("raw ipv4 connection created")
-		defer ln.Close()
-		sender = &TCPSYNSender{
-			RawConn: rawConn,
-		}
+		defer sender4.Close()
+		sender = sender4
 	}
 
 	rbCh := sender.GetPackets()
