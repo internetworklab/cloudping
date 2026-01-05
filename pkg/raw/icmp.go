@@ -19,6 +19,8 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+type ICMPTransceiverHook func(ctx context.Context, request *ICMPSendRequest, reply *ICMPReceiveReply, peer string, nBytes int) error
+
 type ICMP4TransceiverConfig struct {
 	// ICMP ID to use
 	ID *int
@@ -26,6 +28,9 @@ type ICMP4TransceiverConfig struct {
 	UDPBasePort *int
 
 	UseUDP bool
+
+	OnSent     ICMPTransceiverHook
+	OnReceived ICMPTransceiverHook
 }
 
 // add this udpbaseport with seq to get the actual udp dst port,
@@ -79,6 +84,9 @@ type ICMP4Transceiver struct {
 	closed         bool
 	closeCh        chan interface{}
 	closeProtector sync.Mutex
+
+	onSent     ICMPTransceiverHook
+	onReceived ICMPTransceiverHook
 }
 
 func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, error) {
@@ -90,6 +98,8 @@ func NewICMP4Transceiver(config ICMP4TransceiverConfig) (*ICMP4Transceiver, erro
 		useUDP:         config.UseUDP,
 		closeCh:        make(chan interface{}),
 		closeProtector: sync.Mutex{},
+		onSent:         config.OnSent,
+		onReceived:     config.OnReceived,
 	}
 	if config.UDPBasePort != nil {
 		tracer.udpBasePort = *config.UDPBasePort
@@ -193,7 +203,12 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 			replyObject.LastHop = pktIdentifier.LastHop
 
 			icmp4tr.ReceiveC <- replyObject
-			markAsReceivedBytes(ctx, nBytes)
+			if icmp4tr.onReceived != nil {
+				if err := icmp4tr.onReceived(ctx, nil, &replyObject, replyObject.Peer, nBytes); err != nil {
+					errCh <- fmt.Errorf("failed to call onReceived callback: %v", err)
+					return
+				}
+			}
 		}
 	}()
 
@@ -289,7 +304,12 @@ func (icmp4tr *ICMP4Transceiver) Run(ctx context.Context) <-chan error {
 					return
 				}
 
-				markAsSentBytes(ctx, iph.TotalLen)
+				if icmp4tr.onSent != nil {
+					if err := icmp4tr.onSent(ctx, &req, nil, req.Dst.String(), iph.TotalLen); err != nil {
+						errCh <- fmt.Errorf("failed to call onSent callback: %v", err)
+						return
+					}
+				}
 			}
 		}
 	}()
@@ -319,6 +339,8 @@ func (icmp4tr *ICMP4Transceiver) GetReceiver() <-chan ICMPReceiveReply {
 type ICMP6TransceiverConfig struct {
 	UseUDP      bool
 	UDPBasePort *int
+	OnSent      ICMPTransceiverHook
+	OnReceived  ICMPTransceiverHook
 }
 
 type ICMP6Transceiver struct {
@@ -333,6 +355,9 @@ type ICMP6Transceiver struct {
 	closed         bool
 	closeProtector sync.Mutex
 	closeCh        chan interface{}
+
+	onSent     ICMPTransceiverHook
+	onReceived ICMPTransceiverHook
 }
 
 func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, error) {
@@ -343,6 +368,8 @@ func NewICMP6Transceiver(config ICMP6TransceiverConfig) (*ICMP6Transceiver, erro
 		udpBasePort:    defaultUDPBasePort,
 		closeCh:        make(chan interface{}),
 		closeProtector: sync.Mutex{},
+		onSent:         config.OnSent,
+		onReceived:     config.OnReceived,
 	}
 	if config.UDPBasePort != nil {
 		tracer.udpBasePort = *config.UDPBasePort
@@ -566,7 +593,12 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 			}
 
 			icmp6tr.ReceiveC <- replyObject
-			markAsReceivedBytes(ctx, nBytes)
+			if icmp6tr.onReceived != nil {
+				if err := icmp6tr.onReceived(ctx, nil, &replyObject, replyObject.Peer, replyObject.Size); err != nil {
+					errCh <- fmt.Errorf("failed to call onReceived callback: %v", err)
+					return
+				}
+			}
 		}
 	}()
 
@@ -641,7 +673,12 @@ func (icmp6tr *ICMP6Transceiver) Run(ctx context.Context) <-chan error {
 				if icmp6tr.useUDP {
 					recordSentBytes += udpHeaderLen
 				}
-				markAsSentBytes(ctx, recordSentBytes)
+				if icmp6tr.onSent != nil {
+					if err := icmp6tr.onSent(ctx, &req, nil, req.Dst.String(), recordSentBytes); err != nil {
+						errCh <- fmt.Errorf("failed to call onSent callback: %v", err)
+						return
+					}
+				}
 			}
 		}
 	}()

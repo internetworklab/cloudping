@@ -26,6 +26,8 @@ type SimplePinger struct {
 	PingRequest   *SimplePingRequest
 	IPInfoAdapter pkgipinfo.GeneralIPInfoAdapter
 	RespondRange  []net.IPNet
+	OnSent        pkgraw.ICMPTransceiverHook
+	OnReceived    pkgraw.ICMPTransceiverHook
 }
 
 func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
@@ -98,6 +100,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			icmp4tr, err := pkgraw.NewICMP4Transceiver(pkgraw.ICMP4TransceiverConfig{
 				UDPBasePort: udpPort,
 				UseUDP:      useUDP,
+				OnSent:      sp.OnSent,
+				OnReceived:  sp.OnReceived,
 			})
 			if err != nil {
 				log.Fatalf("failed to create ICMP4 transceiver: %v", err)
@@ -108,6 +112,8 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			icmp6tr, err := pkgraw.NewICMP6Transceiver(pkgraw.ICMP6TransceiverConfig{
 				UseUDP:      useUDP,
 				UDPBasePort: udpPort,
+				OnSent:      sp.OnSent,
+				OnReceived:  sp.OnReceived,
 			})
 			if err != nil {
 				log.Fatalf("failed to create ICMP6 transceiver: %v", err)

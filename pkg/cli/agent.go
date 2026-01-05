@@ -21,6 +21,7 @@ import (
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
+	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgrouting "example.com/rbmq-demo/pkg/routing"
 	pkgthrottle "example.com/rbmq-demo/pkg/throttle"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
@@ -68,7 +69,7 @@ type AgentCmd struct {
 	MetricsListenAddress string `help:"Endpoint to expose prometheus metrics" default:":2112"`
 	MetricsPath          string `help:"Path to expose prometheus metrics" default:"/metrics"`
 
-	SupportUDP bool `help:"Declare supportness for UDP traceroute" default:"false"`
+	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"false"`
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"false"`
 }
 
@@ -135,10 +136,22 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	onSent := func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
+		counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))
+		return nil
+	}
+
+	onReceived := func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
+		counterStore.NumBytesReceived.With(commonLabels).Add(float64(nBytes))
+		return nil
+	}
+
 	pinger := &pkgpinger.SimplePinger{
 		PingRequest:   pingRequest,
 		IPInfoAdapter: ipinfoAdapter,
 		RespondRange:  ph.RespondRange,
+		OnSent:        onSent,
+		OnReceived:    onReceived,
 	}
 	for ev := range pinger.Ping(ctx) {
 		if ev.Error != nil {
