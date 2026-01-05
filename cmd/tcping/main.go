@@ -20,48 +20,18 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 type PacketInfo struct {
-	Hdr     *ipv4.Header
+	SrcIP   net.IP
+	DstIP   net.IP
 	Payload []byte
-	CtrlMsg *ipv4.ControlMessage
 	TCP     *layers.TCP
 }
 
 func (pktInfo *PacketInfo) String() string {
-	return fmt.Sprintf("%s:%d -> %s:%d", pktInfo.Hdr.Src, pktInfo.TCP.SrcPort, pktInfo.Hdr.Dst, pktInfo.TCP.DstPort)
-}
-
-func getPackets(rawConn *ipv4.RawConn) <-chan *PacketInfo {
-	rbCh := make(chan *PacketInfo)
-	rb := make([]byte, pkgutils.GetMaximumMTU())
-
-	go func() {
-		defer close(rbCh)
-
-		for {
-			hdr, payload, ctrlMsg, err := rawConn.ReadFrom(rb)
-			if err != nil {
-				log.Printf("failed to read from raw connection: %v", err)
-				return
-			}
-			if hdr.Version != ipv4.Version {
-				continue
-			}
-			if hdr.Protocol != int(layers.IPProtocolTCP) {
-				continue
-			}
-			pktInfo := new(PacketInfo)
-			pktInfo.Hdr = hdr
-			pktInfo.Payload = make([]byte, hdr.TotalLen)
-			copy(pktInfo.Payload, payload)
-			pktInfo.CtrlMsg = ctrlMsg
-			rbCh <- pktInfo
-		}
-
-	}()
-	return rbCh
+	return fmt.Sprintf("%s:%d -> %s:%d", pktInfo.SrcIP, pktInfo.TCP.SrcPort, pktInfo.DstIP, pktInfo.TCP.DstPort)
 }
 
 type FilterRequirements struct {
@@ -75,13 +45,6 @@ func filterPackets(rbCh <-chan *PacketInfo, requirements *FilterRequirements) <-
 	go func() {
 		defer close(filteredCh)
 		for pktInfo := range rbCh {
-			hdr := pktInfo.Hdr
-			if hdr == nil {
-				continue
-			}
-			if hdr.Protocol != int(layers.IPProtocolTCP) {
-				continue
-			}
 
 			packet := gopacket.NewPacket(pktInfo.Payload, layers.LayerTypeTCP, gopacket.Default)
 			if packet == nil {
@@ -288,7 +251,7 @@ func (tk *Tracker) MarkSent(sentReceipt *TCPSYNSentReceipt) {
 }
 
 func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
-	if receivedPkt == nil || receivedPkt.Hdr == nil || receivedPkt.TCP == nil {
+	if receivedPkt == nil || receivedPkt.TCP == nil {
 		log.Printf("received packet is nil, or some inner headers are nil")
 		return
 	}
@@ -298,7 +261,7 @@ func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
 		return
 	}
 
-	key := buildKey(receivedPkt.Hdr.Dst, int(receivedPkt.TCP.DstPort), receivedPkt.Hdr.Src, int(receivedPkt.TCP.SrcPort))
+	key := buildKey(receivedPkt.DstIP, int(receivedPkt.TCP.DstPort), receivedPkt.SrcIP, int(receivedPkt.TCP.SrcPort))
 	receivedAt := time.Now()
 
 	request := ServiceRequest{
@@ -380,6 +343,40 @@ func getSrcIP(dstIP net.IP) (net.IP, error) {
 	return routes[0].Src, nil
 }
 
+func buildTCPHdr6(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, syn bool, rst bool, seq uint32, ack uint32) (*ipv6.ControlMessage, []byte, error) {
+	ipProto := layers.IPProtocolTCP
+
+	hdrLayer := &layers.IPv6{
+		SrcIP:      srcIP,
+		DstIP:      dstIP,
+		HopLimit:   uint8(ttl),
+		NextHeader: ipProto,
+	}
+
+	tcpLayer := &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        seq,
+		Ack:        ack,
+		SYN:        syn,
+		RST:        rst,
+		DataOffset: uint8(tcpHdrLenNWords),
+	}
+
+	tcpLayer.SetNetworkLayerForChecksum(hdrLayer)
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+	}
+	if err := gopacket.SerializeLayers(buf, opts, tcpLayer); err != nil {
+		return nil, nil, fmt.Errorf("failed to serialize tcp layer: %v", err)
+	}
+	wb := buf.Bytes()
+	wcm := &ipv6.ControlMessage{}
+	wcm.Src = srcIP
+	return wcm, wb, nil
+}
+
 func buildTCPHdr(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, syn bool, rst bool, seq uint32, ack uint32) (*ipv4.Header, []byte, error) {
 	ipProto := layers.IPProtocolTCP
 	var flags layers.IPv4Flag
@@ -428,7 +425,18 @@ func buildTCPHdr(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, 
 // so, 5 words means 5 word * 4 bytes/word = 20 bytes
 const tcpHdrLenNWords int = 5
 
-func Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
+type Sender interface {
+	Send(request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error)
+	GetPackets() <-chan *PacketInfo
+}
+
+type TCPSYNSender struct {
+	RawConn   *ipv4.RawConn
+	LocalPort int
+}
+
+func (sender *TCPSYNSender) Send(request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
+	rawConn := sender.RawConn
 	receipt := NewTCPSYNSentReceipt(request)
 
 	dstIP := request.DstIP
@@ -473,8 +481,8 @@ func Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCP
 		case time := <-timer.C:
 			receipt.TimeoutC <- time
 		case pkt, ok := <-receipt.ReceivedC:
-			if ok && pkt != nil && pkt.Hdr != nil && pkt.TCP != nil {
-				hdr, wb, err := buildTCPHdr(pkt.Hdr.Dst, int(pkt.TCP.DstPort), pkt.Hdr.Src, int(pkt.TCP.SrcPort), ttl, false, true, 1000, 0)
+			if ok && pkt != nil && pkt.TCP != nil {
+				hdr, wb, err := buildTCPHdr(pkt.DstIP, int(pkt.TCP.DstPort), pkt.SrcIP, int(pkt.TCP.SrcPort), ttl, false, true, 1000, 0)
 				if err != nil {
 					log.Printf("failed to build tcp rst: %v", err)
 					return
@@ -488,6 +496,160 @@ func Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCP
 		}
 	}()
 	return receipt, nil
+}
+
+func (sender *TCPSYNSender) GetPackets() <-chan *PacketInfo {
+	rawConn := sender.RawConn
+	rbCh := make(chan *PacketInfo)
+	rb := make([]byte, pkgutils.GetMaximumMTU())
+
+	go func() {
+		defer close(rbCh)
+
+		for {
+			hdr, payload, _, err := rawConn.ReadFrom(rb)
+			if err != nil {
+				log.Printf("failed to read from raw connection: %v", err)
+				return
+			}
+			if hdr.Version != ipv4.Version {
+				continue
+			}
+			if hdr.Protocol != int(layers.IPProtocolTCP) {
+				continue
+			}
+			pktInfo := new(PacketInfo)
+			pktInfo.SrcIP = hdr.Src
+			pktInfo.DstIP = hdr.Dst
+			pktInfo.Payload = make([]byte, hdr.TotalLen)
+			copy(pktInfo.Payload, payload)
+			rbCh <- pktInfo
+		}
+
+	}()
+	return rbCh
+}
+
+type TCPSYNSender6 struct {
+	RawConn *ipv6.PacketConn
+}
+
+func (sender *TCPSYNSender6) Send(request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
+	rawConn := sender.RawConn
+	receipt := NewTCPSYNSentReceipt(request)
+
+	dstIP := request.DstIP
+	srcIP, err := getSrcIP(dstIP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine src IP for %s: %v", dstIP.String(), err)
+	}
+
+	tcpListener, err := net.Listen("tcp", "[::]:0")
+	if err != nil {
+		log.Fatalf("failed to listen on tcp: %v", err)
+	}
+	localPort := tcpListener.Addr().(*net.TCPAddr).Port
+	receipt.SrcIP = srcIP
+	receipt.SrcPort = localPort
+
+	var ttl int = defaultTTL
+	if request.TTL != nil {
+		ttl = *request.TTL
+	}
+
+	wcm, wb, err := buildTCPHdr6(srcIP, localPort, dstIP, request.DstPort, ttl, true, false, 1000, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build tcp syn: %v", err)
+	}
+
+	tracker.MarkSent(receipt)
+
+	dstIPAddr := &net.IPAddr{IP: dstIP}
+	_, err = rawConn.WriteTo(wb, wcm, dstIPAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write syn to raw connection: %v", err)
+	}
+	receipt.SentAt = time.Now()
+	timer := time.NewTimer(request.Timeout)
+
+	go func() {
+		defer tcpListener.Close()
+		defer timer.Stop()
+		defer close(receipt.TimeoutC)
+
+		select {
+		case time := <-timer.C:
+			receipt.TimeoutC <- time
+		case pkt, ok := <-receipt.ReceivedC:
+			if ok && pkt != nil && pkt.TCP != nil {
+				wcm, wb, err := buildTCPHdr6(pkt.DstIP, int(pkt.TCP.DstPort), pkt.SrcIP, int(pkt.TCP.SrcPort), ttl, false, true, 1000, 0)
+				if err != nil {
+					log.Printf("failed to build tcp rst: %v", err)
+					return
+				}
+				dstIPAddr := &net.IPAddr{IP: pkt.SrcIP}
+				_, err = rawConn.WriteTo(wb, wcm, dstIPAddr)
+				if err != nil {
+					log.Printf("failed to write rst to raw connection: %v", err)
+				}
+			}
+			return
+		}
+	}()
+	return receipt, nil
+}
+
+func (sender *TCPSYNSender6) GetPackets() <-chan *PacketInfo {
+	rawConn := sender.RawConn
+	rbCh := make(chan *PacketInfo)
+	rb := make([]byte, pkgutils.GetMaximumMTU())
+
+	go func() {
+		defer close(rbCh)
+
+		for {
+			n, cm, src, err := rawConn.ReadFrom(rb)
+			if err != nil {
+				log.Printf("failed to read from raw connection: %v", err)
+				return
+			}
+
+			srcIP, ok := src.(*net.IPAddr)
+			if !ok {
+				log.Printf("failed to cast src to *net.IPAddr")
+				continue
+			}
+
+			pktInfo := new(PacketInfo)
+			pktInfo.SrcIP = srcIP.IP
+			pktInfo.DstIP = cm.Dst
+
+			pktInfo.Payload = make([]byte, n)
+			copy(pktInfo.Payload, rb[:n])
+			rbCh <- pktInfo
+		}
+
+	}()
+	return rbCh
+}
+
+func getRawIPv6Conn(ctx context.Context) (net.PacketConn, *ipv6.PacketConn, error) {
+	listenConfig := net.ListenConfig{}
+
+	ipProtoTCP := fmt.Sprintf("%d", int(layers.IPProtocolTCP))
+	ln, err := listenConfig.ListenPacket(ctx, "ip6:"+ipProtoTCP, "::")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
+	}
+
+	log.Printf("listening on %s", ln.LocalAddr().String())
+
+	rawConn := ipv6.NewPacketConn(ln)
+	if rawConn == nil {
+		return nil, nil, fmt.Errorf("failed to create raw connection")
+	}
+
+	return ln, rawConn, nil
 }
 
 func getRawIPv4Conn(ctx context.Context) (net.PacketConn, *ipv4.RawConn, error) {
@@ -510,8 +672,9 @@ func getRawIPv4Conn(ctx context.Context) (net.PacketConn, *ipv4.RawConn, error) 
 }
 
 var (
-	hostport = flag.String("hostport", "127.0.0.1:80", "host:port to ping")
-	intvMs   = flag.Int("intvMs", 1000, "interval between pings in milliseconds")
+	hostport           = flag.String("hostport", "127.0.0.1:80", "host:port to ping")
+	intvMs             = flag.Int("intvMs", 1000, "interval between pings in milliseconds")
+	ipFamilyPreference = flag.String("ipFamilyPreference", "ip", "ip family preference: ip, ipv4, or ipv6")
 )
 
 func init() {
@@ -528,7 +691,7 @@ func main() {
 	}
 
 	resolver := net.DefaultResolver
-	dstIPs, err := resolver.LookupIP(ctx, "ip4", host)
+	dstIPs, err := resolver.LookupIP(ctx, *ipFamilyPreference, host)
 	if err != nil {
 		log.Fatalf("failed to lookup ip: %v", err)
 	}
@@ -543,14 +706,34 @@ func main() {
 		log.Fatalf("failed to convert port to int: %v", err)
 	}
 
-	ln, rawConn, err := getRawIPv4Conn(ctx)
-	if err != nil {
-		log.Fatalf("failed to get raw ipv4 connection: %v", err)
-	}
-	log.Printf("raw connection created")
-	defer ln.Close()
+	addrPair := &net.UDPAddr{IP: dstIP, Port: dstPort}
+	log.Printf("Pinging %s", addrPair.String())
 
-	rbCh := getPackets(rawConn)
+	var sender Sender
+	if dstIP.To4() == nil {
+		ln6, rawConn6, err := getRawIPv6Conn(ctx)
+		if err != nil {
+			log.Fatalf("failed to get raw ipv6 connection: %v", err)
+		}
+		log.Printf("raw ipv6 connection created")
+		defer ln6.Close()
+		sender = &TCPSYNSender6{
+			RawConn: rawConn6,
+		}
+	} else {
+		ln, rawConn, err := getRawIPv4Conn(ctx)
+		if err != nil {
+			log.Fatalf("failed to get raw ipv4 connection: %v", err)
+		}
+		log.Printf("raw ipv4 connection created")
+		defer ln.Close()
+		sender = &TCPSYNSender{
+			RawConn: rawConn,
+		}
+	}
+
+	rbCh := sender.GetPackets()
+
 	requireSYN := true
 	requireACK := true
 	filteredCh := filterPackets(rbCh, &FilterRequirements{
@@ -597,15 +780,6 @@ func main() {
 					return
 				}
 
-				tcp := pktInfo.TCP
-				if tcp == nil {
-					continue
-				}
-				hdr := pktInfo.Hdr
-				if hdr == nil {
-					continue
-				}
-
 				tracker.MarkReceived(pktInfo)
 			}
 		}
@@ -624,7 +798,7 @@ func main() {
 					DstPort: dstPort,
 					Timeout: 3 * time.Second,
 				}
-				_, err := Send(rawConn, synRequest, tracker)
+				_, err := sender.Send(synRequest, tracker)
 				if err != nil {
 					log.Fatalf("failed to send tcp syn: %v", err)
 				}
