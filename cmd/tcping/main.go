@@ -62,7 +62,13 @@ func getPackets(rawConn *ipv4.RawConn) <-chan *PacketInfo {
 	return rbCh
 }
 
-func filterPackets(rbCh <-chan *PacketInfo) <-chan *PacketInfo {
+type FilterRequirements struct {
+	SYN     *bool
+	ACK     *bool
+	SrcPort *int
+}
+
+func filterPackets(rbCh <-chan *PacketInfo, requirements *FilterRequirements) <-chan *PacketInfo {
 	filteredCh := make(chan *PacketInfo)
 	go func() {
 		defer close(filteredCh)
@@ -90,7 +96,15 @@ func filterPackets(rbCh <-chan *PacketInfo) <-chan *PacketInfo {
 				continue
 			}
 
-			if (!tcp.SYN) || (!tcp.ACK) {
+			if requirements.SYN != nil && tcp.SYN != *requirements.SYN {
+				continue
+			}
+
+			if requirements.ACK != nil && tcp.ACK != *requirements.ACK {
+				continue
+			}
+
+			if requirements.SrcPort != nil && int(tcp.SrcPort) != *requirements.SrcPort {
 				continue
 			}
 
@@ -116,7 +130,7 @@ func (tent *TrackEntry) Less(other btree.Item) bool {
 	}
 
 	if len(tent.Key) != len(otherEntry.Key) {
-		panic("keys are not of the same length")
+		panic(fmt.Sprintf("keys are not of the same length: %d != %d", len(tent.Key), len(otherEntry.Key)))
 	}
 
 	return bytes.Compare(tent.Key, otherEntry.Key) < 0
@@ -193,10 +207,17 @@ func encodePort(port int) []byte {
 
 func buildKey(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int) []byte {
 	key := make([]byte, 0)
-	key = append(key, srcIP...)
-	key = append(key, encodePort(srcPort)...)
-	key = append(key, dstIP...)
-	key = append(key, encodePort(dstPort)...)
+	if srcIP.To4() == nil {
+		// ipv6, todo
+	} else {
+		srcIP = srcIP.To4()
+		dstIP = dstIP.To4()
+		key = append(key, srcIP...)
+		key = append(key, encodePort(srcPort)...)
+		key = append(key, dstIP...)
+		key = append(key, encodePort(dstPort)...)
+	}
+
 	return key
 }
 
@@ -230,6 +251,8 @@ func (tk *Tracker) handleTimeout(ent *TrackEntry) {
 
 func (tk *Tracker) MarkSent(sentReceipt *TCPSYNSentReceipt) {
 	key := buildKey(sentReceipt.SrcIP, sentReceipt.SrcPort, sentReceipt.Request.DstIP, sentReceipt.Request.DstPort)
+	log.Printf("[dbg] sent key: %x", key)
+
 	ent := &TrackEntry{Key: key, Value: sentReceipt}
 
 	requestCh, ok := <-tk.serviceChan
@@ -266,7 +289,11 @@ func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
 		log.Printf("tracker is closed")
 		return
 	}
+
+	log.Printf("[dbg] fuck 1: %s:%s -> %s:%s\n", receivedPkt.Hdr.Src, receivedPkt.TCP.SrcPort, receivedPkt.Hdr.Dst, receivedPkt.TCP.DstPort)
+
 	key := buildKey(receivedPkt.Hdr.Dst, int(receivedPkt.TCP.DstPort), receivedPkt.Hdr.Src, int(receivedPkt.TCP.SrcPort))
+	log.Printf("[dbg] fuck 1 key: %x", key)
 	receivedAt := time.Now()
 
 	request := ServiceRequest{
@@ -304,11 +331,16 @@ type TCPSYNSentReceipt struct {
 	ReceivedC   chan *PacketInfo
 }
 
-func (receipt *TCPSYNSentReceipt) String() string {
-	return fmt.Sprintf("at %s, %s:%d -> %s:%d", receipt.SentAt.Format(time.RFC3339Nano), receipt.SrcIP, receipt.SrcPort, receipt.Request.DstIP, receipt.Request.DstPort)
+func NewTCPSYNSentReceipt(request *TCPSYNRequest) *TCPSYNSentReceipt {
+	receipt := new(TCPSYNSentReceipt)
+	receipt.TimeoutC = make(chan time.Time, 1)
+	receipt.ReceivedC = make(chan *PacketInfo, 1)
+	receipt.Request = request
+	return receipt
 }
 
-type TCPSYNSender struct {
+func (receipt *TCPSYNSentReceipt) String() string {
+	return fmt.Sprintf("at %s, %s:%d -> %s:%d", receipt.SentAt.Format(time.RFC3339Nano), receipt.SrcIP, receipt.SrcPort, receipt.Request.DstIP, receipt.Request.DstPort)
 }
 
 const defaultTTL int = 64
@@ -387,10 +419,8 @@ func buildTCPHdr(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, 
 // so, 5 words means 5 word * 4 bytes/word = 20 bytes
 const tcpHdrLenNWords int = 5
 
-func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
-	receipt := new(TCPSYNSentReceipt)
-	receipt.TimeoutC = make(chan time.Time, 1)
-	receipt.ReceivedC = make(chan *PacketInfo, 1)
+func Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
+	receipt := NewTCPSYNSentReceipt(request)
 
 	dstIP := request.DstIP
 	srcIP, err := getSrcIP(dstIP)
@@ -403,6 +433,8 @@ func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, 
 		log.Fatalf("failed to listen on tcp: %v", err)
 	}
 	localPort := tcpListener.Addr().(*net.TCPAddr).Port
+	receipt.SrcIP = srcIP
+	receipt.SrcPort = localPort
 
 	var ttl int = defaultTTL
 	if request.TTL != nil {
@@ -449,24 +481,23 @@ func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, 
 	return receipt, nil
 }
 
-func getRawIPv4Conn(ctx context.Context) (*ipv4.RawConn, error) {
+func getRawIPv4Conn(ctx context.Context) (net.PacketConn, *ipv4.RawConn, error) {
 	listenConfig := net.ListenConfig{}
 
 	ipProtoTCP := fmt.Sprintf("%d", int(layers.IPProtocolTCP))
 	ln, err := listenConfig.ListenPacket(ctx, "ip4:"+ipProtoTCP, "0.0.0.0")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
+		return nil, nil, fmt.Errorf("failed to create raw tcp/ip socket: %v", err)
 	}
-
-	defer ln.Close()
 
 	log.Printf("listening on %s", ln.LocalAddr().String())
 
 	rawConn, err := ipv4.NewRawConn(ln)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create raw connection: %v", err)
+		return nil, nil, fmt.Errorf("failed to create raw connection: %v", err)
 	}
-	return rawConn, nil
+
+	return ln, rawConn, nil
 }
 
 func main() {
@@ -476,19 +507,24 @@ func main() {
 
 	ctx := context.Background()
 
-	rawConn, err := getRawIPv4Conn(ctx)
+	ln, rawConn, err := getRawIPv4Conn(ctx)
 	if err != nil {
 		log.Fatalf("failed to get raw ipv4 connection: %v", err)
 	}
 	log.Printf("raw connection created")
+	defer ln.Close()
 
 	rbCh := getPackets(rawConn)
-	filteredCh := filterPackets(rbCh)
+	requireSYN := true
+	requireACK := true
+	filteredCh := filterPackets(rbCh, &FilterRequirements{
+		SYN:     &requireSYN,
+		ACK:     &requireACK,
+		SrcPort: &dstPort,
+	})
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	sender := &TCPSYNSender{}
 
 	trackerConfig := &TrackerConfig{}
 	tracker := NewTracker(trackerConfig)
@@ -522,7 +558,9 @@ func main() {
 			case pktInfo, ok := <-filteredCh:
 				if !ok {
 					log.Printf("filteredCh is closed")
+					return
 				}
+
 				tcp := pktInfo.TCP
 				if tcp == nil {
 					continue
@@ -531,6 +569,7 @@ func main() {
 				if hdr == nil {
 					continue
 				}
+
 				tracker.MarkReceived(pktInfo)
 			}
 		}
@@ -549,7 +588,7 @@ func main() {
 					DstPort: dstPort,
 					Timeout: 3 * time.Second,
 				}
-				receipt, err := sender.Send(rawConn, synRequest, tracker)
+				receipt, err := Send(rawConn, synRequest, tracker)
 				if err != nil {
 					log.Fatalf("failed to send tcp syn: %v", err)
 				}
