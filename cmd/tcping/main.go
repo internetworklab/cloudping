@@ -331,6 +331,54 @@ func getSrcIP(dstIP net.IP) (net.IP, error) {
 	return routes[0].Src, nil
 }
 
+func buildTCPHdr(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, syn bool, rst bool) (*ipv4.Header, []byte, error) {
+	ipProto := layers.IPProtocolTCP
+	var flags layers.IPv4Flag
+	flags = flags | layers.IPv4DontFragment
+
+	hdrLayer := &layers.IPv4{
+		SrcIP:    srcIP,
+		DstIP:    dstIP,
+		TTL:      uint8(ttl),
+		Protocol: ipProto,
+		Flags:    flags,
+	}
+
+	tcpLayer := &layers.TCP{
+		SrcPort:    layers.TCPPort(srcPort),
+		DstPort:    layers.TCPPort(dstPort),
+		Seq:        1000,
+		Ack:        0,
+		SYN:        syn,
+		RST:        rst,
+		DataOffset: uint8(tcpHdrLenNWords),
+	}
+
+	tcpLayer.SetNetworkLayerForChecksum(hdrLayer)
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+	}
+	if err := gopacket.SerializeLayers(buf, opts, tcpLayer); err != nil {
+		return nil, nil, fmt.Errorf("failed to serialize tcp layer: %v", err)
+	}
+	wb := buf.Bytes()
+	hdr := &ipv4.Header{
+		Version:  ipv4.Version,
+		Len:      ipv4.HeaderLen,
+		TotalLen: ipv4.HeaderLen + len(wb),
+		TTL:      ttl,
+		Protocol: int(ipProto),
+		Dst:      dstIP,
+		Flags:    ipv4.HeaderFlags(flags),
+	}
+	return hdr, wb, nil
+}
+
+// length of tcp header, in unit of words (4 bytes)
+// so, 5 words means 5 word * 4 bytes/word = 20 bytes
+const tcpHdrLenNWords int = 5
+
 func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, tracker *Tracker) (*TCPSYNSentReceipt, error) {
 	receipt := new(TCPSYNSentReceipt)
 	receipt.TimeoutC = make(chan time.Time, 1)
@@ -352,55 +400,17 @@ func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, 
 	if request.TTL != nil {
 		ttl = *request.TTL
 	}
-	ipProto := layers.IPProtocolTCP
-	var flags layers.IPv4Flag
-	flags = flags | layers.IPv4DontFragment
 
-	hdrLayer := &layers.IPv4{
-		SrcIP:    srcIP,
-		DstIP:    dstIP,
-		TTL:      uint8(ttl),
-		Protocol: ipProto,
-		Flags:    flags,
-	}
-
-	// length of tcp header, in unit of words (4 bytes)
-	// so, 5 words means 5 word * 4 bytes/word = 20 bytes
-	tcpHdrLenNWords := 5
-	tcpLayer := &layers.TCP{
-		SrcPort:    layers.TCPPort(localPort),
-		DstPort:    layers.TCPPort(request.DstPort),
-		Seq:        1000,
-		Ack:        0,
-		SYN:        true,
-		DataOffset: uint8(tcpHdrLenNWords),
-	}
-	tcpLayer.SetNetworkLayerForChecksum(hdrLayer)
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-	}
-
-	if err := gopacket.SerializeLayers(buf, opts, tcpLayer); err != nil {
-		return nil, fmt.Errorf("failed to serialize tcp layer: %v", err)
-	}
-
-	wb := buf.Bytes()
-	hdr := &ipv4.Header{
-		Version:  ipv4.Version,
-		Len:      ipv4.HeaderLen,
-		TotalLen: ipv4.HeaderLen + len(wb),
-		TTL:      ttl,
-		Protocol: int(ipProto),
-		Dst:      dstIP,
-		Flags:    ipv4.HeaderFlags(flags),
+	hdr, wb, err := buildTCPHdr(srcIP, localPort, dstIP, request.DstPort, ttl, true, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build tcp syn: %v", err)
 	}
 
 	tracker.MarkSent(receipt)
 
 	err = rawConn.WriteTo(hdr, wb, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write to raw connection: %v", err)
+		return nil, fmt.Errorf("failed to write syn to raw connection: %v", err)
 	}
 	receipt.SentAt = time.Now()
 	timer := time.NewTimer(request.Timeout)
@@ -412,7 +422,18 @@ func (sender *TCPSYNSender) Send(rawConn *ipv4.RawConn, request *TCPSYNRequest, 
 		select {
 		case time := <-timer.C:
 			receipt.TimeoutC <- time
-		case <-receipt.ReceivedC:
+		case pkt, ok := <-receipt.ReceivedC:
+			if ok && pkt != nil && pkt.Hdr != nil && pkt.TCP != nil {
+				hdr, wb, err := buildTCPHdr(pkt.Hdr.Dst, int(pkt.TCP.DstPort), pkt.Hdr.Src, int(pkt.TCP.SrcPort), ttl, false, true)
+				if err != nil {
+					log.Printf("failed to build tcp rst: %v", err)
+					return
+				}
+				err = rawConn.WriteTo(hdr, wb, nil)
+				if err != nil {
+					log.Printf("failed to write rst to raw connection: %v", err)
+				}
+			}
 			return
 		}
 	}()
