@@ -201,7 +201,7 @@ func buildKey(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int) []byte {
 }
 
 func (tk *Tracker) handleTimeout(ent *TrackEntry) {
-	key := ent.Key
+
 	requestCh, ok := <-tk.serviceChan
 	if !ok {
 		log.Printf("tracker is closed")
@@ -211,8 +211,13 @@ func (tk *Tracker) handleTimeout(ent *TrackEntry) {
 	request := ServiceRequest{
 		Result: make(chan error),
 		Fn: func(ctx context.Context) error {
-			tk.EventC <- TrackerEvent{Type: TrackerEVTimeout, Entry: ent}
-			tk.store.Delete(&TrackEntry{Key: key})
+			if item := tk.store.Delete(&TrackEntry{Key: ent.Key}); item != nil {
+				ent, ok := item.(*TrackEntry)
+				if !ok {
+					panic("item is not a *TrackEntry")
+				}
+				tk.EventC <- TrackerEvent{Type: TrackerEVTimeout, Entry: ent}
+			}
 			return nil
 		},
 	}
@@ -267,21 +272,16 @@ func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
 	request := ServiceRequest{
 		Fn: func(ctx context.Context) error {
 
-			item := tk.store.Get(&TrackEntry{Key: key})
-			if item == nil {
-				log.Printf("no entry found for key: %v", key)
-				return nil
-			}
+			if item := tk.store.Delete(&TrackEntry{Key: key}); item != nil {
+				ent, ok := item.(*TrackEntry)
+				if !ok {
+					panic("item is not a *TrackEntry")
+				}
 
-			ent, ok := item.(*TrackEntry)
-			if !ok {
-				panic("item is not a *TrackEntry")
+				ent.Value.ReceivedAt = receivedAt
+				ent.Value.ReceivedPkt = receivedPkt
+				ent.Value.ReceivedC <- receivedPkt
 			}
-
-			ent.Value.ReceivedAt = receivedAt
-			ent.Value.ReceivedPkt = receivedPkt
-			ent.Value.ReceivedC <- receivedPkt
-			tk.store.Delete(&TrackEntry{Key: key})
 
 			return nil
 		},
@@ -536,15 +536,27 @@ func main() {
 		}
 	}(ctx)
 
-	synRequest := &TCPSYNRequest{
-		DstIP:   dstIP,
-		DstPort: dstPort,
-		Timeout: 3 * time.Second,
-	}
-	_, err = sender.Send(rawConn, synRequest, tracker)
-	if err != nil {
-		log.Fatalf("failed to send tcp syn: %v", err)
-	}
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				synRequest := &TCPSYNRequest{
+					DstIP:   dstIP,
+					DstPort: dstPort,
+					Timeout: 3 * time.Second,
+				}
+				receipt, err := sender.Send(rawConn, synRequest, tracker)
+				if err != nil {
+					log.Fatalf("failed to send tcp syn: %v", err)
+				}
+				log.Printf("sent syn: %s", receipt.String())
+			}
+		}
+	}()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
