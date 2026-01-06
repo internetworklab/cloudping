@@ -175,7 +175,11 @@ export default function Home() {
                   setPendingTask((prev) => ({
                     ...prev,
                     type: e.target.value as "ping" | "traceroute",
-                    pmtu: e.target.value === "ping" ? false : prev.pmtu,
+                    pmtu:
+                      e.target.value === "ping" || e.target.value === "tcpping"
+                        ? false
+                        : prev.pmtu,
+                    useUDP: e.target.value === "tcpping" ? false : prev.useUDP,
                   }))
                 }
                 row
@@ -189,6 +193,11 @@ export default function Home() {
                   value="traceroute"
                   control={<Radio />}
                   label="Traceroute"
+                />
+                <FormControlLabel
+                  value="tcpping"
+                  control={<Radio />}
+                  label="TCP Ping"
                 />
               </RadioGroup>
               <FormGroup row>
@@ -225,6 +234,7 @@ export default function Home() {
                 <FormControlLabel
                   control={
                     <Checkbox
+                      disabled={pendingTask.type === "tcpping"}
                       checked={!!pendingTask.useUDP}
                       onChange={(_, ckd) => {
                         setPendingTask((prev) => ({
@@ -296,9 +306,9 @@ export default function Home() {
         </Card>
         {getSortedOnGoingTasks(onGoingTasks).map((task) => (
           <Fragment key={task.taskId}>
-            {task.type === "ping" ? (
-              <PingResultDisplay
-                pendingTask={task}
+            {task.type === "traceroute" ? (
+              <TracerouteResultDisplay
+                task={task}
                 onDeleted={() => {
                   setOnGoingTasks(
                     onGoingTasks.filter((t) => t.taskId !== task.taskId)
@@ -306,8 +316,8 @@ export default function Home() {
                 }}
               />
             ) : (
-              <TracerouteResultDisplay
-                task={task}
+              <PingResultDisplay
+                pendingTask={task}
                 onDeleted={() => {
                   setOnGoingTasks(
                     onGoingTasks.filter((t) => t.taskId !== task.taskId)

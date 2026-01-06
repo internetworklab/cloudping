@@ -169,6 +169,63 @@ type RawPingEventICMPReply = {
   SetMTUTo?: number;
 };
 
+type RawTCPPingEventDataDetails = {
+  Seq?: number;
+  SrcIP?: string;
+  SrcPort?: number;
+  Request?: {
+    DstIP?: string;
+    DstPort?: number;
+    Timeout?: number; // in unit of nanoseconds
+    TTL?: number;     // likely be null, undefined, becuase in reality we use default value
+    Seq?: number;     // most likely be some random uint32, it's what we use to send over the wire, in tcp header
+    Ack?: number;     // same, in tcp header
+    Window?: number;  // in tcp header as well
+  },
+  SentAt?: ISO8601Timestamp;
+  ReceivedAt?: ISO8601Timestamp;
+  ReceivedPkt?: {
+    SrcIP?: string;
+    DstIP?: string;
+    Payload?: string;  // some base64
+    TCP?: {
+      Contents?: string; // some base64
+      Payload?: string; // some base64
+      SrcPort?: number;
+      DstPort?: number;
+      Seq?: number;
+      Ack?: number;
+      DataOffset?: number;
+      FIN?: boolean;
+      SYN?: boolean;
+      RST?: boolean;
+      PSH?: boolean;
+      ACK?: boolean;
+      URG?: boolean;
+      ECE?: boolean;
+      CWR?: boolean;
+      NS?: boolean;
+      Window?: number;
+      Checksum?: number;
+      Urgent?: number;
+      Options?: {
+        OptionType?: number;
+        OptionLength?: number;
+        OptionData?: string; // some base64
+      }[]
+      Padding?: null;
+    },
+    TTL?: number;
+    Size?: number;
+  },
+  RTT?: number; // in unit of nanoseconds
+};
+
+type RawTCPPingEventData = {
+  Type: "received" | 'timeout';
+  Details: RawTCPPingEventDataDetails;
+};
+
 type RawPingEventData = {
   RTTMilliSecs?: number[];
   RTTNanoSecs?: number[];
@@ -186,6 +243,11 @@ type RawPingEventData = {
 type RawPingEventMetadata = {
   from?: string;
   target?: string;
+};
+
+type RawTCPPingEvent = {
+  data?: RawTCPPingEventData;
+  metadata?: RawPingEventMetadata;
 };
 
 // Raw event returned by the API
@@ -340,7 +402,8 @@ export type PingRequest = {
   preferV4?: boolean;
   preferV6?: boolean;
 
-  l3PacketType?: "icmp" | "udp";
+  l3PacketType?: "icmp" | "udp" | "tcp";
+  l4PacketType?: "icmp" | "udp" | "tcp";
 
   randomPayloadSize?: number;
 };
@@ -360,6 +423,7 @@ export function generatePingSampleStream(
     preferV4,
     preferV6,
     l3PacketType,
+    l4PacketType,
     randomPayloadSize,
   } = pingReq;
 
@@ -392,6 +456,10 @@ export function generatePingSampleStream(
 
   if (l3PacketType !== undefined && l3PacketType !== null) {
     urlParams.set("l3PacketType", l3PacketType);
+  }
+
+  if (l4PacketType !== undefined && l4PacketType !== null) {
+    urlParams.set("l4PacketType", l4PacketType);
   }
 
   if (

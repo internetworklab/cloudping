@@ -68,12 +68,16 @@ export function PingResultDisplay(props: {
     const resultStream = generatePingSampleStream({
       sources: sources,
       targets: targets,
-      intervalMs: 300,
+      intervalMs: pendingTask.type === "tcpping" ? 1000 : 300,
       pktTimeoutMs: 3000,
       resolver: "172.20.0.53:53",
       preferV4: preferV4,
       preferV6: preferV6,
-      l3PacketType: !!useUDP ? "udp" : "icmp",
+      l4PacketType: !!useUDP
+        ? "udp"
+        : pendingTask.type === "tcpping"
+        ? "tcp"
+        : "icmp",
     });
     const reader = resultStream.getReader();
     const readNext = (props: {
