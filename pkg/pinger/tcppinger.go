@@ -109,7 +109,7 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 					evCh <- PingEvent{Data: event}
 					if event.Type == pkgtcping.TrackerEVReceived || event.Type == pkgtcping.TrackerEVTimeout {
 						if event.Type == pkgtcping.TrackerEVReceived && pinger.OnReceived != nil {
-							receivedPkt := event.Entry.Value.ReceivedPkt
+							receivedPkt := event.Details.ReceivedPkt
 							pinger.OnReceived(
 								ctx,
 								receivedPkt.SrcIP,
@@ -121,7 +121,7 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 						}
 
 						if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
-							if *totalPkts == event.Entry.Value.Seq+1 {
+							if *totalPkts == event.Details.Seq+1 {
 								allConfirmedCh <- true
 								return
 							}

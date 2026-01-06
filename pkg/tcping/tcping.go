@@ -121,8 +121,8 @@ const (
 )
 
 type TrackerEvent struct {
-	Type  TrackerEventType
-	Entry *TrackEntry
+	Type    TrackerEventType
+	Details *TCPSYNSentReceipt
 }
 
 type Tracker struct {
@@ -213,7 +213,7 @@ func (tk *Tracker) handleTimeout(ent *TrackEntry) {
 				if !ok {
 					panic("item is not a *TrackEntry")
 				}
-				tk.EventC <- TrackerEvent{Type: TrackerEVTimeout, Entry: ent}
+				tk.EventC <- TrackerEvent{Type: TrackerEVTimeout, Details: ent.Value}
 			}
 			return nil
 		},
@@ -283,7 +283,7 @@ func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
 				ent.Value.ReceivedPkt = receivedPkt
 				ent.Value.ReceivedC <- receivedPkt
 				ent.Value.RTT = receivedAt.Sub(ent.Value.SentAt)
-				tk.EventC <- TrackerEvent{Type: TrackerEVReceived, Entry: ent}
+				tk.EventC <- TrackerEvent{Type: TrackerEVReceived, Details: ent.Value}
 			}
 
 			return nil

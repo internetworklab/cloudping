@@ -56,11 +56,11 @@ func main() {
 			if tcpTrackEv, ok := ev.Data.(pkgtcping.TrackerEvent); ok {
 				switch tcpTrackEv.Type {
 				case pkgtcping.TrackerEVTimeout:
-					log.Printf("timeout: seq=%v", tcpTrackEv.Entry.Value.Seq)
+					log.Printf("timeout: seq=%v", tcpTrackEv.Details.Seq)
 				case pkgtcping.TrackerEVReceived:
-					from := net.JoinHostPort(tcpTrackEv.Entry.Value.SrcIP.String(), strconv.Itoa(tcpTrackEv.Entry.Value.SrcPort))
-					to := net.JoinHostPort(tcpTrackEv.Entry.Value.Request.DstIP.String(), strconv.Itoa(tcpTrackEv.Entry.Value.Request.DstPort))
-					log.Printf("received: seq=%v, rtt=%v, ttl=%v, %s <- %s", tcpTrackEv.Entry.Value.Seq, tcpTrackEv.Entry.Value.RTT, tcpTrackEv.Entry.Value.ReceivedPkt.TTL, from, to)
+					from := net.JoinHostPort(tcpTrackEv.Details.SrcIP.String(), strconv.Itoa(tcpTrackEv.Details.SrcPort))
+					to := net.JoinHostPort(tcpTrackEv.Details.Request.DstIP.String(), strconv.Itoa(tcpTrackEv.Details.Request.DstPort))
+					log.Printf("received: seq=%v, rtt=%v, ttl=%v, %s <- %s", tcpTrackEv.Details.Seq, tcpTrackEv.Details.RTT, tcpTrackEv.Details.ReceivedPkt.TTL, from, to)
 				}
 			}
 		}
