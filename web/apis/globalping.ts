@@ -177,17 +177,17 @@ type RawTCPPingEventDataDetails = {
     DstIP?: string;
     DstPort?: number;
     Timeout?: number; // in unit of nanoseconds
-    TTL?: number;     // likely be null, undefined, becuase in reality we use default value
-    Seq?: number;     // most likely be some random uint32, it's what we use to send over the wire, in tcp header
-    Ack?: number;     // same, in tcp header
-    Window?: number;  // in tcp header as well
-  },
+    TTL?: number; // likely be null, undefined, becuase in reality we use default value
+    Seq?: number; // most likely be some random uint32, it's what we use to send over the wire, in tcp header
+    Ack?: number; // same, in tcp header
+    Window?: number; // in tcp header as well
+  };
   SentAt?: ISO8601Timestamp;
   ReceivedAt?: ISO8601Timestamp;
   ReceivedPkt?: {
     SrcIP?: string;
     DstIP?: string;
-    Payload?: string;  // some base64
+    Payload?: string; // some base64
     TCP?: {
       Contents?: string; // some base64
       Payload?: string; // some base64
@@ -212,17 +212,17 @@ type RawTCPPingEventDataDetails = {
         OptionType?: number;
         OptionLength?: number;
         OptionData?: string; // some base64
-      }[]
+      }[];
       Padding?: null;
-    },
+    };
     TTL?: number;
     Size?: number;
-  },
+  };
   RTT?: number; // in unit of nanoseconds
 };
 
 type RawTCPPingEventData = {
-  Type: "received" | 'timeout';
+  Type: "received" | "timeout";
   Details: RawTCPPingEventDataDetails;
 };
 
