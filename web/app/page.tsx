@@ -280,6 +280,9 @@ export default function Home() {
                   if (!!pendingTask.pmtu) {
                     filter = { ...(filter || {}), SupportPMTU: "true" };
                   }
+                  if (pendingTask.type === "tcpping") {
+                    filter = { ...(filter || {}), SupportTCP: "true" };
+                  }
 
                   return getCurrentPingers(filter);
                   // return new Promise((res) => {
