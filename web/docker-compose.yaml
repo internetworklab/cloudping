@@ -7,6 +7,8 @@ networks:
       driver: default
       config:
         - subnet: 192.168.252.0/30
+  globalpinghub:
+    external: true
 services:
   web:
     container_name: globalping-web
@@ -22,3 +24,4 @@ services:
     networks:
       globalping_web:
         ipv4_address: 192.168.252.2
+      globalpinghub:
