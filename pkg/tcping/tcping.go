@@ -291,7 +291,9 @@ func (tk *Tracker) MarkReceived(receivedPkt *PacketInfo) {
 }
 
 type TCPSYNSentReceipt struct {
-	Seq         int
+	// it's the packet seq, not tcp seq, the numeric sequence of the packet that was sent
+	Seq int
+
 	SrcIP       net.IP
 	SrcPort     int
 	Request     *TCPSYNRequest
