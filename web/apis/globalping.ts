@@ -330,6 +330,28 @@ class PingEventAdapter extends TransformStream<RawPingEvent, PingSample> {
   }
 }
 
+function pingSampleFromTCPEvent(event: RawTCPPingEvent): PingSample | undefined {
+  const from = event.metadata?.from || "";
+  const target = event.metadata?.target || "";
+  if (!event.data) {
+    return undefined;
+  }
+
+  const details = event.data?.Details;
+  if (!details) {
+    return undefined;
+  }
+  if (event?.data?.Type !== 'received') {
+    return undefined;
+  }
+
+  if (details === undefined || details === null) {
+    console.log("skipping invalid sample, missing details", event);
+    return;
+  }
+
+}
+
 function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
   const from = event.metadata?.from || "";
   const target = event.metadata?.target || "";
