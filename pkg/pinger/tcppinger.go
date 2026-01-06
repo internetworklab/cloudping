@@ -10,12 +10,14 @@ import (
 	"time"
 
 	pkgtcping "example.com/rbmq-demo/pkg/tcping"
+	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
 type TCPSYNPinger struct {
-	PingRequest *SimplePingRequest
-	OnSent      pkgtcping.TCPSYNSenderHook
-	OnReceived  pkgtcping.TCPSYNSenderHook
+	PingRequest  *SimplePingRequest
+	OnSent       pkgtcping.TCPSYNSenderHook
+	OnReceived   pkgtcping.TCPSYNSenderHook
+	RespondRange []net.IPNet
 }
 
 func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context) (net.IP, int, error) {
@@ -35,24 +37,17 @@ func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context) (net.IP, int, er
 		return nil, 0, fmt.Errorf("failed to split host and port from destination %s: %v", destination, err)
 	}
 
-	resolver := net.DefaultResolver
-	inetPref := "ip"
-	if pinger.PingRequest.PreferV4 != nil && *pinger.PingRequest.PreferV4 {
-		inetPref = "ip4"
-	}
-	if pinger.PingRequest.PreferV6 != nil && *pinger.PingRequest.PreferV6 {
-		inetPref = "ip6"
-	}
-	dstIPs, err := resolver.LookupIP(ctx, inetPref, host)
+	resolver := pkgutils.NewCustomResolver(pinger.PingRequest.Resolver, 10*time.Second)
+	dstIPAddr, err := pkgutils.SelectDstIP(ctx, resolver, host, pinger.PingRequest.PreferV4, pinger.PingRequest.PreferV6, pinger.RespondRange)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to lookup ip from host %s: %v", host, err)
+		return nil, 0, fmt.Errorf("failed to select dst ip: %v", err)
 	}
 
-	if len(dstIPs) == 0 {
-		return nil, 0, fmt.Errorf("no ip found for %s", host)
+	if dstIPAddr == nil {
+		return nil, 0, fmt.Errorf("no dst ip available for %s", host)
 	}
 
-	dstIP := dstIPs[0]
+	dstIP := dstIPAddr.IP
 	dstPort, err := strconv.Atoi(port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to convert port to int: %v", err)
