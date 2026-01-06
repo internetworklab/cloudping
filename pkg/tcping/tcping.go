@@ -309,6 +309,7 @@ type TCPSYNSentReceipt struct {
 	TimeoutC    chan time.Time   `json:"-"`
 	ReceivedC   chan *PacketInfo `json:"-"`
 	RTT         time.Duration
+	SentTTL     int
 }
 
 func NewTCPSYNSentReceipt(request *TCPSYNRequest) *TCPSYNSentReceipt {
@@ -472,6 +473,7 @@ func (sender *TCPSYNSender) Send(ctx context.Context, request *TCPSYNRequest, tr
 	if request.TTL != nil {
 		ttl = *request.TTL
 	}
+	receipt.SentTTL = ttl
 
 	hdr, wb, err := buildTCPHdr(srcIP, localPort, dstIP, request.DstPort, ttl, true, false, request.Seq, request.Ack, request.Window)
 	if err != nil {
@@ -585,6 +587,7 @@ func (sender *TCPSYNSender6) Send(ctx context.Context, request *TCPSYNRequest, t
 	if request.TTL != nil {
 		ttl = *request.TTL
 	}
+	receipt.SentTTL = ttl
 
 	wcm, wb, err := buildTCPHdr6(srcIP, localPort, dstIP, request.DstPort, ttl, true, false, 1000, 0)
 	if err != nil {
