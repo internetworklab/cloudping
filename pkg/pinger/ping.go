@@ -91,7 +91,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		}
 		dst := *dstPtr
 
-		useUDP := sp.PingRequest.L3PacketType != nil && *sp.PingRequest.L3PacketType == "udp"
+		useUDP := sp.PingRequest.L4PacketType != nil && *sp.PingRequest.L4PacketType == "udp"
 		udpPort := sp.PingRequest.UDPDstPort
 
 		var transceiver pkgraw.GeneralICMPTransceiver

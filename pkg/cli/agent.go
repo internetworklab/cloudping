@@ -71,6 +71,7 @@ type AgentCmd struct {
 
 	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"false"`
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"false"`
+	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"false"`
 }
 
 type PingHandler struct {
@@ -137,8 +138,19 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pinger pkgpinger.Pinger = nil
-	path := r.URL.Path
-	if strings.HasSuffix(path, "/simpleping") {
+	if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
+		tcpingPinger := &pkgpinger.TCPSYNPinger{
+			PingRequest:  pingRequest,
+			RespondRange: ph.RespondRange,
+			OnSent: func(ctx context.Context, srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, nBytes int) {
+				counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))
+			},
+			OnReceived: func(ctx context.Context, srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, nBytes int) {
+				counterStore.NumBytesReceived.With(commonLabels).Add(float64(nBytes))
+			},
+		}
+		pinger = tcpingPinger
+	} else {
 		icmpOrUDPPinger := &pkgpinger.SimplePinger{
 			PingRequest:   pingRequest,
 			IPInfoAdapter: ipinfoAdapter,
@@ -153,18 +165,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		pinger = icmpOrUDPPinger
-	} else if strings.HasSuffix(path, "/tcping") {
-		tcpingPinger := &pkgpinger.TCPSYNPinger{
-			PingRequest:  pingRequest,
-			RespondRange: ph.RespondRange,
-			OnSent: func(ctx context.Context, srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, nBytes int) {
-				counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))
-			},
-			OnReceived: func(ctx context.Context, srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, nBytes int) {
-				counterStore.NumBytesReceived.With(commonLabels).Add(float64(nBytes))
-			},
-		}
-		pinger = tcpingPinger
 	}
 
 	for ev := range pinger.Ping(ctx) {

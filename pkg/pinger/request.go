@@ -12,6 +12,14 @@ import (
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
+type L4PacketTypeOption string
+
+const (
+	L4ProtoICMP L4PacketTypeOption = "icmp"
+	L4ProtoUDP  L4PacketTypeOption = "udp"
+	L4ProtoTCP  L4PacketTypeOption = "tcp"
+)
+
 type SimplePingRequest struct {
 	From                       []string
 	Destination                string
@@ -27,8 +35,7 @@ type SimplePingRequest struct {
 	ResolveTimeoutMilliseconds *int
 	IPInfoProviderName         *string
 
-	// Currently, only 'icmp' is supported, and 'udp' is planned to be supported in the future
-	L3PacketType *string
+	L4PacketType *L4PacketTypeOption
 
 	// Take effect only when L3PacketType is 'udp'
 	UDPDstPort *int
@@ -47,6 +54,8 @@ const ParamRandomPayloadSize = "randomPayloadSize"
 const ParamDestination = "destination"
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 const ParamsIPInfoProviderName = "ipInfoProviderName"
+const ParamL4PacketType = "l4PacketType"
+// it was a typo to name it 'l3PacketType', it should be 'l4PacketType' instead, use it only for backward compatibility
 const ParamL3PacketType = "l3PacketType"
 const ParamUDPDstPort = "udpDstPort"
 
@@ -55,8 +64,13 @@ const defaultTTL = 64
 func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
 
-	if l3PacketType := r.URL.Query().Get(ParamL3PacketType); l3PacketType != "" {
-		result.L3PacketType = &l3PacketType
+	if l4TyStr := r.URL.Query().Get(ParamL3PacketType); l4TyStr != "" {
+		l4Ty := L4PacketTypeOption(l4TyStr)
+		result.L4PacketType = &l4Ty
+	}
+	if l4TyStr := r.URL.Query().Get(ParamL4PacketType); l4TyStr != "" {
+		l4Ty := L4PacketTypeOption(l4TyStr)
+		result.L4PacketType = &l4Ty
 	}
 
 	if udpDstPort := r.URL.Query().Get(ParamUDPDstPort); udpDstPort != "" {
@@ -223,8 +237,9 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 	if pr.IPInfoProviderName != nil && *pr.IPInfoProviderName != "" {
 		vals.Add(ParamsIPInfoProviderName, *pr.IPInfoProviderName)
 	}
-	if pr.L3PacketType != nil && *pr.L3PacketType != "" {
-		vals.Add(ParamL3PacketType, *pr.L3PacketType)
+	if pr.L4PacketType != nil && *pr.L4PacketType != "" {
+		vals.Add(ParamL3PacketType, string(*pr.L4PacketType))
+		vals.Add(ParamL4PacketType, string(*pr.L4PacketType))
 	}
 	if pr.UDPDstPort != nil {
 		vals.Add(ParamUDPDstPort, strconv.Itoa(*pr.UDPDstPort))
