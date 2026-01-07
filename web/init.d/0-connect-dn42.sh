@@ -40,6 +40,7 @@ nsenter -t $pid1 -n nft add table ip nat
 nsenter -t $pid1 -n nft delete chain ip nat dnat-gpingweb 2>/dev/null || true
 nsenter -t $pid1 -n nft add chain ip nat dnat-gpingweb { type nat hook prerouting priority dstnat ';' policy accept ';' }
 nsenter -t $pid1 -n nft add rule ip nat dnat-gpingweb ip daddr $dn42_ip tcp dport { 80, 443 } dnat to $my_ip
+nsenter -t $pid1 -n nft add rule ip nat dnat-gpingweb ip daddr $dn42_ip udp dport 443 dnat to $my_ip
 nsenter -t $pid1 -n nft delete chain ip nat snat-gpingweb 2>/dev/null || true
 nsenter -t $pid1 -n nft add chain ip nat snat-gpingweb { type nat hook postrouting priority srcnat ';' policy accept ';' }
 nsenter -t $pid1 -n nft add rule ip nat snat-gpingweb ip saddr $my_ip/32 masquerade
