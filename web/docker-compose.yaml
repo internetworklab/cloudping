@@ -9,6 +9,11 @@ networks:
         - subnet: 192.168.252.0/30
   globalpinghub:
     external: true
+volumes:
+  globalping_acme_challenge:
+    external: true
+  globalping_acme_certs:
+    external: true
 services:
   web:
     container_name: globalping-web
@@ -19,6 +24,8 @@ services:
     volumes:
       - "./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro"
       - "./testdata:/usr/share/nginx/html/testdata:ro"
+      - "globalping_acme_challenge:/usr/share/nginx/acme-challenge"
+      - "globalping_acme_certs:/etc/nginx/acme-certs:ro"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
