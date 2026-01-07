@@ -196,7 +196,6 @@ export function useCanvasSizing(
     const svg = canvasSvgRef.current;
 
     const onMouseDown = (event: MouseEvent) => {
-      console.log("[dbg] mouse down", event);
       const x0 = event.clientX;
       const y0 = event.clientY;
       const [initOffsetX, initOffsetY, initProjXLen, initProjYLen] = getViewBox(
@@ -243,7 +242,11 @@ export function useCanvasSizing(
       const newProjYLen = projYLen * (1 + delta / 100);
       const newProjXLen = newProjYLen / ratio;
       // todo
-      // setViewBox(svg!, [offsetX, offsetY, newProjXLen, newProjYLen]);
+      const deltaX = projXLen - newProjXLen;
+      const deltaY = projYLen - newProjYLen;
+      const newOffsetX = offsetX + deltaX / 2;
+      const newOffsetY = offsetY + deltaY / 2;
+      setViewBox(svg!, [newOffsetX, newOffsetY, newProjXLen, newProjYLen]);
     };
     window.addEventListener("wheel", onWheel);
     console.log("[dbg] added wheel listener");
@@ -328,7 +331,6 @@ export function WorldMap(props: {
   const flatShapes = useMemo(() => {
     const worldMap = worldMapAny as FeatureCollection;
     const flatShapes = toFlatShape(worldMap.features);
-    console.log("[dbg] flatShapes", flatShapes);
     return flatShapes;
   }, [worldMapAny]);
 
