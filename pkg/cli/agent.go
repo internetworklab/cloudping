@@ -173,8 +173,8 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ev.Err = &errStr
 		}
 		if err := json.NewEncoder(w).Encode(ev); err != nil {
-			log.Printf("failed to serialize event: %v", err)
-			continue
+			log.Printf("failed to serialize and send an event: %v", err)
+			return
 		}
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
