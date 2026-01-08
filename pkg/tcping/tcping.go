@@ -31,7 +31,15 @@ type PacketInfo struct {
 	Payload []byte
 	TCP     *layers.TCP
 	TTL     int
-	Size    int
+
+	// defined as IP packet total len, i.e., size of ip header + size of ip payload
+	Size int
+
+	// for receiving packets, this would be the size of the tcp header (i.e. the data_offset field value * 4)
+	TCPHeaderLen *int
+
+	// for receiving packets, this would be the mss option value announced by the sender
+	MSS *int
 }
 
 func (pktInfo *PacketInfo) String() string {
@@ -63,7 +71,7 @@ func FilterPackets(rbCh <-chan *PacketInfo, requirements *FilterRequirements) <-
 			}
 
 			tcp, ok := tcpLayer.(*layers.TCP)
-			if !ok {
+			if !ok || tcp == nil {
 				continue
 			}
 
@@ -82,6 +90,19 @@ func FilterPackets(rbCh <-chan *PacketInfo, requirements *FilterRequirements) <-
 			newPacket := new(PacketInfo)
 			*newPacket = *pktInfo
 			newPacket.TCP = tcp
+
+			dataOffset := int(tcp.DataOffset)*4
+			newPacket.TCPHeaderLen = &dataOffset
+
+			for _, opt := range tcp.Options {
+				if opt.OptionType == layers.TCPOptionKindMSS {
+					if len(opt.OptionData) == 2 {
+						mss := int(binary.BigEndian.Uint16(opt.OptionData))
+						newPacket.MSS = &mss
+					}
+				}
+			}
+
 			filteredCh <- newPacket
 		}
 	}()

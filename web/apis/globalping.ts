@@ -215,8 +215,18 @@ type RawTCPPingEventDataDetails = {
       }[];
       Padding?: null;
     };
+
+    // for receiving packets, this would be the ttl(or hoplimit) found in the ip header
     TTL?: number;
+
+    // defined as IP packet total len, i.e., size of ip header + size of ip payload
     Size?: number;
+
+    // for receiving packets, this would be the size of the tcp header
+    TCPHeaderLen?: number;
+
+    // for receiving packets, this would be the mss option value announced by the sender
+    MSS?: number;
   };
   RTT?: number; // in unit of nanoseconds
   SentTTL?: number; // ttl or hoplimit in the ip header that was sent
