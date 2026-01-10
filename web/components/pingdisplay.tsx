@@ -47,6 +47,69 @@ type RowObject = {
   target: string;
 };
 
+type TableCellData = {
+  latest: {
+    latency: number | undefined | null;
+    mss: number | undefined | null;
+  };
+  latestSample: PingSample | undefined | null;
+  samples: PingSample[];
+};
+
+type TableCellDataMap = Record<string, Record<string, TableCellData>>;
+
+function updateTableCellDataMap(
+  prev: TableCellDataMap,
+  sample: PingSample
+): TableCellDataMap {
+  const newMap = { ...prev };
+  if (!newMap[sample.target]) {
+    newMap[sample.target] = {};
+  }
+  if (!newMap[sample.target][sample.from]) {
+    newMap[sample.target][sample.from] = {
+      latest: {
+        latency: sample.latencyMs,
+        mss: sample.mss,
+      },
+      latestSample: sample,
+      samples: [sample],
+    };
+    return newMap;
+  }
+  newMap[sample.target] = {
+    ...newMap[sample.target],
+    [sample.from]: {
+      ...newMap[sample.target][sample.from],
+      latest: {
+        latency: sample.latencyMs,
+        mss: sample.mss,
+      },
+      latestSample: sample,
+      samples: [...newMap[sample.target][sample.from].samples, sample],
+    },
+  };
+  return newMap;
+}
+
+function getLatestDataFromMap(
+  map: TableCellDataMap,
+  target: string,
+  source: string
+): {
+  datum: PingSample | undefined | null;
+  latency: number | undefined | null;
+  mss: number | undefined | null;
+} {
+  const data = map[target]?.[source];
+  const latest = data?.latest;
+  return {
+    datum: data?.latestSample,
+    latency: latest?.latency,
+    mss: latest?.mss,
+  };
+}
+
 export function PingResultDisplay(props: {
   pendingTask: PendingTask;
   onDeleted: () => void;
@@ -54,11 +117,7 @@ export function PingResultDisplay(props: {
   const { pendingTask, onDeleted } = props;
   const { sources, targets, preferV4, preferV6, useUDP } = pendingTask;
 
-  const [latencyMap, setLatencyMap] = useState<
-    Record<string, Record<string, number>>
-  >({});
-
-  const [mssMap, setMssMap] = useState<Record<string, Record<string, number>>>(
+  const [tableCellDataMap, setTableCellDataMap] = useState<TableCellDataMap>(
     {}
   );
 
@@ -82,6 +141,7 @@ export function PingResultDisplay(props: {
         : pendingTask.type === "tcpping"
         ? "tcp"
         : "icmp",
+      ipInfoProviderName: "auto",
     });
     const reader = resultStream.getReader();
     const readNext = (props: {
@@ -94,29 +154,7 @@ export function PingResultDisplay(props: {
 
       if (props.value !== undefined && props.value !== null) {
         const sample = props.value;
-        const sampleFrom = sample.from;
-        const sampleTarget = sample.target;
-        const sampleLatency = sample.latencyMs;
-        if (sampleLatency !== undefined && sampleLatency !== null) {
-          setLatencyMap((prev) => ({
-            ...prev,
-            [sampleTarget]: {
-              ...(prev[sampleTarget] || {}),
-              [sampleFrom]: sampleLatency,
-            },
-          }));
-        }
-
-        const mss = sample.mss;
-        if (mss !== undefined && mss !== null) {
-          setMssMap((prev) => ({
-            ...prev,
-            [sampleTarget]: {
-              ...(prev[sampleTarget] || {}),
-              [sampleFrom]: mss,
-            },
-          }));
-        }
+        setTableCellDataMap((prev) => updateTableCellDataMap(prev, sample));
       }
 
       reader.read().then(readNext);
@@ -211,8 +249,7 @@ export function PingResultDisplay(props: {
                 target={target}
                 sources={sources}
                 rowLength={sources.length + 2}
-                latencyMap={latencyMap}
-                mssMap={mssMap}
+                tableCellDataMap={tableCellDataMap}
               />
             ))}
           </TableBody>
@@ -331,21 +368,25 @@ function trimPrefix(fullNodeName: string): string {
   return fullNodeName.replace(/^[a-zA-Z0-9._-]+\//, "");
 }
 
+function ShowMoreDetails(props: { sample: PingSample }) {
+  const { sample } = props;
+  return (
+    <Box>
+      {sample.peer && <Box>Peer: {sample.peer}</Box>}
+      {sample.peerRdns && <Box>Peer RDNS: {sample.peerRdns}</Box>}
+      {sample.peerASN && <Box>Peer ASN: {sample.peerASN}</Box>}
+    </Box>
+  );
+}
+
 function RowMap(props: {
   target: string;
   sources: string[];
   rowLength: number;
-  latencyMap: Record<string, Record<string, number>>;
-  mssMap?: Record<string, Record<string, number>>;
+  tableCellDataMap: TableCellDataMap;
 }) {
-  const { target, sources, rowLength, latencyMap, mssMap } = props;
+  const { target, sources, rowLength, tableCellDataMap } = props;
   const [expanded, setExpanded] = useState<boolean>(false);
-  const getLatency = (
-    source: string,
-    target: string
-  ): number | undefined | null => {
-    return latencyMap[target]?.[source];
-  };
 
   const canvasX = 360000;
   const canvasY = 200000;
@@ -378,7 +419,11 @@ function RowMap(props: {
       ) {
         continue;
       }
-      const latency = getLatency(node.node_name, target);
+      const { latency } = getLatestDataFromMap(
+        tableCellDataMap,
+        target,
+        node.node_name
+      );
       if (
         latency !== undefined &&
         latency !== null &&
@@ -422,8 +467,12 @@ function RowMap(props: {
       <TableRow>
         <TableCell>{target}</TableCell>
         {sources.map((source) => {
-          const latency = getLatency(source, target);
-          const mss = mssMap?.[target]?.[source];
+          const {
+            latency,
+            mss,
+            datum: sample,
+          } = getLatestDataFromMap(tableCellDataMap, target, source);
+
           return (
             <TableCell
               key={source}
@@ -432,10 +481,25 @@ function RowMap(props: {
                 minWidth: 100,
               }}
             >
-              <Box sx={{ color: getLatencyColor(latency) }}>
-                {latency !== null && latency !== undefined
-                  ? `${latency.toFixed(3)} ms`
-                  : "—"}
+              <Box>
+                <Tooltip
+                  title={
+                    sample ? (
+                      <ShowMoreDetails sample={sample} />
+                    ) : (
+                      <Fragment></Fragment>
+                    )
+                  }
+                >
+                  <Box
+                    component="span"
+                    sx={{ color: getLatencyColor(latency) }}
+                  >
+                    {latency !== null && latency !== undefined
+                      ? `${latency.toFixed(3)} ms`
+                      : "—"}
+                  </Box>
+                </Tooltip>
               </Box>
               {mss !== null && mss !== undefined && <Box>MSS={mss}</Box>}
             </TableCell>

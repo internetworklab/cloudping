@@ -15,27 +15,13 @@ import {
   Tooltip,
   IconButton,
 } from "@mui/material";
-import {
-  Fragment,
-  RefObject,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { TaskCloseIconButton } from "@/components/taskclose";
-import { PlayPauseButton, StopButton } from "./playpause";
-import {
-  colorGreen,
-  colorRed,
-  colorYellow,
-  getLatencyColor,
-} from "./colorfunc";
+import { StopButton } from "./playpause";
+import { getLatencyColor } from "./colorfunc";
 import { IPDisp } from "./ipdisp";
 import { generatePingSampleStream, PingSample } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
-import { demoPingSamples } from "@/apis/mock/mocktraceroute";
 import { useCanvasSizing, WorldMap } from "./worldmap";
 import MapIcon from "@mui/icons-material/Map";
 
