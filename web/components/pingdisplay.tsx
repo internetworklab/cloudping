@@ -495,7 +495,9 @@ function RowMap(props: {
                     component="span"
                     sx={{ color: getLatencyColor(latency) }}
                   >
-                    {latency !== null && latency !== undefined
+                    {!sample?.isTimeout &&
+                    latency !== null &&
+                    latency !== undefined
                       ? `${latency.toFixed(3)} ms`
                       : "—"}
                   </Box>

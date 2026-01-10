@@ -64,6 +64,8 @@ export async function getCurrentPingers(
 
 // A stream source is said to adaptable if it is convertible to a PingSample stream.
 export type PingSample = {
+  isTimeout: boolean;
+
   // the node name where the icmp echo request is originated from, it's mostly just a label, not something that is pingable
   from: string;
 
@@ -122,6 +124,7 @@ export function generateFakePingSampleStream(
             const latencyMs = Math.floor(Math.random() * 290) + 10;
 
             const sample: PingSample = {
+              isTimeout: false,
               from: source,
               target: target,
               latencyMs: latencyMs,
@@ -381,7 +384,13 @@ function pingSampleFromTCPEvent(
     return undefined;
   }
   if (event?.data?.Type !== "received") {
-    return undefined;
+    return {
+      isTimeout: true,
+      from: from,
+      target: target,
+      ttl: event?.data?.Details?.SentTTL ?? 0,
+      seq: event?.data?.Details?.Seq ?? 0,
+    };
   }
 
   if (details === undefined || details === null) {
@@ -402,6 +411,7 @@ function pingSampleFromTCPEvent(
   }
 
   return {
+    isTimeout: false,
     from: from,
     target: target,
     latencyMs: details?.RTT ? details.RTT / 1000000 : undefined,
@@ -431,7 +441,7 @@ function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
 
   const ttl = event.data?.TTL;
   const seq = event.data?.Seq;
-  if (ttl === undefined || ttl === null || seq === undefined || seq === null) {
+  if (seq === undefined || seq === null) {
     console.log("skipping invalid sample, missing ttl or seq (or both)", event);
     return;
   }
@@ -444,10 +454,14 @@ function pingSampleFromEvent(event: RawPingEvent): PingSample | undefined {
     peerRdns && peerRdns.length > 0 ? peerRdns[peerRdns.length - 1] : undefined;
 
   return {
+    isTimeout:
+      raws === undefined ||
+      raws === null ||
+      (Array.isArray(raws) && raws.length === 0),
     from: from,
     target: target,
     latencyMs: latencyMs,
-    ttl: ttl,
+    ttl: ttl ?? 0,
     seq: seq,
     peer: peer,
     peerRdns: peerRdnsLast,
