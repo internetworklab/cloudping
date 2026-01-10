@@ -5,6 +5,7 @@ export // Demo samples so you can see how the traceroute table renders.
 const demoPingSamples: PingSample[] = [
   // agent1: West coast US → 1.1.1.1 (Cloudflare)
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 1,
@@ -18,6 +19,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 1,
@@ -31,6 +33,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 2,
@@ -44,6 +47,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 3,
@@ -57,6 +61,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 3,
@@ -70,6 +75,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.3382, Longitude: -121.8863 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 4,
@@ -84,6 +90,7 @@ const demoPingSamples: PingSample[] = [
   },
 
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 5,
@@ -97,6 +104,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 37.7749, Longitude: -122.4194 },
   },
   {
+    isTimeout: false,
     from: "agent1",
     target: "1.1.1.1",
     ttl: 6,
@@ -112,6 +120,7 @@ const demoPingSamples: PingSample[] = [
 
   // agent2: London → 8.8.8.8 (Google DNS)
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 1,
@@ -125,12 +134,14 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
   },
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 2,
     seq: 2,
   },
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 3,
@@ -145,6 +156,7 @@ const demoPingSamples: PingSample[] = [
   },
 
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 4,
@@ -158,6 +170,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
   },
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 5,
@@ -171,6 +184,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
   },
   {
+    isTimeout: false,
     from: "agent2",
     target: "8.8.8.8",
     ttl: 6,
@@ -183,9 +197,9 @@ const demoPingSamples: PingSample[] = [
     peerISP: "Google",
     peerExactLocation: { Latitude: 51.5072, Longitude: -0.1276 },
   },
-
   // agent3: Singapore → 9.9.9.9 (Quad9)
   {
+    isTimeout: false,
     from: "agent3",
     target: "9.9.9.9",
     ttl: 1,
@@ -199,6 +213,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
   },
   {
+    isTimeout: false,
     from: "agent3",
     target: "9.9.9.9",
     ttl: 2,
@@ -212,6 +227,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
   },
   {
+    isTimeout: false,
     from: "agent3",
     target: "9.9.9.9",
     ttl: 4,
@@ -225,6 +241,7 @@ const demoPingSamples: PingSample[] = [
     peerExactLocation: { Latitude: 1.3521, Longitude: 103.8198 },
   },
   {
+    isTimeout: false,
     from: "agent3",
     target: "9.9.9.9",
     ttl: 5,
@@ -239,6 +256,7 @@ const demoPingSamples: PingSample[] = [
   },
   // final hop
   {
+    isTimeout: false,
     from: "agent3",
     target: "9.9.9.9",
     ttl: 6,
