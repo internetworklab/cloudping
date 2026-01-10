@@ -12,7 +12,7 @@ MyGlobalping is a web-based ping & traceroute project, providing easy to use int
 
 ## Build
 
-If you are in a hurry, just go straight to try our deployed instance at [here](https://globalping.netneighbor.me), or [here](http://ping.dn42)(DN42). Which is ready to use, and doesn't require you to build or install anything.
+If you are in a hurry, just go straight to try our deployed instance at [here](https://ping2.sh), or [here](http://ping.dn42)(DN42). Which is ready to use, and doesn't require you to build or install anything.
 
 Make sure golang of newer version is already installed, if not, go visit [go.dev/doc/install](https://go.dev/doc/install) to download and un-tar a tarball, and make sure that $GOPATH/bin, and /usr/local/go/bin are in the $PATH.
 
