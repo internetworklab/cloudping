@@ -141,6 +141,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
 		tcpingPinger := &pkgpinger.TCPSYNPinger{
 			PingRequest:  pingRequest,
+			IPInfoAdapter: ipinfoAdapter,
 			RespondRange: ph.RespondRange,
 			OnSent: func(ctx context.Context, srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, nBytes int) {
 				counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))

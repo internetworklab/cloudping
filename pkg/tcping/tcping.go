@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/google/btree"
 	"github.com/google/gopacket"
@@ -26,6 +27,7 @@ type TCPSYNSenderConfig struct {
 }
 
 type PacketInfo struct {
+	// for receiving packets, this would be the ip address of the sender (i.e. the one who sent us the packet)
 	SrcIP   net.IP
 	DstIP   net.IP
 	Payload []byte
@@ -40,6 +42,68 @@ type PacketInfo struct {
 
 	// for receiving packets, this would be the mss option value announced by the sender
 	MSS *int
+
+	// for receiving packets, this would be the rdns of the peer (that is, the SrcIP)
+	PeerRDNS          []string
+	PeerASN           *string
+	PeerISP           *string
+	PeerLocation      *string
+	PeerExactLocation *pkgipinfo.ExactLocation
+}
+
+func (pktInfo *PacketInfo) ResolveIPInfo(ctx context.Context, ipinfoAdapter pkgipinfo.GeneralIPInfoAdapter) (*PacketInfo, error) {
+	if pktInfo == nil || pktInfo.SrcIP == nil {
+		return nil, nil
+	}
+
+	clonedPktInfo := new(PacketInfo)
+	*clonedPktInfo = *pktInfo
+
+	ipInfo, err := ipinfoAdapter.GetIPInfo(ctx, pktInfo.SrcIP.String())
+	if err != nil {
+		return clonedPktInfo, err
+	}
+
+	if ipInfo == nil {
+		return clonedPktInfo, nil
+	}
+
+	if ipInfo.ASN != "" {
+		clonedPktInfo.PeerASN = &ipInfo.ASN
+	}
+
+	if ipInfo.Location != "" {
+		clonedPktInfo.PeerLocation = &ipInfo.Location
+	}
+
+	if ipInfo.ISP != "" {
+		clonedPktInfo.PeerISP = &ipInfo.ISP
+	}
+
+	if ipInfo.Exact != nil {
+		clonedPktInfo.PeerExactLocation = ipInfo.Exact
+	}
+
+	return clonedPktInfo, nil
+}
+
+func (pktInfo *PacketInfo) ResolveRDNS(ctx context.Context, resolver *net.Resolver) (*PacketInfo, error) {
+	if pktInfo == nil || pktInfo.SrcIP == nil {
+		return nil, nil
+	}
+	clonedPktInfo := new(PacketInfo)
+	*clonedPktInfo = *pktInfo
+
+	ptrAnswers, err := resolver.LookupAddr(ctx, pktInfo.SrcIP.String())
+	if err != nil {
+		return clonedPktInfo, err
+	}
+
+	if ptrAnswers != nil {
+		clonedPktInfo.PeerRDNS = ptrAnswers
+	}
+
+	return clonedPktInfo, nil
 }
 
 func (pktInfo *PacketInfo) String() string {
@@ -91,7 +155,7 @@ func FilterPackets(rbCh <-chan *PacketInfo, requirements *FilterRequirements) <-
 			*newPacket = *pktInfo
 			newPacket.TCP = tcp
 
-			dataOffset := int(tcp.DataOffset)*4
+			dataOffset := int(tcp.DataOffset) * 4
 			newPacket.TCPHeaderLen = &dataOffset
 
 			for _, opt := range tcp.Options {

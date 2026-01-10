@@ -3,21 +3,24 @@ package pinger
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgtcping "example.com/rbmq-demo/pkg/tcping"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
 type TCPSYNPinger struct {
-	PingRequest  *SimplePingRequest
-	OnSent       pkgtcping.TCPSYNSenderHook
-	OnReceived   pkgtcping.TCPSYNSenderHook
-	RespondRange []net.IPNet
+	PingRequest   *SimplePingRequest
+	OnSent        pkgtcping.TCPSYNSenderHook
+	OnReceived    pkgtcping.TCPSYNSenderHook
+	RespondRange  []net.IPNet
+	IPInfoAdapter pkgipinfo.GeneralIPInfoAdapter
 }
 
 func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context) (net.IP, int, error) {
@@ -95,6 +98,8 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 		tracker := pkgtcping.NewTracker(trackerConfig)
 		tracker.Run(ctx)
 
+		resolver := pkgutils.NewCustomResolver(pinger.PingRequest.Resolver, 10*time.Second)
+
 		allConfirmedCh := make(chan bool, 1)
 		go func(ctx context.Context) {
 			for {
@@ -106,19 +111,43 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 						return
 					}
 
-					evCh <- PingEvent{Data: event}
 					if event.Type == pkgtcping.TrackerEVReceived || event.Type == pkgtcping.TrackerEVTimeout {
-						if event.Type == pkgtcping.TrackerEVReceived && pinger.OnReceived != nil {
-							receivedPkt := event.Details.ReceivedPkt
-							pinger.OnReceived(
-								ctx,
-								receivedPkt.SrcIP,
-								int(receivedPkt.TCP.SrcPort),
-								receivedPkt.DstIP,
-								int(receivedPkt.TCP.DstPort),
-								receivedPkt.Size,
-							)
+						if event.Type == pkgtcping.TrackerEVReceived {
+							if pinger.OnReceived != nil {
+								if receivedPkt := event.Details.ReceivedPkt; receivedPkt != nil {
+									clonedPkt, err := receivedPkt.ResolveRDNS(ctx, resolver)
+									if err != nil {
+										log.Printf("failed to resolve rdns for %s: %v", receivedPkt.SrcIP.String(), err)
+									}
+									if clonedPkt != nil {
+										receivedPkt = clonedPkt
+									}
+
+									if pinger.IPInfoAdapter != nil {
+										clonedPkt, err = receivedPkt.ResolveIPInfo(ctx, pinger.IPInfoAdapter)
+										if err != nil {
+											log.Printf("failed to resolve ip info for %s: %v", receivedPkt.SrcIP.String(), err)
+										}
+										if clonedPkt != nil {
+											receivedPkt = clonedPkt
+										}
+									}
+
+									pinger.OnReceived(
+										ctx,
+										receivedPkt.SrcIP,
+										int(receivedPkt.TCP.SrcPort),
+										receivedPkt.DstIP,
+										int(receivedPkt.TCP.DstPort),
+										receivedPkt.Size,
+									)
+
+									event.Details.ReceivedPkt = receivedPkt
+								}
+							}
 						}
+
+						evCh <- PingEvent{Data: event}
 
 						if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
 							if *totalPkts == event.Details.Seq+1 {
