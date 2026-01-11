@@ -64,8 +64,6 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 	go func() {
 		defer close(evCh)
 
-		ctx := context.Background()
-
 		dstIP, dstPort, err := pinger.getHostAndPort(ctx)
 		if err != nil {
 			evCh <- PingEvent{Error: fmt.Errorf("failed to get host and port: %v", err)}
