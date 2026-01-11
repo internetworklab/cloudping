@@ -277,7 +277,7 @@ function updateMarkers(
   pingSample: PingSample,
   markers: Marker[] | undefined | null
 ): Marker[] {
-  const newMarkers: Marker[] = [...(markers ?? [])];
+  let newMarkers: Marker[] = [...(markers ?? [])];
 
   const ttl = pingSample.ttl;
   if (ttl === undefined || ttl === null) {
@@ -312,7 +312,10 @@ function updateMarkers(
       {pingSample.peerRdns && <Box>RDNS:&nbsp;{pingSample.peerRdns}</Box>}
     </Box>
   );
-  const index = `${ttl}-${pingSample.peer}`;
+  const index = `TTL=${ttl}, IP=${pingSample.peer}`;
+  if (newMarkers.find((marker) => marker.index === index)) {
+    newMarkers = newMarkers.filter((marker) => marker.index !== index);
+  }
 
   const newMarker: Marker = {
     lonLat,
@@ -520,7 +523,16 @@ export function TracerouteResultDisplay(props: {
             )}
           </Box>
           <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
-            <IconButton onClick={() => setShowMap(!showMap)}>
+            <IconButton
+              sx={{
+                visibility:
+                  pageState?.[tabValue]?.markers &&
+                  pageState[tabValue].markers.length > 0
+                    ? "visible"
+                    : "hidden",
+              }}
+              onClick={() => setShowMap(!showMap)}
+            >
               <MapIcon />
             </IconButton>
           </Tooltip>
