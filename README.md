@@ -6,9 +6,11 @@ MyGlobalping is a web-based ping & traceroute project, providing easy to use int
 
 ## Features
 
-- Web-based UI for displaying real-time refreshing Ping or Traceroute results, with multiple origin nodes and multiple targets simultaneously.
-- Basic rDNS and IPInfoLite-like results for both Clearnet and DN42, such as country, ASN, and AS Name.
-- API-first design with RESTful API endpoints and plain-text JSON line stream outputs. Components of our system can be debugged with simple HTTP clients such as curl.
+- Ping, Traceroute (UDP flavor or ICMP flavor)
+- TCP Ping
+- DN42 Dual Stack support, Internet support
+- Basic IP information display (like ASN, Country, and probably Lat Lon)
+- API-first design, CLI friendly (can access through http clients like `curl`)
 
 ## Build
 
