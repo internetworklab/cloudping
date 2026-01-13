@@ -463,7 +463,7 @@ function ShowMoreDetails(props: {
         sx={{
           marginTop: 1,
           paddingTop: 1,
-          maxHeight: "200px",
+          maxHeight: "150px",
           overflow: "auto",
           display: "flex",
           flexDirection: "column-reverse",
