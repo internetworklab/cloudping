@@ -64,8 +64,9 @@ type AgentCmd struct {
 	// when http listen address is not empty, it will serve http requests without any TLS authentication
 	HTTPListenAddress string `help:"Address to listen on for HTTP" default:""`
 
-	SharedQuota        int    `help:"Shared quota for the traceroute (packets per second)" default:"10"`
-	DN42IPInfoProvider string `help:"APIEndpoint of DN42 IPInfo provider" default:"https://dn42-query.netneighbor.me/ipinfo/lite/query"`
+	SharedQuota                int    `help:"Shared quota for the traceroute (packets per second)" default:"10"`
+	DN42IPInfoProvider         string `help:"APIEndpoint of DN42 IPInfo provider" default:"https://dn42-query.netneighbor.me/ipinfo/lite/query"`
+	DN42IP2LocationAPIEndpoint string `help:"APIEndpoint of DN42 IP2Location provider"`
 
 	// Prometheus stuffs
 	MetricsListenAddress string `help:"Endpoint to expose prometheus metrics" default:":2112"`
@@ -194,7 +195,7 @@ func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapte
 	ip2LocationAPIKey := os.Getenv("IP2LOCATION_API_KEY")
 	if ip2LocationEndpoint != "" && ip2LocationAPIKey != "" {
 		log.Printf("Using IP2Location API Service: %s", ip2LocationEndpoint)
-		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey)
+		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey, "ip2location")
 		return ip2LocationIPInfoAdapter, nil
 	}
 
@@ -209,6 +210,14 @@ func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapte
 	}
 
 	return nil, fmt.Errorf("no valid ipinfo provider found")
+}
+
+func getDN42IPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, error) {
+	if agentCmd.DN42IP2LocationAPIEndpoint != "" {
+		return pkgipinfo.NewIP2LocationIPInfoAdapter(agentCmd.DN42IP2LocationAPIEndpoint, "", "dn42"), nil
+	}
+
+	return pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider), nil
 }
 
 func (agentCmd *AgentCmd) Run() error {
@@ -231,7 +240,10 @@ func (agentCmd *AgentCmd) Run() error {
 	// skip registering named ipinfo providers to the registry,
 	// to prevent users from intentionally bypassing the (cached) auto ipinfo dispatcher.
 	// ipinfoReg.RegisterAdapter(classicIPInfoAdapter)
-	dn42IPInfoAdapter := pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider)
+	dn42IPInfoAdapter, err := getDN42IPInfoAdapter(agentCmd)
+	if err != nil {
+		log.Fatalf("failed to initialize DN42 IPInfo adapter: %v", err)
+	}
 	// ipinfoReg.RegisterAdapter(dn42IPInfoAdapter)
 	randomIPInfoAdapter := pkgipinfo.NewRandomIPInfoAdapter()
 	ipinfoReg.RegisterAdapter(randomIPInfoAdapter)

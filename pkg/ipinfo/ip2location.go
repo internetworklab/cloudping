@@ -12,12 +12,14 @@ import (
 type IP2LocationIPInfoAdapter struct {
 	APIEndpoint string
 	APIKey      string
+	CustomName  string
 }
 
-func NewIP2LocationIPInfoAdapter(apiEndpoint string, apiKey string) GeneralIPInfoAdapter {
+func NewIP2LocationIPInfoAdapter(apiEndpoint string, apiKey string, customName string) GeneralIPInfoAdapter {
 	return &IP2LocationIPInfoAdapter{
 		APIEndpoint: apiEndpoint,
 		APIKey:      apiKey,
+		CustomName:  customName,
 	}
 }
 
@@ -44,7 +46,9 @@ func (ia *IP2LocationIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*
 	}
 	urlValues := url.Values{}
 	urlValues.Add("ip", ip)
-	urlValues.Add("key", ia.APIKey)
+	if ia.APIKey != "" {
+		urlValues.Add("key", ia.APIKey)
+	}
 	urlObj.RawQuery = urlValues.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", urlObj.String(), nil)
@@ -105,5 +109,8 @@ func (ia *IP2LocationIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*
 }
 
 func (ia *IP2LocationIPInfoAdapter) GetName() string {
+	if ia.CustomName != "" {
+		return ia.CustomName
+	}
 	return "ip2location"
 }
