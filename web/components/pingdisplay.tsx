@@ -22,6 +22,7 @@ import {
 import {
   CSSProperties,
   Fragment,
+  ReactNode,
   useEffect,
   useMemo,
   useRef,
@@ -45,7 +46,7 @@ import {
 } from "./colorfunc";
 import { PlayPauseButton } from "./playpause";
 import MapIcon from "@mui/icons-material/Map";
-import { Marker, useCanvasSizing, WorldMap } from "./worldmap";
+import { LonLat, Marker, useCanvasSizing, WorldMap } from "./worldmap";
 
 type RowObject = {
   target: string;
@@ -61,6 +62,65 @@ type TableCellData = {
 };
 
 type TableCellDataMap = Record<string, Record<string, TableCellData>>;
+
+function updateMarkers(
+  pingSample: PingSample,
+  markers: Marker[] | undefined | null
+): Marker[] {
+  let newMarkers: Marker[] = [...(markers ?? [])];
+
+  const ttl = pingSample.ttl;
+  if (ttl === undefined || ttl === null) {
+    return newMarkers;
+  }
+
+  const exact = pingSample.peerExactLocation;
+  if (exact === undefined || exact === null) {
+    return newMarkers;
+  }
+
+  const lon = exact.Longitude;
+  const lat = exact.Latitude;
+  if (lon === undefined || lon === null || lat === undefined || lat === null) {
+    return newMarkers;
+  }
+
+  const rtt = pingSample.latencyMs;
+  if (rtt === undefined || rtt === null) {
+    return newMarkers;
+  }
+
+  const lonLat: LonLat = [lon, lat];
+  const fill = getLatencyColor(rtt);
+  const radius = 2000;
+  const strokeWidth = 800;
+  const stroke: CSSProperties["stroke"] = "white";
+  const tooltip: ReactNode = (
+    <Box>
+      <Box>TTL:&nbsp;{ttl}</Box>
+      <Box>IP:&nbsp;{pingSample.peer}</Box>
+      {pingSample.peerRdns && <Box>RDNS:&nbsp;{pingSample.peerRdns}</Box>}
+    </Box>
+  );
+  const index = `TTL=${ttl}, IP=${pingSample.peer}`;
+  if (newMarkers.find((marker) => marker.index === index)) {
+    newMarkers = newMarkers.filter((marker) => marker.index !== index);
+  }
+
+  const newMarker: Marker = {
+    lonLat,
+    fill,
+    radius,
+    strokeWidth,
+    stroke,
+    tooltip,
+    index,
+  };
+
+  newMarkers.push(newMarker);
+
+  return newMarkers;
+}
 
 function updateTableCellDataMap(
   prev: TableCellDataMap,
@@ -466,6 +526,8 @@ function RenderPingSampleToText(props: {
   return <Box>{segs.join(" ")}</Box>;
 }
 
+const maximumExtraMarkers = 100;
+
 const CustomWidthTooltip = styled(({ className, ...props }: TooltipProps) => (
   <Tooltip {...props} classes={{ popper: className }} />
 ))({
@@ -556,6 +618,22 @@ function RowMap(props: {
     }
     markers.push(marker);
   }
+
+  let extraMarkers: Marker[] = [];
+  for (const source of sources) {
+    const { historySamples } = getLatestDataFromMap(
+      tableCellDataMap,
+      target,
+      source
+    );
+    for (const sample of historySamples) {
+      extraMarkers = updateMarkers(sample, extraMarkers);
+    }
+  }
+  if (extraMarkers.length > maximumExtraMarkers) {
+    extraMarkers = extraMarkers.slice(0, maximumExtraMarkers);
+  }
+  markers = [...markers, ...extraMarkers];
 
   return (
     <Fragment>
