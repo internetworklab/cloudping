@@ -55,6 +55,7 @@ const ParamDestination = "destination"
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 const ParamsIPInfoProviderName = "ipInfoProviderName"
 const ParamL4PacketType = "l4PacketType"
+
 // it was a typo to name it 'l3PacketType', it should be 'l4PacketType' instead, use it only for backward compatibility
 const ParamL3PacketType = "l3PacketType"
 const ParamUDPDstPort = "udpDstPort"
@@ -249,7 +250,8 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 }
 
 type TTLGenerator interface {
-	GetNext() int
+	Get() int
+	Forward()
 	Reset()
 	String() string
 }
@@ -279,17 +281,21 @@ func ParseToAutoTTL(s string) (*AutoTTL, error) {
 	return nil, fmt.Errorf("failed to parse auto ttl: %s", s)
 }
 
-func (at *AutoTTL) GetNext() int {
+func (at *AutoTTL) Get() int {
 	at.lock.Lock()
 	defer at.lock.Unlock()
 
-	retVal := at.Next
+	return at.Next
+}
+
+func (at *AutoTTL) Forward() {
+	at.lock.Lock()
+	defer at.lock.Unlock()
+
 	at.Next++
 	if at.Next > maxAllowedAutoTTL {
 		at.Next = at.Start
 	}
-
-	return retVal
 }
 
 func (at *AutoTTL) Reset() {
@@ -317,17 +323,20 @@ func ParseToRangeTTL(s string) (*RangeTTL, error) {
 	return &RangeTTL{TTLs: ints}, nil
 }
 
-func (rt *RangeTTL) GetNext() int {
+func (rt *RangeTTL) Get() int {
+	rt.lock.Lock()
+	defer rt.lock.Unlock()
+	return rt.TTLs[rt.idx]
+}
+
+func (rt *RangeTTL) Forward() {
 	rt.lock.Lock()
 	defer rt.lock.Unlock()
 
-	retVal := rt.TTLs[rt.idx]
 	rt.idx++
 	if rt.idx >= len(rt.TTLs) {
 		rt.idx = 0
 	}
-
-	return retVal
 }
 
 func (rt *RangeTTL) Reset() {

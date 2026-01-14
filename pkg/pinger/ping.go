@@ -163,7 +163,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 		ctrlSignals <- SendControl{
 			Seq:  *numPktsSent + 1,
 			PMTU: nil,
-			TTL:  pingRequest.TTL.GetNext(),
+			TTL:  pingRequest.TTL.Get(),
 		}
 
 		waitForEVGenCh := make(chan interface{})
@@ -214,6 +214,15 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						err = nil
 					}
 
+					if setMTUTo := wrappedEV.GetPMTU(); setMTUTo != nil {
+						*pmtu = *setMTUTo
+						if wrappedEV != nil && wrappedEV.TTL > 1 {
+							wrappedEV.TTL = wrappedEV.TTL - 1
+						}
+					} else {
+						pingRequest.TTL.Forward()
+					}
+
 					outputEVChan <- PingEvent{Data: wrappedEV}
 					*numPktsSent++
 
@@ -224,14 +233,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					}
 
 					<-time.After(time.Duration(pingRequest.IntvMilliseconds) * time.Millisecond)
-					if setMTUTo := wrappedEV.GetPMTU(); setMTUTo != nil {
-						*pmtu = *setMTUTo
-					}
+
+					
 
 					ctrlSignals <- SendControl{
 						Seq:  *numPktsSent + 1,
 						PMTU: pmtu,
-						TTL:  pingRequest.TTL.GetNext(),
+						TTL:  pingRequest.TTL.Get(),
 					}
 				}
 			}
