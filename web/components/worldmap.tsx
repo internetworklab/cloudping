@@ -315,6 +315,35 @@ function RenderMarker(props: { marker: Marker; projector: Projector }) {
   );
 }
 
+export type Path = {
+  stroke?: CSSProperties["stroke"];
+  strokeWidth?: CSSProperties["strokeWidth"];
+  points: LonLat[];
+};
+
+function RenderPath(props: { path: Path; projector: Projector }) {
+  const { path, projector } = props;
+  if (path.points.length < 2) {
+    return <Fragment></Fragment>;
+  }
+  const initPoint = path.points[0];
+  const restPoints = path.points.slice(1);
+
+  let d = `M ${projector(initPoint).join(" ")}`;
+  for (const point of restPoints) {
+    d += ` L ${projector(point).join(" ")}`;
+  }
+
+  return (
+    <path
+      d={d}
+      stroke={path.stroke}
+      strokeWidth={path.strokeWidth}
+      fill="none"
+    />
+  );
+}
+
 export function WorldMap(props: {
   canvasWidth: number;
   canvasHeight: number;
@@ -322,6 +351,7 @@ export function WorldMap(props: {
   markers: Marker[];
   viewBox?: string;
   canvasSvgRef?: RefObject<SVGSVGElement>;
+  paths?: Path[];
 }) {
   const {
     canvasWidth: canvasX,
@@ -330,6 +360,7 @@ export function WorldMap(props: {
     markers,
     viewBox,
     canvasSvgRef,
+    paths,
   } = props;
   const flatShapes = useMemo(() => {
     const worldMap = worldMapAny as FeatureCollection;
@@ -357,6 +388,9 @@ export function WorldMap(props: {
             projector={projector}
             fill={fill}
           />
+          {paths?.map((path, idx) => (
+            <RenderPath key={idx} path={path} projector={projector} />
+          ))}
           {markers.map((marker, i) => (
             <RenderMarker key={i} marker={marker} projector={projector} />
           ))}
