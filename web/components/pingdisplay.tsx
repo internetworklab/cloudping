@@ -46,7 +46,14 @@ import {
 } from "./colorfunc";
 import { PlayPauseButton } from "./playpause";
 import MapIcon from "@mui/icons-material/Map";
-import { LonLat, Marker, useCanvasSizing, WorldMap } from "./worldmap";
+import {
+  LonLat,
+  Marker,
+  useCanvasSizing,
+  useZoomControl,
+  WorldMap,
+  ZoomHintText,
+} from "./worldmap";
 import { getNodeGroups, getNodeLatLon, NodeGroup } from "@/apis/utils";
 
 type RowObject = {
@@ -483,7 +490,14 @@ function RowMap(props: {
   const canvasX = 360000;
   const canvasY = 200000;
 
-  const { canvasSvgRef } = useCanvasSizing(canvasX, canvasY, expanded, false);
+  const { zoomEnabled } = useZoomControl();
+
+  const { canvasSvgRef } = useCanvasSizing(
+    canvasX,
+    canvasY,
+    expanded,
+    zoomEnabled
+  );
 
   const { data: conns } = useQuery({
     queryKey: ["nodes"],
@@ -652,6 +666,19 @@ function RowMap(props: {
                 markers={markers}
               />
               <RenderLegends encodings={encodings} />
+              {!zoomEnabled && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    bottom: 2,
+                    right: 2,
+                    padding: 2,
+                    fontSize: 12,
+                  }}
+                >
+                  <ZoomHintText />
+                </Box>
+              )}
             </Box>
           </TableCell>
         </TableRow>

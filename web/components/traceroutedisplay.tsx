@@ -39,7 +39,9 @@ import {
   Path,
   toGeodesicPaths,
   useCanvasSizing,
+  useZoomControl,
   WorldMap,
+  ZoomHintText,
 } from "./worldmap";
 import MapIcon from "@mui/icons-material/Map";
 import { useQuery } from "@tanstack/react-query";
@@ -465,7 +467,15 @@ export function TracerouteResultDisplay(props: {
   const canvasH = 200000;
 
   const [showMap, setShowMap] = useState<boolean>(false);
-  const { canvasSvgRef } = useCanvasSizing(canvasW, canvasH, showMap, false);
+
+  const { zoomEnabled } = useZoomControl();
+
+  const { canvasSvgRef } = useCanvasSizing(
+    canvasW,
+    canvasH,
+    showMap,
+    zoomEnabled
+  );
 
   const { data: conns } = useQuery({
     queryKey: ["nodes"],
@@ -541,6 +551,21 @@ export function TracerouteResultDisplay(props: {
           )}
         </Box>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+          <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
+            <IconButton
+              sx={{
+                visibility:
+                  pageState?.[tabValue]?.markers &&
+                  pageState[tabValue].markers.length > 0
+                    ? "visible"
+                    : "hidden",
+              }}
+              onClick={() => setShowMap(!showMap)}
+            >
+              <MapIcon />
+            </IconButton>
+          </Tooltip>
+
           <StopButton
             stopped={stopped}
             onToggle={(prev, nxt) => {
@@ -557,15 +582,15 @@ export function TracerouteResultDisplay(props: {
         </Box>
       </Box>
 
-      <Box
-        sx={{
-          height: showMap ? "360px" : "36px",
-          position: "relative",
-          top: 0,
-          left: 0,
-        }}
-      >
-        {showMap && (
+      {showMap && (
+        <Box
+          sx={{
+            height: showMap ? "360px" : "36px",
+            position: "relative",
+            top: 0,
+            left: 0,
+          }}
+        >
           <WorldMap
             canvasSvgRef={canvasSvgRef as any}
             canvasWidth={canvasW}
@@ -574,46 +599,39 @@ export function TracerouteResultDisplay(props: {
             paths={extraPaths}
             markers={markers}
           />
-        )}
 
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 2,
-            position: "absolute",
-            bottom: 0,
-            alignItems: "center",
-            paddingLeft: 2,
-            paddingRight: 2,
-            width: "100%",
-          }}
-        >
-          <Box>
-            {task.targets.length > 0 && task.targets[0] && (
-              <Box>
-                Traceroute to {task.targets[0]}, for informational purposes
-                only.
-              </Box>
-            )}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 2,
+              position: "absolute",
+              bottom: 0,
+              alignItems: "center",
+              padding: 2,
+              width: "100%",
+              fontSize: 12,
+            }}
+          >
+            Traceroute to {task.targets[0]}, for informational purposes only.
           </Box>
-          <Tooltip title={showMap ? "Hide Map" : "Show Map"}>
-            <IconButton
+
+          {!zoomEnabled && (
+            <Box
               sx={{
-                visibility:
-                  pageState?.[tabValue]?.markers &&
-                  pageState[tabValue].markers.length > 0
-                    ? "visible"
-                    : "hidden",
+                position: "absolute",
+                bottom: 2,
+                right: 2,
+                fontSize: 12,
+                padding: 2,
               }}
-              onClick={() => setShowMap(!showMap)}
             >
-              <MapIcon />
-            </IconButton>
-          </Tooltip>
+              <ZoomHintText />
+            </Box>
+          )}
         </Box>
-      </Box>
+      )}
 
       <TableContainer sx={{ maxWidth: "100%", overflowX: "auto" }}>
         <Table>

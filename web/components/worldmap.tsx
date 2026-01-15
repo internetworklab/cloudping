@@ -300,6 +300,34 @@ function getViewBox(svg: SVGSVGElement): number[] {
   return [0, 0, 0, 0];
 }
 
+export function ZoomHintText() {
+  return <Fragment>Hold Command ⌘ Key to Enable Zoom In/Out</Fragment>;
+}
+
+export function useZoomControl() {
+  const [zoomEnabled, setZoomEnabled] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      console.log("[dbg] key down", event);
+      if (event.key === "Meta") {
+        setZoomEnabled(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Meta") {
+        setZoomEnabled(false);
+      }
+    };
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+  return { zoomEnabled };
+}
+
 export function useCanvasSizing(
   canvasW: number,
   canvasH: number,
@@ -347,13 +375,6 @@ export function useCanvasSizing(
           initProjXLen,
           initProjYLen,
         ]);
-        console.log(
-          "[dbg] mouse move",
-          dx,
-          dy,
-          initOffsetX - dx,
-          initOffsetY - dy
-        );
       };
       window.addEventListener("mousemove", onMouseMove);
       console.log("[dbg] added mouse move listener");
@@ -368,8 +389,19 @@ export function useCanvasSizing(
     svg?.addEventListener("mousedown", onMouseDown);
     console.log("[dbg] added mouse down listener");
 
+    console.log("[dbg] added wheel listener");
+
+    return () => {
+      svg?.removeEventListener("mousedown", onMouseDown);
+      console.log("[dbg] removed mouse down listener");
+
+      console.log("[dbg] removed wheel listener");
+    };
+  }, [canvasSvgRef.current, expanded]);
+
+  useEffect(() => {
+    const svg = canvasSvgRef.current;
     const onWheel = (event: WheelEvent) => {
-      console.log("[dbg] wheel", event);
       const delta = event.deltaY;
       const [offsetX, offsetY, projXLen, projYLen] = getViewBox(svg!);
       const ratio = projYLen / projXLen;
@@ -382,18 +414,15 @@ export function useCanvasSizing(
       const newOffsetY = offsetY + deltaY / 2;
       if (enableZoom) {
         setViewBox(svg!, [newOffsetX, newOffsetY, newProjXLen, newProjYLen]);
+        event.preventDefault();
       }
     };
-    window.addEventListener("wheel", onWheel);
-    console.log("[dbg] added wheel listener");
-
+    svg?.addEventListener("wheel", onWheel);
     return () => {
-      svg?.removeEventListener("mousedown", onMouseDown);
-      console.log("[dbg] removed mouse down listener");
-      window.removeEventListener("wheel", onWheel);
-      console.log("[dbg] removed wheel listener");
+      svg?.removeEventListener("wheel", onWheel);
     };
-  }, [canvasSvgRef.current, expanded]);
+  }, [enableZoom]);
+
   return { canvasSvgRef };
 }
 
