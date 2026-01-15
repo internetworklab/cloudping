@@ -12,9 +12,12 @@ import {
 } from "react";
 import worldMapAny from "./worldmap.json";
 import { Box, Tooltip } from "@mui/material";
+import { Quaternion, Vector3 } from "three";
 
 // format: [longitude, latitude]
 export type LonLat = number[];
+
+export type LatLon = number[];
 
 type Polygon = LonLat[];
 
@@ -45,6 +48,135 @@ type FlatShape = {
   feature: Feature;
   polygon: Polygon;
 };
+
+export type City = {
+  name: string;
+  latLon: [number, number];
+};
+
+export function getQuatFromLat(lat: number): Quaternion {
+  const latQuat = new Quaternion();
+  latQuat.setFromAxisAngle(new Vector3(1, 0, 0), (-1 * lat * Math.PI) / 180);
+  return latQuat;
+}
+
+export function getQuatFromLon(lon: number): Quaternion {
+  const lonQuat = new Quaternion();
+  lonQuat.setFromAxisAngle(new Vector3(0, 1, 0), (lon * Math.PI) / 180);
+  return lonQuat;
+}
+
+export function latLonToQuat(lat: number, lon: number): Quaternion {
+  const latQuat = getQuatFromLat(lat);
+  const lonQuat = getQuatFromLon(lon);
+
+  return lonQuat.clone().multiply(latQuat);
+}
+
+export const baseVector = new Vector3(0, 0, 1);
+
+export function xyzToLatLon(xyz: Vector3): [number, number] {
+  const x = xyz.x;
+  const y = xyz.y;
+  const z = xyz.z;
+
+  const lat = (Math.atan(y / Math.sqrt(z * z + x * x)) * 180) / Math.PI;
+  const lonDelta = (Math.atan(z / x) * 180) / Math.PI;
+  let lon = lonDelta;
+  if (x >= 0) {
+    lon = 90 - lon;
+  } else {
+    lon = -1 * (90 + lon);
+  }
+  return [lat, lon];
+}
+
+function getGeodesicPoints(
+  startPoint: Vector3,
+  endPoint: Vector3,
+  numPoints: number
+): Vector3[] {
+  const points = [];
+  const quaternion = new Quaternion();
+
+  // Calculate the quaternion representing the full rotation
+  quaternion.setFromUnitVectors(startPoint, endPoint);
+
+  for (let i = 0; i <= numPoints; i++) {
+    const t = i / numPoints;
+    const interpolatedQuaternion = new Quaternion()
+      .identity()
+      .slerp(quaternion, t);
+
+    // Apply the interpolated quaternion to the starting point
+    const geodesicPoint = startPoint
+      .clone()
+      .applyQuaternion(interpolatedQuaternion);
+
+    // If your sphere has a specific radius, multiply the point's components by that radius
+    // const radius = 10;
+    // geodesicPoint.multiplyScalar(radius);
+
+    points.push(geodesicPoint);
+  }
+
+  return points;
+}
+
+function markVector3(points: LonLat[]): [number, number] | undefined {
+  for (let j = 1; j < points.length; j++) {
+    const i = j - 1;
+    const lon1 = points[i][0] + 180;
+    const lon2 = points[j][0] + 180;
+    if (
+      Math.sin((lon1 * Math.PI) / 180) * Math.sin((lon2 * Math.PI) / 180) <
+      0
+    ) {
+      return [i, j];
+    }
+  }
+
+  return undefined;
+}
+
+export function toGeodesicPaths(
+  from: LatLon,
+  to: LatLon,
+  numPoints: number
+): Path[] {
+  const xyzFrom = baseVector
+    .clone()
+    .applyQuaternion(latLonToQuat(from[0], from[1]));
+
+  const xyzTo = baseVector.clone().applyQuaternion(latLonToQuat(to[0], to[1]));
+
+  const vpoints = getGeodesicPoints(xyzFrom.clone(), xyzTo.clone(), numPoints);
+  const lonLats = vpoints.map(xyzToLatLon).map((x) => [x[1], x[0]]);
+  const markIndices = markVector3(lonLats);
+  const paths: Path[] = [];
+
+  if (markIndices !== undefined) {
+    const lonLats1 = lonLats.slice(0, markIndices[0] + 1);
+    if (lonLats1.length > 1) {
+      paths.push({
+        points: lonLats1,
+      });
+    }
+
+    const lonLats2 = lonLats.slice(markIndices[0] + 1);
+    if (lonLats2.length > 1) {
+      paths.push({
+        points: lonLats2,
+      });
+    }
+    return paths;
+  }
+  return [
+    {
+      points: lonLats,
+    },
+  ];
+}
 
 function isPolygon(polygon: any): boolean {
   if (Array.isArray(polygon)) {
