@@ -24,6 +24,8 @@ import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
 import { TracerouteResultDisplay } from "@/components/traceroutedisplay";
 import GitHubIcon from "@mui/icons-material/GitHub";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import { About } from "@/components/about";
 
 const fakeSources = [
   "192.168.1.1",
@@ -109,6 +111,7 @@ export default function Home() {
 
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
   const dn42GeoIPRepo = process.env["NEXT_PUBLIC_DN42_GEOIP_REPO"];
+  const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
   return (
     <Box sx={containerStyles}>
@@ -120,7 +123,7 @@ export default function Home() {
                 display: "flex",
                 justifyContent: "space-between",
                 flexWrap: "wrap",
-                rowGap: 2,
+                gap: 2,
               }}
             >
               <Box
@@ -186,103 +189,130 @@ export default function Home() {
               </Box>
             </Box>
             <Box
-              sx={{ marginTop: 2, display: "flex", gap: 2, flexWrap: "wrap" }}
+              sx={{
+                marginTop: 2,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 2,
+              }}
             >
-              <RadioGroup
-                value={pendingTask.type}
-                onChange={(e) =>
-                  setPendingTask((prev) => ({
-                    ...prev,
-                    type: e.target.value as "ping" | "traceroute",
-                    pmtu:
-                      e.target.value === "ping" || e.target.value === "tcpping"
-                        ? false
-                        : prev.pmtu,
-                    useUDP: e.target.value === "tcpping" ? false : prev.useUDP,
-                  }))
-                }
-                row
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 2,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
               >
-                <FormControlLabel
-                  value="ping"
-                  control={<Radio />}
-                  label="Ping"
-                />
-                <FormControlLabel
-                  value="traceroute"
-                  control={<Radio />}
-                  label="Traceroute"
-                />
-                <FormControlLabel
-                  value="tcpping"
-                  control={<Radio />}
-                  label="TCP Ping"
-                />
-              </RadioGroup>
-              <FormGroup row>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={!!pendingTask.preferV4}
-                      onChange={(_, ckd) => {
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          preferV4: !!ckd,
-                          preferV6: ckd ? false : prev.preferV6,
-                        }));
-                      }}
-                    />
+                <RadioGroup
+                  value={pendingTask.type}
+                  onChange={(e) =>
+                    setPendingTask((prev) => ({
+                      ...prev,
+                      type: e.target.value as "ping" | "traceroute",
+                      pmtu:
+                        e.target.value === "ping" ||
+                        e.target.value === "tcpping"
+                          ? false
+                          : prev.pmtu,
+                      useUDP:
+                        e.target.value === "tcpping" ? false : prev.useUDP,
+                    }))
                   }
-                  label="Prefer V4"
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={!!pendingTask.preferV6}
-                      onChange={(_, ckd) => {
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          preferV4: ckd ? false : prev.preferV4,
-                          preferV6: !!ckd,
-                        }));
-                      }}
-                    />
-                  }
-                  label="Prefer V6"
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      disabled={pendingTask.type === "tcpping"}
-                      checked={!!pendingTask.useUDP}
-                      onChange={(_, ckd) => {
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          useUDP: !!ckd,
-                        }));
-                      }}
-                    />
-                  }
-                  label="Use UDP"
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      disabled={pendingTask.type !== "traceroute"}
-                      checked={
-                        pendingTask.type === "traceroute" && !!pendingTask.pmtu
-                      }
-                      onChange={(_, ckd) => {
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          pmtu: !!ckd,
-                        }));
-                      }}
-                    />
-                  }
-                  label="PMTU"
-                />
-              </FormGroup>
+                  row
+                >
+                  <FormControlLabel
+                    value="ping"
+                    control={<Radio />}
+                    label="Ping"
+                  />
+                  <FormControlLabel
+                    value="traceroute"
+                    control={<Radio />}
+                    label="Traceroute"
+                  />
+                  <FormControlLabel
+                    value="tcpping"
+                    control={<Radio />}
+                    label="TCP Ping"
+                  />
+                </RadioGroup>
+                <FormGroup row>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!!pendingTask.preferV4}
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            preferV4: !!ckd,
+                            preferV6: ckd ? false : prev.preferV6,
+                          }));
+                        }}
+                      />
+                    }
+                    label="Prefer V4"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!!pendingTask.preferV6}
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            preferV4: ckd ? false : prev.preferV4,
+                            preferV6: !!ckd,
+                          }));
+                        }}
+                      />
+                    }
+                    label="Prefer V6"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        disabled={pendingTask.type === "tcpping"}
+                        checked={!!pendingTask.useUDP}
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            useUDP: !!ckd,
+                          }));
+                        }}
+                      />
+                    }
+                    label="Use UDP"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        disabled={pendingTask.type !== "traceroute"}
+                        checked={
+                          pendingTask.type === "traceroute" &&
+                          !!pendingTask.pmtu
+                        }
+                        onChange={(_, ckd) => {
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            pmtu: !!ckd,
+                          }));
+                        }}
+                      />
+                    }
+                    label="PMTU"
+                  />
+                </FormGroup>
+              </Box>
+              <Tooltip title="more">
+                <IconButton
+                  size="small"
+                  onClick={() => setShowAboutDialog(true)}
+                >
+                  <MoreHorizIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
             <Box sx={{ marginTop: 2 }}>
               <SourcesSelector
@@ -365,6 +395,7 @@ export default function Home() {
           setTargetsInput("");
         }}
       />
+      <About open={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
     </Box>
   );
 }

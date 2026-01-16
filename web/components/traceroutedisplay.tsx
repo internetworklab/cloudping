@@ -356,6 +356,7 @@ function updateMarkers(
     }
     return ttl1 - ttl2;
   });
+  console.log("[dbg] num markers:", newMarkers.length);
 
   return newMarkers;
 }
