@@ -81,7 +81,7 @@ func getRemotePingerEndpoint(ctx context.Context, connRegistry *pkgconnreg.ConnR
 			log.Printf("Failed to lookup IP for target %s: %v", target, err)
 			dsts = make([]net.IP, 0)
 		}
-		if !pkgutils.CheckIntersect(dsts, rangeCIDRs) {
+		if len(rangeCIDRs) > 0 && !pkgutils.CheckIntersect(dsts, rangeCIDRs) {
 			log.Printf("Target %s is not in the respond range of node %s, which is %s", target, from, strings.Join(respondRange, ", "))
 			log.Printf("Out of range target %s will not be assigned to a remote pinger because of the policy", target)
 			return nil

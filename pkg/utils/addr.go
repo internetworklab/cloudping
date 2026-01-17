@@ -43,13 +43,29 @@ func filterIPs(ips []net.IP, respondRange []net.IPNet) []net.IP {
 	return filteredIPs
 }
 
-func CheckIntersect(dstIPs []net.IP, rangeCIDRs []net.IPNet) bool {
-	for _, dstIP := range dstIPs {
-		for _, rangeCIDR := range rangeCIDRs {
-			if rangeCIDR.Contains(dstIP) {
-				return true
-			}
+func CheckIntersectIP(dstIP net.IP, rangeCIDRs []net.IPNet) bool {
+	if len(rangeCIDRs) == 0 {
+		panic("CheckIntersectIP must be called with a non-empty rangeCIDRs")
+	}
+
+	for _, rangeCIDR := range rangeCIDRs {
+		if rangeCIDR.Contains(dstIP) {
+			return true
 		}
 	}
 	return false
+}
+
+func CheckIntersect(dstIPs []net.IP, rangeCIDRs []net.IPNet) bool {
+
+	if len(rangeCIDRs) == 0 {
+		panic("CheckIntersect must be called with a non-empty rangeCIDRs")
+	}
+
+	for _, dstIP := range dstIPs {
+		if !CheckIntersectIP(dstIP, rangeCIDRs) {
+			return false
+		}
+	}
+	return true
 }

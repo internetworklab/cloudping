@@ -90,6 +90,28 @@ type PingHandler struct {
 	DomainRespondRange []regexp.Regexp
 }
 
+func getHost(addrport string) (net.IP, error) {
+	pattern := regexp.MustCompile(`:\d+$`)
+	if pattern.MatchString(addrport) {
+		host, _, err := net.SplitHostPort(addrport)
+		if err != nil {
+			return nil, fmt.Errorf("failed to split host and port: %v", err)
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return nil, fmt.Errorf("failed to parse IP from host: %s", host)
+		}
+		return ip, nil
+	}
+
+	ip := net.ParseIP(addrport)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse IP from addrport: %s", addrport)
+	}
+
+	return ip, nil
+}
+
 func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	pingRequest, err := pkgpinger.ParseSimplePingRequest(r)
@@ -97,8 +119,6 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
 		return
 	}
-
-	ctx := r.Context()
 
 	pingReqJSB, _ := json.Marshal(pingRequest)
 	log.Printf("Started ping request for %s: %s", pkgutils.GetRemoteAddr(r), string(pingReqJSB))
@@ -114,12 +134,10 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pkgmyprom.PromLabelTarget: pingRequest.Destination,
 		pkgmyprom.PromLabelClient: pkgutils.GetRemoteAddr(r),
 	}
-	ctx = context.WithValue(ctx, pkgutils.CtxKeyPromCommonLabels, commonLabels)
 
 	startedAt := time.Now()
 	defer func() {
 		servedDurationMs := time.Since(startedAt).Milliseconds()
-
 		counterStore.NumRequestsServed.With(commonLabels).Add(1.0)
 		counterStore.ServedDurationMs.With(commonLabels).Add(float64(servedDurationMs))
 	}()
@@ -148,7 +166,32 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pinger pkgpinger.Pinger = nil
-	if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
+	if pingRequest.L7PacketType != nil && *pingRequest.L7PacketType == pkgpinger.L7ProtoDNS {
+		dnsServers := make([]string, 0)
+		dnsServerIPs := make([]net.IP, 0)
+		for _, tgt := range pingRequest.DNSTargets {
+
+			dnsServerIP, err := getHost(tgt.AddrPort)
+			if err != nil {
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("failed to parse dns server ip from addrport: %s: %v", tgt.AddrPort, err)})
+				return
+			}
+			dnsServerIPs = append(dnsServerIPs, dnsServerIP)
+			dnsServers = append(dnsServers, tgt.AddrPort)
+		}
+
+		if len(ph.RespondRange) > 0 && !pkgutils.CheckIntersect(dnsServerIPs, ph.RespondRange) {
+			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("dns server ips are not in the respond range").Error()})
+			return
+		}
+
+		// when in dns mode, we are mainly sending packets to dns servers, so, set targets to dns servers
+		commonLabels[pkgmyprom.PromLabelTarget] = strings.Join(dnsServers, ",")
+
+		pinger = &pkgpinger.DNSPinger{
+			Requests: pingRequest.DNSTargets,
+		}
+	} else if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
 		tcpingPinger := &pkgpinger.TCPSYNPinger{
 			PingRequest:   pingRequest,
 			IPInfoAdapter: ipinfoAdapter,
@@ -178,6 +221,8 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pinger = icmpOrUDPPinger
 	}
 
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, pkgutils.CtxKeyPromCommonLabels, commonLabels)
 	for ev := range pinger.Ping(ctx) {
 		if ev.Error != nil {
 			errStr := ev.Error.Error()
@@ -330,6 +375,7 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxer := http.NewServeMux()
 	muxer.Handle("/simpleping", handler)
 	muxer.Handle("/tcping", handler)
+	muxer.Handle("/dnsprobe", handler)
 	muxer.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 
 	var muxedHandler http.Handler = muxer

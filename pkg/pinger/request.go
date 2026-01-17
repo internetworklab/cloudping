@@ -1,7 +1,9 @@
 package pinger
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
@@ -43,7 +46,7 @@ type SimplePingRequest struct {
 
 	L4PacketType *L4PacketTypeOption
 	L7PacketType *L7PacketTypeOption
-	DNSTargets   []string
+	DNSTargets   []pkgdnsprobe.LookupParameter
 
 	// Take effect only when L3PacketType is 'udp'
 	UDPDstPort *int
@@ -76,13 +79,14 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
 
 	if dnsTargets := r.URL.Query()[ParamDNSTarget]; dnsTargets != nil {
-		result.DNSTargets = make([]string, 0)
+		result.DNSTargets = make([]pkgdnsprobe.LookupParameter, 0)
 		for _, tgt := range dnsTargets {
-			tgt = strings.TrimSpace(tgt)
-			if tgt == "" {
-				continue
+			var dnsProbeTarget pkgdnsprobe.LookupParameter
+			err := json.Unmarshal([]byte(tgt), &dnsProbeTarget)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse dns target: %v", err)
 			}
-			result.DNSTargets = append(result.DNSTargets, tgt)
+			result.DNSTargets = append(result.DNSTargets, dnsProbeTarget)
 		}
 	}
 
@@ -216,14 +220,22 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 
 	destination := r.URL.Query().Get(ParamDestination)
 	if destination == "" {
-		if len(result.Targets) == 0 {
-			return nil, fmt.Errorf("destination is required")
-		}
-		destination = result.Targets[0]
+		result.Destination = getFirstNonEmpty(result.Targets)
+	} else {
+		result.Destination = destination
 	}
-	result.Destination = destination
 
 	return result, nil
+}
+
+func getFirstNonEmpty(tgts []string) string {
+	for _, tgt := range tgts {
+		s := strings.TrimSpace(tgt)
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func (pr *SimplePingRequest) ToURLValues() url.Values {
@@ -276,7 +288,12 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 	}
 	if pr.DNSTargets != nil {
 		for _, tgt := range pr.DNSTargets {
-			vals.Add(ParamDNSTarget, tgt)
+			j, err := json.Marshal(tgt)
+			if err != nil {
+				log.Printf("failed to marshal dns target: %v", err)
+				continue
+			}
+			vals.Add(ParamDNSTarget, string(j))
 		}
 	}
 
