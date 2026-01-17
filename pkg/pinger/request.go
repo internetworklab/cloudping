@@ -43,6 +43,7 @@ type SimplePingRequest struct {
 
 	L4PacketType *L4PacketTypeOption
 	L7PacketType *L7PacketTypeOption
+	DNSTargets   []string
 
 	// Take effect only when L3PacketType is 'udp'
 	UDPDstPort *int
@@ -63,6 +64,7 @@ const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 const ParamsIPInfoProviderName = "ipInfoProviderName"
 const ParamL4PacketType = "l4PacketType"
 const ParamL7PacketType = "l7PacketType"
+const ParamDNSTarget = "dnsTarget"
 
 // it was a typo to name it 'l3PacketType', it should be 'l4PacketType' instead, use it only for backward compatibility
 const ParamL3PacketType = "l3PacketType"
@@ -72,6 +74,17 @@ const defaultTTL = 64
 
 func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
+
+	if dnsTargets := r.URL.Query()[ParamDNSTarget]; dnsTargets != nil {
+		result.DNSTargets = make([]string, 0)
+		for _, tgt := range dnsTargets {
+			tgt = strings.TrimSpace(tgt)
+			if tgt == "" {
+				continue
+			}
+			result.DNSTargets = append(result.DNSTargets, tgt)
+		}
+	}
 
 	if l7TyStr := r.URL.Query().Get(ParamL7PacketType); l7TyStr != "" {
 		l7ty := L7PacketTypeOption(l7TyStr)
@@ -260,6 +273,11 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 	}
 	if pr.L7PacketType != nil && *pr.L7PacketType != "" {
 		vals.Add(ParamL7PacketType, string(*pr.L7PacketType))
+	}
+	if pr.DNSTargets != nil {
+		for _, tgt := range pr.DNSTargets {
+			vals.Add(ParamDNSTarget, tgt)
+		}
 	}
 
 	return vals
