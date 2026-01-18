@@ -76,6 +76,7 @@ type AgentCmd struct {
 	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"false"`
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"false"`
 	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"false"`
+	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"false"`
 
 	IPInfoCacheValiditySecs int `help:"The validity of the IPInfo cache in seconds" default:"600"`
 
@@ -508,6 +509,10 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 		if agentCmd.SupportTCP {
 			attributes[pkgnodereg.AttributeKeySupportTCP] = "true"
+		}
+
+		if agentCmd.SupportDNS {
+			attributes[pkgnodereg.AttributeKeyDNSProbeCapability] = "true"
 		}
 
 		versionJ, _ := json.Marshal(sharedCtx.BuildVersion)
