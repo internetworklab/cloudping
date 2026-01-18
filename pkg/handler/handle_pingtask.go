@@ -224,7 +224,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "you must specify at least one from node"})
 		return
 	}
-	if form.Targets == nil {
+	if form.Targets == nil && form.L7PacketType == nil {
 		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "you must specify at least one target"})
 		return
 	}
