@@ -19,6 +19,7 @@ import (
 const (
 	AttributeKeyNodeName           = "NodeName"
 	AttributeKeyPingCapability     = "CapabilityPing"
+	AttributeKeyDNSProbeCapability = "CapabilityDNSProbe"
 	AttributeKeyHttpEndpoint       = "HttpEndpoint"
 	AttributeKeyRespondRange       = "RespondRange"
 	AttributeKeyExactLocation      = "ExactLocation"

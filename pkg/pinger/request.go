@@ -52,6 +52,22 @@ type SimplePingRequest struct {
 	UDPDstPort *int
 }
 
+func (pingReq *SimplePingRequest) DeriveAsPingRequest(from string, target string) *SimplePingRequest {
+	derivedPingRequest := new(SimplePingRequest)
+	*derivedPingRequest = *pingReq
+	derivedPingRequest.Destination = target
+	derivedPingRequest.From = []string{from}
+	return derivedPingRequest
+}
+
+func (pingReq *SimplePingRequest) DeriveAsDNSProbeRequest(from string, dnsTarget pkgdnsprobe.LookupParameter) *SimplePingRequest {
+	derivedPingRequest := new(SimplePingRequest)
+	*derivedPingRequest = *pingReq
+	derivedPingRequest.DNSTargets = []pkgdnsprobe.LookupParameter{dnsTarget}
+	derivedPingRequest.From = []string{from}
+	return derivedPingRequest
+}
+
 const ParamTargets = "targets"
 const ParamFrom = "from"
 const ParamCount = "count"

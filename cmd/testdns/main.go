@@ -83,8 +83,6 @@ func main() {
 			parameter := pkgdnsprobe.LookupParameter{
 				AddrPort:      addrport,
 				Target:        target,
-				TimeoutMs:     3000,
-				Transport:     pkgdnsprobe.TransportUDP,
 				QueryType:     queryType,
 				CorrelationID: queryCorrId,
 			}

@@ -54,6 +54,10 @@ type ConnRegistryData struct {
 	Attributes    ConnectionAttributes `json:"attributes,omitempty"`
 }
 
+func (regData *ConnRegistryData) Clone() *ConnRegistryData {
+	return cloneConnRegistryData(regData).(*ConnRegistryData)
+}
+
 func cloneConnRegistryData(dataany interface{}) interface{} {
 	data, ok := dataany.(*ConnRegistryData)
 	if !ok {

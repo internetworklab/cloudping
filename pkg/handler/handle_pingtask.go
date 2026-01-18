@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -39,10 +40,9 @@ const (
 	defaultRemotePingerPath = "/simpleping"
 )
 
-func getRemotePingerEndpoint(ctx context.Context, connRegistry *pkgconnreg.ConnRegistry, from string, target string, resolver *net.Resolver, outOfRangePolicy OutOfRespondRangePolicy) *string {
+func getConnWithCapability(ctx context.Context, connRegistry *pkgconnreg.ConnRegistry, from string, capability string) *pkgconnreg.ConnRegistryData {
 	if connRegistry == nil {
-		k := from
-		return &k
+		return nil
 	}
 
 	regData, err := connRegistry.SearchByAttributes(pkgconnreg.ConnectionAttributes{
@@ -59,6 +59,22 @@ func getRemotePingerEndpoint(ctx context.Context, connRegistry *pkgconnreg.ConnR
 		return nil
 	}
 
+	return regData.Clone()
+}
+
+func tryStripPort(addrport string) string {
+	pattern := regexp.MustCompile(`:\d+$`)
+	if pattern.MatchString(addrport) {
+		host, _, err := net.SplitHostPort(addrport)
+		if err != nil {
+			return addrport
+		}
+		return host
+	}
+	return addrport
+}
+
+func checkRemotePingerPolicy(ctx context.Context, regData *pkgconnreg.ConnRegistryData, target string, resolver *net.Resolver, outOfRangePolicy OutOfRespondRangePolicy) *string {
 	// When OutOfRange policy is 'deny', the hub will carefully consider the RespondRange attribute announced by the agent,
 	// and make sure the ping request won't be distributed to whom that are not desired.
 	if outOfRangePolicy == ORPolicyDeny && regData.Attributes[pkgnodereg.AttributeKeyRespondRange] != "" {
@@ -82,7 +98,7 @@ func getRemotePingerEndpoint(ctx context.Context, connRegistry *pkgconnreg.ConnR
 			dsts = make([]net.IP, 0)
 		}
 		if len(rangeCIDRs) > 0 && !pkgutils.CheckIntersect(dsts, rangeCIDRs) {
-			log.Printf("Target %s is not in the respond range of node %s, which is %s", target, from, strings.Join(respondRange, ", "))
+			log.Printf("Target %s is not in the respond range of node %+v which is %s", target, regData.NodeName, strings.Join(respondRange, ", "))
 			log.Printf("Out of range target %s will not be assigned to a remote pinger because of the policy", target)
 			return nil
 		}
@@ -201,7 +217,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	pingers := make([]pkgpinger.Pinger, 0)
+	pingers := make(map[string]map[string]pkgpinger.Pinger, 0)
 	ctx := r.Context()
 
 	if form.From == nil {
@@ -213,49 +229,84 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	extraRequestHeader := make(map[string]string)
+	extraRequestHeader["X-Forwarded-For"] = pkgutils.GetRemoteAddr(r)
+	extraRequestHeader["X-Real-IP"] = pkgutils.GetRemoteAddr(r)
+
 	for _, from := range form.From {
-		for _, target := range form.Targets {
-			remotePingerEndpoint := getRemotePingerEndpoint(ctx, handler.ConnRegistry, from, target, handler.Resolver, handler.OutOfRespondRangePolicy)
-			if remotePingerEndpoint == nil {
-				// the node might be currently offline, skip it for now
-				log.Printf("Node %s appears on the conn registry's list but have no ping capability, skipping...", from)
-				continue
+		remotePingable := getConnWithCapability(ctx, handler.ConnRegistry, from, pkgnodereg.AttributeKeyPingCapability)
+		if remotePingable != nil {
+			for _, target := range form.Targets {
+				remotePingerEndpoint := checkRemotePingerPolicy(ctx, remotePingable, target, handler.Resolver, handler.OutOfRespondRangePolicy)
+				if remotePingerEndpoint == nil {
+					continue
+				}
+
+				var remotePinger pkgpinger.Pinger = &pkgpinger.SimpleRemotePinger{
+					Endpoint:           *remotePingerEndpoint,
+					Request:            *form.DeriveAsPingRequest(from, target),
+					ClientTLSConfig:    handler.ClientTLSConfig,
+					ExtraRequestHeader: extraRequestHeader,
+				}
+				log.Printf("Sending ping to remote pinger %s via http endpoint %s", from, *remotePingerEndpoint)
+				if _, ok := pingers[from]; !ok {
+					pingers[from] = make(map[string]pkgpinger.Pinger, 0)
+				}
+				pingers[from][target] = remotePinger
 			}
+		}
 
-			derivedPingRequest := new(pkgpinger.SimplePingRequest)
-			*derivedPingRequest = *form
-			derivedPingRequest.Destination = target
-			derivedPingRequest.From = []string{from}
+		dnsProbeable := getConnWithCapability(ctx, handler.ConnRegistry, from, pkgnodereg.AttributeKeyDNSProbeCapability)
+		if dnsProbeable != nil {
+			for _, dnsTarget := range form.DNSTargets {
+				corrId := dnsTarget.CorrelationID
+				if corrId == "" {
+					log.Printf("invalid dns target from %s: correlation id is empty", pkgutils.GetRemoteAddr(r))
+					continue
+				}
+				if dnsTarget.AddrPort == "" {
+					log.Printf("invalid dns target from %s: addrport is empty", pkgutils.GetRemoteAddr(r))
+					continue
+				}
 
-			extraRequestHeader := make(map[string]string)
-			extraRequestHeader["X-Forwarded-For"] = pkgutils.GetRemoteAddr(r)
-			extraRequestHeader["X-Real-IP"] = pkgutils.GetRemoteAddr(r)
+				remotePingerEndpoint := checkRemotePingerPolicy(ctx, remotePingable, tryStripPort(dnsTarget.AddrPort), handler.Resolver, handler.OutOfRespondRangePolicy)
+				if remotePingerEndpoint == nil {
+					continue
+				}
 
-			var remotePinger pkgpinger.Pinger = &pkgpinger.SimpleRemotePinger{
-				Endpoint:           *remotePingerEndpoint,
-				Request:            *derivedPingRequest,
-				ClientTLSConfig:    handler.ClientTLSConfig,
-				ExtraRequestHeader: extraRequestHeader,
+				var remotePinger pkgpinger.Pinger = &pkgpinger.SimpleRemotePinger{
+					Endpoint:           *remotePingerEndpoint,
+					Request:            *form.DeriveAsDNSProbeRequest(from, dnsTarget),
+					ClientTLSConfig:    handler.ClientTLSConfig,
+					ExtraRequestHeader: extraRequestHeader,
+				}
+				log.Printf("Sending ping to remote pinger %s via http endpoint %s", from, *remotePingerEndpoint)
+				if _, ok := pingers[from]; !ok {
+					pingers[from] = make(map[string]pkgpinger.Pinger, 0)
+				}
+				pingers[from][corrId] = remotePinger
 			}
-			remotePinger = WithMetadata(remotePinger, map[string]string{
-				pkgpinger.MetadataKeyFrom:   from,
-				pkgpinger.MetadataKeyTarget: target,
-			})
-
-			log.Printf("Sending ping to remote pinger %s via http endpoint %s", target, *remotePingerEndpoint)
-
-			pingers = append(pingers, remotePinger)
 		}
 	}
 
 	if len(pingers) == 0 {
-		RespondError(w, fmt.Errorf("no pingers to start"), http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "no pingers to start"})
 		return
+	}
+
+	pingersFlat := make([]pkgpinger.Pinger, 0)
+	for from, submap := range pingers {
+		for target, remotePinger := range submap {
+			pingersFlat = append(pingersFlat, WithMetadata(remotePinger, map[string]string{
+				pkgpinger.MetadataKeyFrom:   from,
+				pkgpinger.MetadataKeyTarget: target,
+			}))
+		}
 	}
 
 	// Start multiple pings in parallel, and stream events as line-delimited JSON
 	encoder := json.NewEncoder(w)
-	for ev := range pkgpinger.StartMultiplePings(ctx, pingers) {
+	for ev := range pkgpinger.StartMultiplePings(ctx, pingersFlat) {
 		if err := encoder.Encode(ev); err != nil {
 			log.Printf("Failed to encode event: %v", err)
 			encoder.Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to encode event: %w", err).Error()})

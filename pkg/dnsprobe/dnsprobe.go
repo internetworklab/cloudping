@@ -30,12 +30,14 @@ const (
 	DNSQueryTypeTXT   DNSQueryType = "txt"
 )
 
+const defaultDNSProbeTransport = TransportUDP
+
 type LookupParameter struct {
 	CorrelationID string       `json:"corrId,omitempty"`
 	AddrPort      string       `json:"addrport"`
 	Target        string       `json:"target"`
-	TimeoutMs     int64        `json:"timeoutMs"`
-	Transport     Transport    `json:"transport"`
+	TimeoutMs     *int64       `json:"timeoutMs,omitempty"`
+	Transport     *Transport   `json:"transport,omitempty"`
 	QueryType     DNSQueryType `json:"queryType"`
 }
 
@@ -53,6 +55,7 @@ type QueryResult struct {
 	Elapsed          time.Duration `json:"elapsed,omitempty"`
 	StartedAt        time.Time     `json:"started_at"`
 	TimeoutSpecified time.Duration `json:"timeout_specified"`
+	TransportUsed    Transport     `json:"transport_used"`
 }
 
 // make it suitable for transmitting over the wire
@@ -103,21 +106,33 @@ func appendPort53(s string) string {
 
 const minTimeoutMs = 10
 const maxTimeoutMs = 10 * 1000
+const defaultDNSProbeTimeoutMs = 3000
 
 // returns: answers, error
 func LookupDNS(ctx context.Context, parameter LookupParameter) (*QueryResult, error) {
 
-	transport := parameter.Transport
+	var transport Transport = defaultDNSProbeTransport
+	if parameter.Transport != nil {
+		transport = *parameter.Transport
+	}
+	if transport != TransportUDP && transport != TransportTCP {
+		return nil, fmt.Errorf("not a supported transport: %s", transport)
+	}
 
 	target := parameter.Target
 
-	if parameter.TimeoutMs <= minTimeoutMs {
+	var timeoutMs int64 = defaultDNSProbeTimeoutMs
+	if parameter.TimeoutMs != nil {
+		timeoutMs = *parameter.TimeoutMs
+	}
+
+	if timeoutMs < minTimeoutMs {
 		return nil, fmt.Errorf("timeout is too short: at least %dms is required, got %dms", minTimeoutMs, parameter.TimeoutMs)
 	}
-	if parameter.TimeoutMs > maxTimeoutMs {
+	if timeoutMs > maxTimeoutMs {
 		return nil, fmt.Errorf("timeout is too long: at most %dms is allowed, got %dms", maxTimeoutMs, parameter.TimeoutMs)
 	}
-	timeout := time.Duration(parameter.TimeoutMs) * time.Millisecond
+	timeout := time.Duration(timeoutMs) * time.Millisecond
 
 	queryType := parameter.QueryType
 	queryResult := new(QueryResult)
@@ -126,6 +141,7 @@ func LookupDNS(ctx context.Context, parameter LookupParameter) (*QueryResult, er
 	queryResult.Answers = make([]interface{}, 0)
 	queryResult.Server = parameter.AddrPort
 	queryResult.TimeoutSpecified = timeout
+	queryResult.TransportUsed = transport
 	queryResult.CorrelationID = parameter.CorrelationID
 
 	addrportObj, err := netip.ParseAddrPort(appendPort53(parameter.AddrPort))
