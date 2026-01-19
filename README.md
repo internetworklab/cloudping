@@ -22,6 +22,7 @@ Make sure golang of newer version is already installed, if not, go visit [go.dev
 Recursively clone the repo, cd into the project root, then
 
 ```shell
+./buildversion.sh # to generate version metadata dependence
 go build -o bin/globalping ./cmd/globalping
 ```
 
