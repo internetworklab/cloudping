@@ -11,25 +11,14 @@ import {
   Typography,
   TableBody,
   CircularProgress,
+  Tooltip,
+  IconButton,
 } from "@mui/material";
-import { PlayPauseButton } from "./playpause";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { TaskCloseIconButton } from "./taskclose";
-import {
-  AnswersMap,
-  DNSProbePlan,
-  DNSResponse,
-  DNSTarget,
-  expandDNSProbePlan,
-  PendingTask,
-} from "@/apis/types";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import {
-  getApiEndpoint,
-  JSONLineDecoder,
-  LineTokenizer,
-  makeRealDNSResponseStream,
-  RawPingEvent,
-} from "@/apis/globalping";
+import { AnswersMap, DNSResponse, DNSTarget, PendingTask } from "@/apis/types";
+import { Fragment, useEffect, useState } from "react";
+import { makeRealDNSResponseStream, RawPingEvent } from "@/apis/globalping";
 
 function RenderError(props: { dnsResponse: DNSResponse }) {
   const { dnsResponse } = props;
@@ -140,6 +129,7 @@ export function DNSProbeDisplay(props: {
 
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState<AnswersMap>();
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     const streamRef: {
@@ -197,7 +187,7 @@ export function DNSProbeDisplay(props: {
         });
       }
     };
-  }, [task.taskId, setAnswers]);
+  }, [task.taskId, setAnswers, generation]);
 
   return (
     <Card>
@@ -210,9 +200,18 @@ export function DNSProbeDisplay(props: {
           padding: 2,
         }}
       >
-        <Typography variant="h6">Task #0</Typography>
+        <Typography variant="h6">Task #{task.taskId}</Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           {loading && <CircularProgress size={20} />}
+          <Tooltip title={"Refresh"}>
+            <IconButton
+              onClick={() => {
+                setGeneration(generation + 1);
+              }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
           <TaskCloseIconButton
             taskId={0}
             onConfirmedClosed={() => {
