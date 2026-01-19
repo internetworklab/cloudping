@@ -24,13 +24,14 @@ import {
 import { CSSProperties, Fragment, useState } from "react";
 import { SourcesSelector } from "@/components/sourceselector";
 import { getCurrentPingers } from "@/apis/globalping";
-import { DNSProbePlan, PendingTask } from "@/apis/types";
+import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
 import { TracerouteResultDisplay } from "@/components/traceroutedisplay";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { About } from "@/components/about";
+import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 
 const fakeSources = [
   "192.168.1.1",
@@ -66,7 +67,12 @@ function getSortedOnGoingTasks(onGoingTasks: PendingTask[]): PendingTask[] {
 function dedup(arr: string[]): string[] {
   return Array.from(new Set(arr));
 }
-
+const examplePlan: DNSProbePlan = {
+  transport: "udp",
+  type: "a",
+  domains: ["www1.map.dn42", "www2.map.dn42", "map.dn42"],
+  resolvers: ["172.20.0.53", "172.21.0.53", "172.22.0.53", "172.23.0.53"],
+};
 export default function Home() {
   const [pendingTask, setPendingTask] = useState<PendingTask>(() => {
     return {
@@ -91,12 +97,14 @@ export default function Home() {
   console.log("[dbg] dns probe plan", dnsProbePlan);
 
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
-    // {
-    //   sources: ["vie1"],
-    //   targets: ["map.dn42"],
-    //   taskId: 1,
-    //   type: "traceroute",
-    // },
+    {
+      sources: ["vie1", "nyc1", "fra1", "lax1"],
+      targets: ["map.dn42"],
+      taskId: 1,
+      type: "dns",
+      dnsProbePlan: examplePlan,
+      dnsProbeTargets: expandDNSProbePlan(examplePlan).targets,
+    },
   ]);
 
   let containerStyles: CSSProperties[] = [
@@ -487,6 +495,8 @@ export default function Home() {
                   );
                 }}
               />
+            ) : task.type === "dns" ? (
+              <DNSProbeDisplay task={task} />
             ) : (
               <PingResultDisplay
                 pendingTask={task}

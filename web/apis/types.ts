@@ -34,6 +34,9 @@ export type DNSResponse = {
   transport_used?: DNSTransport;
 };
 
+// a map of 'from' -> 'corrId' -> 'DNSResponse'
+export type AnswersMap = Record<string, Record<string, DNSResponse[]>>;
+
 export type DNSProbePlan = {
   transport: DNSTransport;
   type: DNSQueryType;
@@ -82,6 +85,7 @@ export type PendingTask = {
   useUDP?: boolean;
   pmtu?: boolean;
   dnsProbePlan?: DNSProbePlan;
+  dnsProbeTargets?: DNSTarget[];
 };
 
 export type ExactLocation = {

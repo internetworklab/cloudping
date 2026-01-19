@@ -10,7 +10,6 @@ import {
   TableCell,
   TableBody,
   TableContainer,
-  Button,
   IconButton,
   Tooltip,
   Card,
@@ -32,8 +31,6 @@ import {
   PingSample,
   generatePingSampleStream,
   getNodes,
-  Conns,
-  ConnEntry,
 } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
 import { TaskCloseIconButton } from "@/components/taskclose";
@@ -54,7 +51,7 @@ import {
   WorldMap,
   ZoomHintText,
 } from "./worldmap";
-import { getNodeGroups, getNodeLatLon, NodeGroup } from "@/apis/utils";
+import { getNodeGroups, NodeGroup } from "@/apis/utils";
 
 type RowObject = {
   target: string;
