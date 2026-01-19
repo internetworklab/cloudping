@@ -356,7 +356,6 @@ function updateMarkers(
     }
     return ttl1 - ttl2;
   });
-  console.log("[dbg] num markers:", newMarkers.length);
 
   return newMarkers;
 }
@@ -384,13 +383,10 @@ export function TracerouteResultDisplay(props: {
   const streamRef = useRef<ReadableStream<PingSample> | null>(null);
 
   useEffect(() => {
-    console.log("[dbg] useEffect mount, stopped:", stopped);
-
     let timer: number | null = null;
 
     if (!stopped) {
       timer = window.setTimeout(() => {
-        console.log("[dbg] creating stream");
         const stream = generatePingSampleStream({
           sources: task.sources,
           targets: task.targets.slice(0, 1),
@@ -416,15 +412,14 @@ export function TracerouteResultDisplay(props: {
           value: PingSample | undefined | null;
         }) => {
           if (pausedRef.current) {
-            console.log("[dbg] paused, skipping");
             return;
           }
-          console.log("[dbg] readNext", done, value);
+
           if (done) {
             return;
           }
+
           if (value) {
-            console.log("[dbg] readNext value:", value);
             pageStateRef.current = updatePageState(pageStateRef.current, value);
 
             // in StrictMode, this will be called twice per sample
@@ -447,19 +442,15 @@ export function TracerouteResultDisplay(props: {
       reader
         ?.cancel()
         .then(() => {
-          console.log("[dbg] reader cancelled");
           reader.releaseLock();
         })
         .catch((err) => {
-          console.error("[dbg] failed to cancel reader:", err);
+          console.error("failed to cancel reader:", err);
         });
       const stream = streamRef.current;
-      stream
-        ?.cancel()
-        .then(() => {
-          console.log("[dbg] stream cancelled");
-        })
-        .catch(() => {});
+      stream?.cancel().catch((e) => {
+        console.error("failed to cancel stream:", e);
+      });
       streamRef.current = null;
     };
   }, [task.taskId, stopped, paused]);

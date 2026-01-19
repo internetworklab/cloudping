@@ -308,7 +308,6 @@ export function useZoomControl() {
   const [zoomEnabled, setZoomEnabled] = useState(false);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      console.log("[dbg] key down", event);
       if (event.key === "Meta") {
         setZoomEnabled(true);
       }

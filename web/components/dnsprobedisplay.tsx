@@ -72,15 +72,6 @@ function updateAnswersMap(
     [dnsResponse.corrId]: [dnsResponse],
   };
 
-  console.log(
-    "[dbg] newAnswersMap",
-    "old",
-    answersMap,
-    "new",
-    newAnswersMap,
-    "ev",
-    event
-  );
   return newAnswersMap;
 }
 
@@ -96,7 +87,6 @@ function makeFakeDNSResponseStream(
 
   const stream = new ReadableStream<RawPingEvent<DNSResponse>>({
     start(controller) {
-      console.log("[dbg] started random sample generator interval");
       timerWrapper.intervalId = setInterval(() => {
         const target = targets[Math.floor(Math.random() * targets.length)];
         const source = sources[Math.floor(Math.random() * sources.length)];
@@ -116,13 +106,11 @@ function makeFakeDNSResponseStream(
             target: response.corrId,
           },
         };
-        console.log("[dbg] enqueue random sample", event);
         controller.enqueue(event);
       }, 500);
     },
     cancel(readon?: any): Promise<void> {
       if (timerWrapper.intervalId) {
-        console.log("[dbg] cancel random sample generator interval");
         clearInterval(timerWrapper.intervalId);
         timerWrapper.intervalId = null;
       }
@@ -152,7 +140,6 @@ export function DNSProbeDisplay(props: {
 
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState<AnswersMap>();
-  console.log("[dbg] answers", answers);
 
   useEffect(() => {
     const streamRef: {
@@ -186,7 +173,6 @@ export function DNSProbeDisplay(props: {
               return;
             }
             if (value) {
-              console.log("[dbg] setAnswers value", value);
               setAnswers((answers) => updateAnswersMap(answers ?? {}, value));
               setLoading(true);
               if (timerRef.timer) {
@@ -206,7 +192,6 @@ export function DNSProbeDisplay(props: {
     return () => {
       window.clearTimeout(timer);
       if (streamRef.reader) {
-        console.log("[dbg] cancel stream");
         streamRef.reader?.cancel().then(() => {
           streamRef.reader = null;
         });
