@@ -23,7 +23,13 @@ import {
   PendingTask,
 } from "@/apis/types";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { RawPingEvent } from "@/apis/globalping";
+import {
+  getApiEndpoint,
+  JSONLineDecoder,
+  LineTokenizer,
+  makeRealDNSResponseStream,
+  RawPingEvent,
+} from "@/apis/globalping";
 
 function RenderError(props: { dnsResponse: DNSResponse }) {
   const { dnsResponse } = props;
@@ -58,27 +64,30 @@ function updateAnswersMap(
 
   const newAnswersMap = { ...answersMap };
   if (!newAnswersMap[from]) {
-    answersMap[from] = {};
+    newAnswersMap[from] = {};
   }
-  answersMap[from] = {
-    ...answersMap[from],
+
+  newAnswersMap[from] = {
+    ...newAnswersMap[from],
     [dnsResponse.corrId]: [dnsResponse],
   };
 
+  console.log(
+    "[dbg] newAnswersMap",
+    "old",
+    answersMap,
+    "new",
+    newAnswersMap,
+    "ev",
+    event
+  );
   return newAnswersMap;
 }
-
-// function makeRealDNSResponseStream(): Promise<
-//   ReadableStream<RawPingEvent<DNSResponse>>
-// > {
-//     // todo
-// }
 
 function makeFakeDNSResponseStream(
   targets: DNSTarget[],
   sources: string[]
 ): Promise<ReadableStream<RawPingEvent<DNSResponse>>> {
-  let intervalId: ReturnType<typeof setInterval> | null = null;
   const timerWrapper: {
     intervalId: ReturnType<typeof setInterval> | null;
   } = {
@@ -87,7 +96,7 @@ function makeFakeDNSResponseStream(
 
   const stream = new ReadableStream<RawPingEvent<DNSResponse>>({
     start(controller) {
-      console.log("[dbg] start interval");
+      console.log("[dbg] started random sample generator interval");
       timerWrapper.intervalId = setInterval(() => {
         const target = targets[Math.floor(Math.random() * targets.length)];
         const source = sources[Math.floor(Math.random() * sources.length)];
@@ -107,13 +116,13 @@ function makeFakeDNSResponseStream(
             target: response.corrId,
           },
         };
-        console.log("[dbg] enqueue event", event);
+        console.log("[dbg] enqueue random sample", event);
         controller.enqueue(event);
       }, 500);
     },
     cancel(readon?: any): Promise<void> {
       if (timerWrapper.intervalId) {
-        console.log("[dbg] cancel interval");
+        console.log("[dbg] cancel random sample generator interval");
         clearInterval(timerWrapper.intervalId);
         timerWrapper.intervalId = null;
       }
@@ -122,6 +131,14 @@ function makeFakeDNSResponseStream(
   });
 
   return Promise.resolve(stream);
+}
+
+function getDNSResponseStream(
+  targets: DNSTarget[],
+  sources: string[]
+): Promise<ReadableStream<RawPingEvent<DNSResponse>>> {
+  return makeRealDNSResponseStream(targets, sources);
+  return makeFakeDNSResponseStream(targets, sources);
 }
 
 export function DNSProbeDisplay(props: {
@@ -135,6 +152,7 @@ export function DNSProbeDisplay(props: {
 
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState<AnswersMap>();
+  console.log("[dbg] answers", answers);
 
   useEffect(() => {
     const streamRef: {
@@ -149,11 +167,9 @@ export function DNSProbeDisplay(props: {
     const timer = window.setTimeout(() => {
       const sources = task.sources || [];
       const targets = task.dnsProbeTargets || [];
-      console.log("[dbg] create fake DNS response stream", targets, sources);
 
-      const streamPromise = makeFakeDNSResponseStream(targets, sources);
+      const streamPromise = getDNSResponseStream(targets, sources);
 
-      console.log("[dbg] pipe to writable stream");
       streamPromise
         .then((stream) => {
           streamRef.stream = stream;
@@ -170,6 +186,7 @@ export function DNSProbeDisplay(props: {
               return;
             }
             if (value) {
+              console.log("[dbg] setAnswers value", value);
               setAnswers((answers) => updateAnswersMap(answers ?? {}, value));
               setLoading(true);
               if (timerRef.timer) {
@@ -183,7 +200,7 @@ export function DNSProbeDisplay(props: {
           }
           reader.read().then(doRead);
         })
-        .catch((e) => console.error("failed to then stream"));
+        .catch((e) => console.error("failed to then stream", e));
     });
 
     return () => {
@@ -195,7 +212,7 @@ export function DNSProbeDisplay(props: {
         });
       }
     };
-  }, [task.taskId]);
+  }, [task.taskId, setAnswers]);
 
   return (
     <Card>

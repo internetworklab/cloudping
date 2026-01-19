@@ -84,32 +84,23 @@ export default function Home() {
       sources: [],
       targets: [],
       taskId: 0,
-      type: "dns",
+      type: "ping",
+      dnsProbePlan: {
+        transport: "udp",
+        type: "a",
+        domains: [],
+        resolvers: [],
+      },
     };
   });
+
   const [openTaskConfirmDialog, setOpenTaskConfirmDialog] =
     useState<boolean>(false);
 
   const [sourcesInput, setSourcesInput] = useState<string>("");
   const [targetsInput, setTargetsInput] = useState<string>("");
 
-  const [dnsProbePlan, setDnsProbePlan] = useState<DNSProbePlan>({
-    transport: "udp",
-    type: "a",
-    domains: [],
-    resolvers: [],
-  });
-
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
-    {
-      sources: ["vie1", "nyc1", "fra1", "lax1"],
-      targets: ["map.dn42"],
-      taskId: 1,
-      type: "dns",
-      dnsProbePlan: examplePlan,
-      dnsProbeTargets: expandDNSProbePlan(examplePlan).targets,
-    },
-  ]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
 
   let containerStyles: CSSProperties[] = [
     {
@@ -201,28 +192,36 @@ export default function Home() {
                       .filter((t) => t.length > 0);
 
                     const domains = dedup(
-                      dnsProbePlan.domainsInput?.split(",") || []
+                      pendingTask.dnsProbePlan.domainsInput?.split(",") || []
                     )
                       .map((d) => d.trim())
                       .filter((d) => d.length > 0);
 
                     const resolvers = dedup(
-                      dnsProbePlan.resolversInput?.split(",") || []
+                      pendingTask.dnsProbePlan.resolversInput?.split(",") || []
                     )
                       .map((r) => r.trim())
                       .filter((r) => r.length > 0);
 
-                    setPendingTask((prev) => ({
-                      ...prev,
-                      sources: srcs,
-                      targets: tgts,
-                      taskId: getNextId(onGoingTasks),
-                      dnsProbePlan: {
-                        ...dnsProbePlan,
+                    setPendingTask((prev) => {
+                      const newDnsProbePlan: DNSProbePlan = {
+                        ...pendingTask.dnsProbePlan,
                         domains: domains,
                         resolvers: resolvers,
-                      },
-                    }));
+                      };
+
+                      const dnsTgts =
+                        expandDNSProbePlan(newDnsProbePlan).targets;
+
+                      return {
+                        ...prev,
+                        sources: srcs,
+                        targets: tgts,
+                        taskId: getNextId(onGoingTasks),
+                        dnsProbePlan: newDnsProbePlan,
+                        dnsProbeTargets: dnsTgts,
+                      };
+                    });
                     setOpenTaskConfirmDialog(true);
                   }}
                 >
@@ -305,11 +304,14 @@ export default function Home() {
                   <FormLabel>Options</FormLabel>
                   <RadioGroup
                     row
-                    value={dnsProbePlan.transport}
+                    value={pendingTask.dnsProbePlan.transport}
                     onChange={(e) =>
-                      setDnsProbePlan((prev) => ({
+                      setPendingTask((prev) => ({
                         ...prev,
-                        transport: e.target.value as "udp" | "tcp",
+                        dnsProbePlan: {
+                          ...prev.dnsProbePlan,
+                          transport: e.target.value as "udp" | "tcp",
+                        },
                       }))
                     }
                   >
@@ -432,11 +434,14 @@ export default function Home() {
                     <InputLabel>Type</InputLabel>
                     <Select
                       label="Type"
-                      value={dnsProbePlan.type}
+                      value={pendingTask.dnsProbePlan.type}
                       onChange={(e) =>
-                        setDnsProbePlan((prev) => ({
+                        setPendingTask((prev) => ({
                           ...prev,
-                          type: e.target.value as DNSQueryType,
+                          dnsProbePlan: {
+                            ...prev.dnsProbePlan,
+                            type: e.target.value as DNSQueryType,
+                          },
                         }))
                       }
                     >
@@ -455,11 +460,14 @@ export default function Home() {
                     placeholder="Querying Domains, separated by comma"
                     fullWidth
                     label="Domains"
-                    value={dnsProbePlan.domainsInput || ""}
+                    value={pendingTask.dnsProbePlan.domainsInput || ""}
                     onChange={(e) =>
-                      setDnsProbePlan((prev) => ({
+                      setPendingTask((prev) => ({
                         ...prev,
-                        domainsInput: e.target.value,
+                        dnsProbePlan: {
+                          ...prev.dnsProbePlan,
+                          domainsInput: e.target.value,
+                        },
                       }))
                     }
                   />
@@ -469,11 +477,14 @@ export default function Home() {
                     placeholder="Servers where to send queries, separated by comma, e.g. 8.8.8.8, or [2001:4860:4860::8888]:53"
                     fullWidth
                     label="Resolvers"
-                    value={dnsProbePlan.resolversInput || ""}
+                    value={pendingTask.dnsProbePlan.resolversInput || ""}
                     onChange={(e) =>
-                      setDnsProbePlan((prev) => ({
+                      setPendingTask((prev) => ({
                         ...prev,
-                        resolversInput: e.target.value,
+                        dnsProbePlan: {
+                          ...prev.dnsProbePlan,
+                          resolversInput: e.target.value,
+                        },
                       }))
                     }
                   />

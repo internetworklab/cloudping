@@ -9,7 +9,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import { Fragment } from "react";
-import { PendingTask } from "@/apis/types";
+import { DNSProbePlan, PendingTask } from "@/apis/types";
 
 export function TaskConfirmDialog(props: {
   pendingTask: PendingTask;
@@ -33,7 +33,16 @@ export function TaskConfirmDialog(props: {
     );
   }
 
-  if (pendingTask.sources.length === 0 || pendingTask.targets.length === 0) {
+  let validTargets = 0;
+  if (pendingTask.type === "dns") {
+    if (pendingTask.dnsProbeTargets) {
+      validTargets = pendingTask.dnsProbeTargets.length;
+    }
+  } else {
+    validTargets = pendingTask.targets.length;
+  }
+
+  if (pendingTask.sources.length === 0 || validTargets === 0) {
     return (
       <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
         <DialogTitle>Note</DialogTitle>
@@ -52,14 +61,35 @@ export function TaskConfirmDialog(props: {
       <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
         <DialogTitle>Confirm Task</DialogTitle>
         <DialogContent>
-          <Typography gutterBottom>Type: {pendingTask.type}</Typography>
+          <Typography gutterBottom>Task Type: {pendingTask.type}</Typography>
           <Typography gutterBottom>
             Sources: {pendingTask.sources.join(", ")}
           </Typography>
-          <Typography>
-            {pendingTask.type === "ping" ? "Targets" : "Target"}:{" "}
-            {pendingTask.targets.join(", ")}
-          </Typography>
+          {pendingTask.type === "dns" ? (
+            <Fragment>
+              <Typography gutterBottom>
+                {"Domains: "}
+                {pendingTask.dnsProbePlan?.domains.join(", ") ?? "-"}
+              </Typography>
+              <Typography gutterBottom>
+                {"Resolvers: "}
+                {pendingTask.dnsProbePlan?.resolvers.join(", ") ?? "-"}
+              </Typography>
+              <Typography gutterBottom>
+                {"Transport: "}
+                {pendingTask.dnsProbePlan?.transport.toUpperCase() ?? "-"}
+              </Typography>
+              <Typography gutterBottom>
+                {"Query Type: "}
+                {pendingTask.dnsProbePlan?.type.toUpperCase() ?? "-"}
+              </Typography>
+            </Fragment>
+          ) : (
+            <Typography>
+              {pendingTask.type === "ping" ? "Targets" : "Target"}:{" "}
+              {pendingTask.targets.join(", ")}
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={onCancel}>Cancel</Button>

@@ -1,4 +1,4 @@
-import { ISO8601Timestamp } from "./globalping";
+import { ISO8601Timestamp } from "./common";
 
 export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns";
 
@@ -84,7 +84,7 @@ export type PendingTask = {
   preferV6?: boolean;
   useUDP?: boolean;
   pmtu?: boolean;
-  dnsProbePlan?: DNSProbePlan;
+  dnsProbePlan: DNSProbePlan;
   dnsProbeTargets?: DNSTarget[];
 };
 
