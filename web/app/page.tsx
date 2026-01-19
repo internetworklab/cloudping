@@ -183,6 +183,8 @@ export default function Home() {
                 )}
 
                 <Button
+                  variant="contained"
+                  color="primary"
                   onClick={() => {
                     const srcs = dedup(sourcesInput.split(","))
                       .map((s) => s.trim())
