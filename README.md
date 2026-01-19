@@ -8,6 +8,7 @@ MyGlobalping is a web-based ping & traceroute project, providing easy to use int
 
 - Ping, Traceroute (UDP flavor or ICMP flavor)
 - TCP Ping
+- Basic DNS Probe
 - DN42 Dual Stack support, Internet support
 - Basic IP information display (like ASN, Country, and probably Lat Lon)
 - API-first design, CLI friendly (can access through http clients like `curl`)
