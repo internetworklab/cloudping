@@ -141,6 +141,11 @@ export function DNSProbeDisplay(props: {
       stream: ReadableStream<RawPingEvent<DNSResponse>> | null;
       reader: ReadableStreamDefaultReader<RawPingEvent<DNSResponse>> | null;
     } = { stream: null, reader: null };
+
+    const timerRef: {
+      timer: ReturnType<typeof setTimeout> | null;
+    } = { timer: null };
+
     const timer = window.setTimeout(() => {
       const sources = task.sources || [];
       const targets = task.dnsProbeTargets || [];
@@ -166,6 +171,13 @@ export function DNSProbeDisplay(props: {
             }
             if (value) {
               setAnswers((answers) => updateAnswersMap(answers ?? {}, value));
+              setLoading(true);
+              if (timerRef.timer) {
+                const timer = timerRef.timer;
+                timerRef.timer = null;
+                clearTimeout(timer);
+              }
+              timerRef.timer = setTimeout(() => setLoading(false), 1000);
             }
             reader.read().then(doRead);
           }
