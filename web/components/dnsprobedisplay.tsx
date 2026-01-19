@@ -19,21 +19,57 @@ import { TaskCloseIconButton } from "./taskclose";
 import { AnswersMap, DNSResponse, DNSTarget, PendingTask } from "@/apis/types";
 import { Fragment, useEffect, useState } from "react";
 import { makeRealDNSResponseStream, RawPingEvent } from "@/apis/globalping";
+import { getLatencyColor } from "./colorfunc";
 
 function RenderError(props: { dnsResponse: DNSResponse }) {
   const { dnsResponse } = props;
-  if (dnsResponse.error) {
-    if (dnsResponse.err_string) {
-      return <Box>Err: {dnsResponse.err_string}</Box>;
-    }
-    if (dnsResponse.no_such_host) {
-      return <Box>Err: No such host</Box>;
-    }
-    if (dnsResponse.io_timeout) {
-      return <Box>Err: IO timeout</Box>;
-    }
-    return <Box>Err: Unknown error</Box>;
+  if (dnsResponse.no_such_host) {
+    return <Box>Err: No such host</Box>;
   }
+  if (dnsResponse.io_timeout) {
+    return <Box>Err: IO timeout</Box>;
+  }
+  if (dnsResponse.err_string) {
+    return <Box>Err: {dnsResponse.err_string}</Box>;
+  }
+
+  return <Fragment></Fragment>;
+}
+
+function RenderRTT(props: { dnsResponse: DNSResponse }) {
+  const { dnsResponse } = props;
+  if (dnsResponse.elapsed !== undefined && dnsResponse.elapsed !== null) {
+    const elapsedMs = dnsResponse.elapsed / (1000 * 1000);
+    const elapsedMsStr = elapsedMs.toFixed(2).replace(/\.?0+$/, "");
+    return (
+      <Box sx={{ marginTop: 1 }}>
+        <Box component={"span"}>{"Took: "}</Box>
+        <Box sx={{ color: getLatencyColor(elapsedMs) }} component={"span"}>
+          {elapsedMsStr}ms
+        </Box>
+      </Box>
+    );
+  }
+  return <Fragment></Fragment>;
+}
+
+function RenderResponse(props: { dnsResponse: DNSResponse }) {
+  const { dnsResponse: r } = props;
+  if (r.error || r.err_string) {
+    return <RenderError dnsResponse={r} />;
+  }
+
+  if (r.answer_strings && r.answer_strings.length > 0) {
+    return (
+      <Fragment>
+        {r.answer_strings.map((ans, ansidx) => (
+          <Box key={ansidx}>{ans}</Box>
+        ))}
+        <RenderRTT dnsResponse={r} />
+      </Fragment>
+    );
+  }
+
   return <Fragment></Fragment>;
 }
 
@@ -252,15 +288,7 @@ export function DNSProbeDisplay(props: {
                   return (
                     <TableCell key={s}>
                       {responses.map((r, idx) => (
-                        <Fragment key={idx}>
-                          {r.error ? (
-                            <RenderError dnsResponse={r} />
-                          ) : (
-                            r.answer_strings?.map((ans, ansidx) => (
-                              <Box key={ansidx}>{ans}</Box>
-                            ))
-                          )}
-                        </Fragment>
+                        <RenderResponse dnsResponse={r} key={idx} />
                       ))}
                     </TableCell>
                   );
