@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 
@@ -48,18 +49,14 @@ func main() {
 			return ctx
 		},
 	}
-	log.Printf("Created QUIC HTTP3 Server %p", server)
 
 	muxer := http.NewServeMux()
 	muxer.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		server := ctx.Value(quicHttp3.ServerContextKey).(*quicHttp3.Server)
-		log.Printf("Server from context: %p", server)
 
 		conn := ctx.Value(MyCtxKeyConn).(*quicGo.Conn)
 		log.Printf("Conn from context: %p", conn)
 
-		log.Printf("Remote Address From connection: %s", conn.RemoteAddr())
 		log.Printf("Remote Address From request: %s", r.RemoteAddr)
 
 		if httpStreamer, ok := w.(quicHttp3.HTTPStreamer); ok {
@@ -74,6 +71,27 @@ func main() {
 			stream.Write([]byte("Hello, World! From stream\n"))
 			stream.Write([]byte("Hello, World! From stream"))
 
+			log.Printf("Calling agent's service /test")
+			tr := &quicHttp3.Transport{}
+			rawCliConn := tr.NewRawClientConn(conn)
+			cli := &http.Client{
+				Transport: rawCliConn,
+			}
+			httpReq, err := http.NewRequest("GET", "https://127.0.0.1:18443/test", nil)
+			if err != nil {
+				log.Fatalf("failed to create HTTP request: %v", err)
+			}
+			resp, err := cli.Do(httpReq)
+			if err != nil {
+				log.Fatalf("failed to call agent's service /test: %v", err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				log.Fatalf("failed to read response body: %v", err)
+			}
+			log.Printf("Response from agent's service /test: %s", string(body))
+
 			return
 		}
 
@@ -81,8 +99,34 @@ func main() {
 	})
 
 	server.Handler = muxer
-	err = server.ServeListener(h3Listener)
-	if err != nil {
-		log.Fatalf("failed to serve: %v", err)
+
+	for {
+		conn, err := h3Listener.Accept(context.Background())
+		if err != nil {
+			log.Fatalf("failed to accept connection: %v", err)
+		}
+
+		log.Printf("Accepted connection: %p %s", conn, conn.RemoteAddr())
+		rawServerConn, err := server.NewRawServerConn(conn)
+		if err != nil {
+			log.Fatalf("failed to obtain raw server connection: %v", err)
+		}
+
+		go func(conn *quicGo.Conn, rawServerConn *quicHttp3.RawServerConn) {
+			defer log.Printf("Closing connection: %p %s", conn, conn.RemoteAddr())
+			for {
+				log.Printf("Accepting stream from connection: %p %s", conn, conn.RemoteAddr())
+				stream, err := conn.AcceptStream(context.Background())
+				if err != nil {
+					log.Printf("failed to accept stream: %v", err)
+					break
+				}
+				log.Printf("Accepted stream: %p %d from connection: %s", stream, stream.StreamID(), conn.RemoteAddr())
+
+				log.Printf("Handling stream: %p %d from connection: %s", stream, stream.StreamID(), conn.RemoteAddr())
+				rawServerConn.HandleRequestStream(stream)
+
+			}
+		}(conn, rawServerConn)
 	}
 }

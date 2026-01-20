@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
+	"time"
 
 	"crypto/x509"
 	"io"
@@ -39,6 +41,34 @@ func main() {
 	}
 	log.Printf("Dialed QUIC address: %s,", quicConn.RemoteAddr())
 
+	go func(quicConn *quicGo.Conn) {
+		muxer := http.NewServeMux()
+		muxer.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("Received test hub to agent request")
+			fmt.Fprintf(w, "Hello, World! From agent to hub")
+		})
+		server := &quicHttp3.Server{
+			Handler: muxer,
+		}
+		rawServerConn, err := server.NewRawServerConn(quicConn)
+		if err != nil {
+			log.Fatalf("failed to create raw server connection: %v", err)
+		}
+		log.Printf("Created raw server connection: %p", rawServerConn)
+
+		log.Printf("Listening hub to agent calls")
+		for {
+			log.Printf("Accepting hub to agent stream")
+			stream, err := quicConn.AcceptStream(ctx)
+			if err != nil {
+				log.Printf("failed to accept hub to agent stream: %v", err)
+				break
+			}
+			log.Printf("Accepted hub to agent stream: %p %d", stream, stream.StreamID())
+			rawServerConn.HandleRequestStream(stream)
+		}
+	}(quicConn)
+
 	tr := &quicHttp3.Transport{
 		TLSClientConfig: tlsConfig,
 	}
@@ -72,4 +102,5 @@ func main() {
 
 	log.Printf("Response: %s", string(body))
 
+	time.Sleep(10 * time.Second)
 }
