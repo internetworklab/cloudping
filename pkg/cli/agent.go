@@ -38,7 +38,8 @@ type AgentCmd struct {
 	ExactLocationLatLon string `help:"The exact geographic location to advertise to the hub, when present. Format: <latitude>,<longitude>"`
 
 	// If server address is empty, it won't register itself to the hub.
-	ServerAddress string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
+	ServerAddress     string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
+	QUICServerAddress string `help:"QUIC Address of the hub" default:"hub.example.com:18443"`
 
 	RespondRange       []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
 	DomainRespondRange []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
@@ -82,7 +83,7 @@ type AgentCmd struct {
 
 	IP2LocationAPIEndpoint string `help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
-	AgentTickInterval string `help:"The interval between node registration agent's tick" default:"15s"`
+	AgentTickInterval string `help:"The interval between node registration agent's tick" default:"5s"`
 }
 
 type PingHandler struct {
@@ -263,7 +264,7 @@ func getDN42IPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, e
 	return pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider), nil
 }
 
-const defaultTickInterval = 15 * time.Second
+const defaultTickInterval = 5 * time.Second
 const minTickInterval = 1000 * time.Millisecond
 
 func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
@@ -509,15 +510,21 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			attributes[pkgnodereg.AttributeKeyDNSProbeCapability] = "true"
 		}
 
+		if agentCmd.QUICServerAddress != "" {
+			attributes[pkgnodereg.AttributeKeySupportQUICTunnel] = "true"
+		}
+
 		versionJ, _ := json.Marshal(sharedCtx.BuildVersion)
 		attributes[pkgnodereg.AttributeKeyVersion] = string(versionJ)
 
 		agent := pkgnodereg.NodeRegistrationAgent{
-			ServerAddress: agentCmd.ServerAddress,
-			NodeName:      agentCmd.NodeName,
-			ClientCert:    agentCmd.ClientCert,
-			ClientCertKey: agentCmd.ClientCertKey,
-			TickInterval:  defaultTickInterval,
+			ServerAddress:     agentCmd.ServerAddress,
+			QUICServerAddress: agentCmd.QUICServerAddress,
+			UseQUIC:           agentCmd.QUICServerAddress != "",
+			NodeName:          agentCmd.NodeName,
+			ClientCert:        agentCmd.ClientCert,
+			ClientCertKey:     agentCmd.ClientCertKey,
+			TickInterval:      defaultTickInterval,
 		}
 
 		if customTickIntv := agentCmd.AgentTickInterval; customTickIntv != "" {

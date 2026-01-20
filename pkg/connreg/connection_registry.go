@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
+	quicGo "github.com/quic-go/quic-go"
 )
 
 type RegisterPayload struct {
@@ -50,6 +51,7 @@ type ConnRegistryData struct {
 	RegisteredAt  *uint64              `json:"registered_at,omitempty"`
 	LastHeartbeat *uint64              `json:"last_heartbeat,omitempty"`
 	Attributes    ConnectionAttributes `json:"attributes,omitempty"`
+	QUICConn      *quicGo.Conn         `json:"-"`
 }
 
 func (regData *ConnRegistryData) Clone() *ConnRegistryData {
@@ -73,6 +75,9 @@ func cloneConnRegistryData(dataany interface{}) interface{} {
 	if err != nil {
 		panic(err)
 	}
+	if data.QUICConn != nil {
+		cloned.QUICConn = data.QUICConn
+	}
 	return cloned
 }
 
@@ -80,11 +85,12 @@ type ConnRegistry struct {
 	datastore pkgsafemap.DataStore
 }
 
-func (cr *ConnRegistry) OpenConnection(key string) {
+func (cr *ConnRegistry) OpenConnection(key string, quicConn *quicGo.Conn) {
 	now := uint64(time.Now().Unix())
 	connRegData := &ConnRegistryData{
 		ConnectedAt: now,
 		Attributes:  make(ConnectionAttributes),
+		QUICConn:    quicConn,
 	}
 	cr.datastore.Set(key, connRegData)
 }
@@ -95,7 +101,6 @@ func (cr *ConnRegistry) CloseConnection(key string) {
 
 func (cr *ConnRegistry) Register(key string, payload RegisterPayload) error {
 	log.Printf("Registering connection from %s, node name: %s", key, payload.NodeName)
-
 
 	_, found := cr.datastore.Get(key, func(valany interface{}) error {
 		entry := valany.(*ConnRegistryData)

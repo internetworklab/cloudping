@@ -61,18 +61,16 @@ func (h *QUICHandler) Serve() {
 			log.Printf("failed to accept connection: %v", err)
 			return
 		}
-		log.Printf("Accepted connection: %p %s", conn, conn.RemoteAddr())
+		log.Printf("Accepted QUIC connection: %p %s", conn, conn.RemoteAddr())
 		go h.Handle(conn)
 	}
 }
 
 func (h *QUICHandler) Handle(conn *quicGo.Conn) {
-	log.Printf("Serving QUIC listener on %s", h.Listener.Addr())
-
 	cr := h.Cr
 
 	remoteKey := conn.RemoteAddr().String()
-	cr.OpenConnection(remoteKey)
+	cr.OpenConnection(remoteKey, conn)
 	log.Printf("Connection opened for %s, total connections: %d", remoteKey, cr.Count())
 
 	defer func() {

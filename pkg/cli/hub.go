@@ -104,6 +104,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		ClientAuth:         tls.RequireAndVerifyClientCert,
 		ClientCAs:          certPool,
 		InsecureSkipVerify: false,
+		NextProtos:         []string{"h3", "ws", "h2", "http/1.1"},
 	}
 	if hubCmd.ServerCert != "" && hubCmd.ServerCertKey != "" {
 		cert, err := tls.LoadX509KeyPair(hubCmd.ServerCert, hubCmd.ServerCertKey)
@@ -120,13 +121,19 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		privateServerSideTLSCfg.ClientCAs = customCAs
 	}
 
-	quicListener, err := quicGo.ListenAddr(hubCmd.QUICListenAddress, privateServerSideTLSCfg, nil)
-	quicHandler := pkghandler.QUICHandler{
-		Cr:       cr,
-		Timeout:  wsTimeout,
-		Listener: quicListener,
+	if hubCmd.QUICListenAddress != "" {
+		quicListener, err := quicGo.ListenAddr(hubCmd.QUICListenAddress, privateServerSideTLSCfg, nil)
+		if err != nil {
+			log.Fatalf("Failed to listen on address %s: %v", hubCmd.QUICListenAddress, err)
+		}
+		log.Printf("Listening on %s for QUIC operations", hubCmd.QUICListenAddress)
+		quicHandler := pkghandler.QUICHandler{
+			Cr:       cr,
+			Timeout:  wsTimeout,
+			Listener: quicListener,
+		}
+		go quicHandler.Serve()
 	}
-	go quicHandler.Serve()
 
 	wsHandler := pkghandler.NewWebsocketHandler(&upgrader, cr, wsTimeout)
 	connsHandler := pkghandler.NewConnsHandler(cr)

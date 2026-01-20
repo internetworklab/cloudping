@@ -75,7 +75,7 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteKey := conn.RemoteAddr().String()
-	cr.OpenConnection(remoteKey)
+	cr.OpenConnection(remoteKey, nil)
 	log.Printf("Connection opened for %s, total connections: %d", conn.RemoteAddr(), cr.Count())
 
 	defer func() {
