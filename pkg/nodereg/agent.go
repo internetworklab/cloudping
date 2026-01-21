@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -54,7 +53,6 @@ type NodeRegistrationAgent struct {
 	wsConn     *websocket.Conn
 	quicConn   *quicGo.Conn
 	quicStream *quicGo.Stream
-	reader     io.Reader
 }
 
 func (agent *NodeRegistrationAgent) Init() error {
@@ -86,14 +84,12 @@ func (agent *NodeRegistrationAgent) Init() error {
 
 func (agent *NodeRegistrationAgent) runReceiver() error {
 	for {
-		var payload pkgframing.MessagePayload
-		err := json.NewDecoder(agent.reader).Decode(&payload)
+		payload, err := agent.recvMsgPayload()
 		if err != nil {
-			log.Printf("Failed to unmarshal message from remote: %v", err)
-			continue
+			return fmt.Errorf("failed to receive message from remote: %v", err)
 		}
 
-		if payload.Echo != nil &&
+		if payload != nil && payload.Echo != nil &&
 			payload.Echo.CorrelationID == *agent.CorrelationID &&
 			payload.Echo.Direction == pkgconnreg.EchoDirectionS2C {
 
@@ -188,21 +184,6 @@ func (agent *NodeRegistrationAgent) getTickMsg() (pkgframing.MessagePayload, uin
 	return msg, nextSeq
 }
 
-func (agent *NodeRegistrationAgent) getWriter() (io.Writer, error) {
-	if agent.UseQUIC {
-		return agent.quicStream, nil
-	}
-	return agent.wsConn.NextWriter(websocket.TextMessage)
-}
-
-func (agent *NodeRegistrationAgent) writeMsg(msg interface{}) error {
-	w, err := agent.getWriter()
-	if err != nil {
-		return fmt.Errorf("failed to get next writer: %v", err)
-	}
-	return json.NewEncoder(w).Encode(msg)
-}
-
 func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 	if !agent.intialized {
 		return fmt.Errorf("agent not initialized")
@@ -229,40 +210,40 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 				return
 			}
 			agent.quicConn = quicConn
-			log.Printf("Dialed QUIC address: %s,", quicConn.RemoteAddr())
+			quicRAddr := quicConn.RemoteAddr()
+			log.Printf("Dialed QUIC address: %s,", quicRAddr)
 
 			stream, err := agent.quicConn.OpenStreamSync(ctx)
 			if err != nil {
-				errCh <- fmt.Errorf("failed to open QUIC stream: %v", err)
+				errCh <- fmt.Errorf("failed to open QUIC stream for %s: %v", quicRAddr, err)
 				return
 			}
 			agent.quicStream = stream
-			agent.reader = stream
 
 			server := &quicHttp3.Server{
 				Handler: agent.HTTPMuxer,
 			}
 			rawServerConn, err := server.NewRawServerConn(agent.quicConn)
 			if err != nil {
-				log.Printf("failed to create raw server connection from quic %p: %v", agent.quicConn.RemoteAddr(), err)
+				log.Printf("failed to create raw server connection from quic %s: %v", quicRAddr, err)
 				return
 			}
-			log.Printf("Created raw server connection from quic %p", agent.quicConn.RemoteAddr())
+			log.Printf("Created raw server connection from quic %s", quicRAddr)
 
 			go func() {
-				defer log.Printf("QUIC proxy exitting")
+				defer log.Printf("QUIC proxy is exitting")
 				for {
 					stream, err := agent.quicConn.AcceptStream(ctx)
 					if err != nil {
-						log.Printf("failed to accept QUIC stream from conn %s: %v", agent.quicConn.RemoteAddr(), err)
+						log.Printf("failed to accept QUIC stream from conn %s: %v", quicRAddr, err)
 						return
 					}
-					log.Printf("Accepted QUIC stream from conn %p", agent.quicConn.RemoteAddr())
+					log.Printf("Accepted QUIC stream %d from conn %s", stream.StreamID(), quicRAddr)
 					go func(stream *quicGo.Stream) {
 						defer stream.Close()
-						defer log.Printf("QUIC stream %d of conn %p exitting", stream.StreamID(), agent.quicConn.RemoteAddr())
+						defer log.Printf("QUIC stream %d of conn %s exitting", stream.StreamID(), quicRAddr)
 
-						log.Printf("Handling request stream %d of conn %p", stream.StreamID(), agent.quicConn.RemoteAddr())
+						log.Printf("Handling request stream %d of conn %s", stream.StreamID(), quicRAddr)
 						rawServerConn.HandleRequestStream(stream)
 					}(stream)
 				}
@@ -274,7 +255,6 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 				return
 			}
 			agent.wsConn = c
-			_, agent.reader, err = c.NextReader()
 		}
 
 		receiverExit := make(chan error)
@@ -286,7 +266,7 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 		defer ticker.Stop()
 
 		log.Printf("Sending register message")
-		if err := agent.writeMsg(registerMsg); err != nil {
+		if err := agent.sendMsgPayload(&registerMsg); err != nil {
 			errCh <- fmt.Errorf("failed to send register message: %v", err)
 			return
 		}
@@ -305,7 +285,7 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 			case <-ticker.C:
 				var msg pkgframing.MessagePayload
 				msg, *agent.SeqID = agent.getTickMsg()
-				if err := agent.writeMsg(msg); err != nil {
+				if err := agent.sendMsgPayload(&msg); err != nil {
 					errCh <- fmt.Errorf("failed to send echo message: %v", err)
 					return
 				}
@@ -314,4 +294,45 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 	}()
 
 	return <-errCh
+}
+
+func (agent *NodeRegistrationAgent) sendMsgPayload(payload *pkgframing.MessagePayload) error {
+	if agent.UseQUIC {
+		if agent.quicStream == nil {
+			panic("quic stream shouldn't be nil when using QUIC")
+		}
+		return json.NewEncoder(agent.quicStream).Encode(payload)
+	}
+
+	if agent.wsConn == nil {
+		panic("ws conn shouldn't be nil when using WebSocket")
+	}
+
+	return agent.wsConn.WriteJSON(payload)
+}
+
+func (agent *NodeRegistrationAgent) recvMsgPayload() (*pkgframing.MessagePayload, error) {
+	var payload pkgframing.MessagePayload
+	if agent.UseQUIC {
+		if agent.quicStream == nil {
+			panic("quic stream shouldn't be nil when using QUIC")
+		}
+
+		err := json.NewDecoder(agent.quicStream).Decode(&payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read or decode message from QUIC stream: %v", err)
+		}
+		return &payload, nil
+	}
+
+	if agent.wsConn == nil {
+		panic("ws conn shouldn't be nil when using WebSocket")
+	}
+
+	err := agent.wsConn.ReadJSON(&payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read or decode message from WebSocket: %v", err)
+	}
+
+	return &payload, nil
 }

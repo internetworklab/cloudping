@@ -39,7 +39,7 @@ type AgentCmd struct {
 
 	// If server address is empty, it won't register itself to the hub.
 	ServerAddress     string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
-	QUICServerAddress string `help:"QUIC Address of the hub" default:"hub.example.com:18443"`
+	QUICServerAddress string `help:"QUIC Address of the hub"`
 
 	RespondRange       []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
 	DomainRespondRange []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
@@ -84,6 +84,8 @@ type AgentCmd struct {
 	IP2LocationAPIEndpoint string `help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
 	AgentTickInterval string `help:"The interval between node registration agent's tick" default:"5s"`
+
+	LogEchoReplies bool `help:"Log echo replies" default:"false"`
 }
 
 type PingHandler struct {
@@ -526,6 +528,7 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			ClientCert:        agentCmd.ClientCert,
 			ClientCertKey:     agentCmd.ClientCertKey,
 			TickInterval:      defaultTickInterval,
+			LogEchoReplies:    agentCmd.LogEchoReplies,
 		}
 
 		if customTickIntv := agentCmd.AgentTickInterval; customTickIntv != "" {

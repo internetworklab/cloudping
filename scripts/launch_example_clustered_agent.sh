@@ -31,4 +31,6 @@ bin/globalping agent \
   --support-tcp=true \
   --ip-2-location-api-endpoint=https://api.ip2location.io \
   --dn-42-ip-2-location-api-endpoint=https://regquery.ping2.sh/ip2location/v1/query \
-   --metrics-listen-address=:12112
+  --metrics-listen-address=:12112 \
+  --quic-server-address=globalping-hub.exploro.one:18443 \
+  --log-echo-replies
