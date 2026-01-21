@@ -32,7 +32,6 @@ func handleTextMessage(conn *websocket.Conn, cr *pkgconnreg.ConnRegistry, msg []
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal message from %s: %v", conn.RemoteAddr(), err)
 	}
-	log.Printf("[dbg] [ws] received message: %+v", payload)
 
 	key := conn.RemoteAddr().String()
 	if payload.Register != nil {
@@ -110,7 +109,6 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				connErrCh <- fmt.Errorf("failed to read message from %s: %v", conn.RemoteAddr(), err)
 				break
 			}
-			log.Printf("[dbg] [ws] received message type: %d size: %d", msgType, len(msg))
 
 			switch msgType {
 			case websocket.TextMessage:
