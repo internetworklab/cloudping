@@ -582,6 +582,8 @@ function RowMap(props: {
   }
   markers = [...markers, ...extraMarkers];
 
+  const worldMapFill: CSSProperties['fill'] = '#676767'
+
   return (
     <Fragment>
       <TableRow>
@@ -660,7 +662,7 @@ function RowMap(props: {
                 canvasSvgRef={canvasSvgRef as any}
                 canvasWidth={canvasX}
                 canvasHeight={canvasY}
-                fill="lightblue"
+                fill={worldMapFill}
                 markers={markers}
               />
               <RenderLegends encodings={encodings} />

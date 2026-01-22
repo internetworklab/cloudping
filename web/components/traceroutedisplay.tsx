@@ -522,6 +522,8 @@ export function TracerouteResultDisplay(props: {
     }
   }
 
+  const worldMapFill: CSSProperties['fill'] = '#676767'
+
   return (
     <Card>
       <Box
@@ -591,7 +593,7 @@ export function TracerouteResultDisplay(props: {
             canvasSvgRef={canvasSvgRef as any}
             canvasWidth={canvasW}
             canvasHeight={canvasH}
-            fill="lightblue"
+            fill={worldMapFill}
             paths={extraPaths}
             markers={markers}
           />

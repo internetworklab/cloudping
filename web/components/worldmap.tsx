@@ -467,7 +467,7 @@ function RenderMarker(props: { marker: Marker; projector: Projector }) {
               x={x + radius * 1.75}
               y={y + radius * 1.75}
               fontSize={radius * 2}
-              fill="white"
+              fill='currentColor'
               style={{ cursor: "text" }}
             >
               {marker.index}
