@@ -26,6 +26,8 @@ const (
 	AttributeKeyHttpEndpoint       = "HttpEndpoint"
 	AttributeKeyRespondRange       = "RespondRange"
 	AttributeKeyExactLocation      = "ExactLocation"
+	AttributeKeyCountryCode        = "CountryCode"
+	AttributeKeyCityName           = "CityName"
 	AttributeKeyDomainRespondRange = "DomainRespondRange"
 	AttributeKeySupportUDP         = "SupportUDP"
 	AttributeKeySupportPMTU        = "SupportPMTU"
