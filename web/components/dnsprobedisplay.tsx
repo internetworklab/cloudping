@@ -262,7 +262,7 @@ export function DNSProbeDisplay(props: {
             <TableRow>
               <TableCell>Target</TableCell>
               {sources.map((source) => (
-                <TableCell key={source}>{source}</TableCell>
+                <TableCell key={source}>{source.toUpperCase()}</TableCell>
               ))}
             </TableRow>
           </TableHead>
