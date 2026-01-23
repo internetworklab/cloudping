@@ -218,7 +218,7 @@ export function PingResultDisplay(props: {
     const reader = resultStream.getReader();
     const readNext = (props: {
       done: boolean;
-      value: PingSample | undefined | null;
+      value?: PingSample | undefined | null;
     }) => {
       if (props.done) {
         return;
@@ -309,7 +309,7 @@ export function PingResultDisplay(props: {
             <TableRow>
               <TableCell>Target</TableCell>
               {sources.map((source) => (
-                <TableCell key={source}>{source}</TableCell>
+                <TableCell key={source}>{source.toUpperCase()}</TableCell>
               ))}
               <TableCell>Overview</TableCell>
             </TableRow>
@@ -557,7 +557,7 @@ function RowMap(props: {
       strokeWidth: 3 * ratio,
       stroke: "white",
       index: nodeGroup.nodes?.[0]?.node_name
-        ? trimPrefix(nodeGroup.nodes?.[0]?.node_name)
+        ? trimPrefix(nodeGroup.nodes?.[0]?.node_name)?.toUpperCase()
         : undefined,
     };
     if (tooltip !== "") {
@@ -582,7 +582,7 @@ function RowMap(props: {
   }
   markers = [...markers, ...extraMarkers];
 
-  const worldMapFill: CSSProperties['fill'] = '#676767'
+  const worldMapFill: CSSProperties["fill"] = "#676767";
 
   return (
     <Fragment>

@@ -22,8 +22,8 @@ import {
   FormLabel,
 } from "@mui/material";
 import { CSSProperties, Fragment, useState } from "react";
-import { SourcesSelector } from "@/components/sourceselector";
-import { getCurrentPingers } from "@/apis/globalping";
+import { SourceOption, SourcesSelector } from "@/components/sourceselector";
+import { getCurrentPingerOptions } from "@/apis/globalping";
 import {
   DNSProbePlan,
   DNSQueryType,
@@ -38,14 +38,29 @@ import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { About } from "@/components/about";
 import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 
-const fakeSources = [
-  "192.168.1.1",
-  "192.168.1.2",
-  "192.168.1.3",
-  "192.168.1.4",
-  "192.168.1.5",
-  "192.168.1.6",
-  "192.168.1.7",
+const fakeSources: SourceOption[] = [
+  {
+    key: "us-nyc-01",
+    label: "us-nyc1",
+    iso3166alpha2: "US",
+    cityName: "New York",
+  },
+  {
+    key: "us-dal-01",
+    label: "us-dal1",
+  },
+  {
+    key: "somewhere",
+    label: "Somewhere",
+    iso3166alpha2: "",
+    cityName: "",
+  },
+  {
+    key: "cn-pek-01",
+    label: "cn-pek1",
+    iso3166alpha2: "CN",
+    cityName: "Beijing",
+  },
 ];
 
 function getNextId(onGoingTasks: PendingTask[]): number {
@@ -97,7 +112,8 @@ export default function Home() {
   const [openTaskConfirmDialog, setOpenTaskConfirmDialog] =
     useState<boolean>(false);
 
-  const [sourcesInput, setSourcesInput] = useState<string>("");
+  const [sourcesSelected, setSourcesSelected] = useState<string[]>([]);
+
   const [targetsInput, setTargetsInput] = useState<string>("");
 
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
@@ -186,7 +202,7 @@ export default function Home() {
                   variant="contained"
                   color="primary"
                   onClick={() => {
-                    const srcs = dedup(sourcesInput.split(","))
+                    const srcs = dedup(sourcesSelected)
                       .map((s) => s.trim())
                       .filter((s) => s.length > 0);
                     const tgts = dedup(targetsInput.split(","))
@@ -402,12 +418,13 @@ export default function Home() {
             </Box>
             <Box sx={{ marginTop: 2 }}>
               <SourcesSelector
-                value={sourcesInput
-                  .split(",")
+                value={sourcesSelected
                   .map((s) => s.trim())
                   .filter((s) => s.length > 0)}
-                onChange={(value) => setSourcesInput(value.join(","))}
+                onChange={(value) => setSourcesSelected(value)}
                 getOptions={() => {
+                  // return Promise.resolve(fakeSources);
+
                   let filter: Record<string, string> | undefined = undefined;
                   if (!!pendingTask.useUDP) {
                     filter = { ...(filter || {}), SupportUDP: "true" };
@@ -422,7 +439,14 @@ export default function Home() {
                     filter = { ...(filter || {}), CapabilityDNSProbe: "true" };
                   }
 
-                  return getCurrentPingers(filter);
+                  return getCurrentPingerOptions(filter).then((nodes) => {
+                    return nodes.map((node) => ({
+                      key: node.node_name ?? "",
+                      label: node.node_name ?? "",
+                      iso3166alpha2: node.attributes?.CountryCode,
+                      cityName: node.attributes?.CityName,
+                    }));
+                  });
                   // return new Promise((res) => {
                   //   window.setTimeout(() => res(fakeSources), 2000);
                   // });

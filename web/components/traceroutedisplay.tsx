@@ -522,7 +522,7 @@ export function TracerouteResultDisplay(props: {
     }
   }
 
-  const worldMapFill: CSSProperties['fill'] = '#676767'
+  const worldMapFill: CSSProperties["fill"] = "#676767";
 
   return (
     <Card>

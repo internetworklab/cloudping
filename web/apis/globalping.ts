@@ -8,20 +8,35 @@ export function getApiEndpoint(): string {
   );
 }
 
-function sortAndDedup(nodes: string[]): string[] {
-  const nodeSet = new Set<string>(nodes);
-  const sorted = Array.from(nodeSet);
-  sorted.sort();
+export type NodeEntry = {
+  attributes?: {
+    CountryCode?: string;
+    CityName?: string;
+  };
+  node_name?: string;
+};
+
+function sortAndDedup(nodes: NodeEntry[]): NodeEntry[] {
+  const nodeSet = new Set<string>();
+  const nodesDeduped: NodeEntry[] = [];
+  for (const node of nodes) {
+    if (node.node_name && !nodeSet.has(node.node_name)) {
+      nodeSet.add(node.node_name);
+      nodesDeduped.push(node);
+    }
+  }
+  const sorted = nodesDeduped;
+  sorted.sort((a, b) => a.node_name!.localeCompare(b.node_name!));
   return sorted;
 }
 
-export async function getCurrentPingers(
+export async function getCurrentPingerOptions(
   extraLabels?: Record<string, string>
-): Promise<string[]> {
+): Promise<NodeEntry[]> {
   return fetch(`${getApiEndpoint()}/conns`)
     .then((res) => res.json())
     .then((data) => {
-      const nodes: string[] = [];
+      const nodes: NodeEntry[] = [];
       if (typeof data === "object") {
         for (const key in data) {
           const node = data[key];
@@ -49,7 +64,7 @@ export async function getCurrentPingers(
               node["attributes"]["NodeName"] &&
               node["attributes"]["CapabilityPing"]
             ) {
-              nodes.push(String(node["attributes"]["NodeName"]));
+              nodes.push(node);
             }
           }
         }
