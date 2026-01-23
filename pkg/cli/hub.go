@@ -174,10 +174,10 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 
 	privateServer := http.Server{
-		Handler: pkghandler.NewWithCORSHandler(muxerPrivate),
+		Handler: muxerPrivate,
 	}
 	publicServer := http.Server{
-		Handler: pkghandler.NewWithCORSHandler(muxerPublic),
+		Handler: muxerPublic,
 	}
 
 	privateListener, err := tls.Listen("tcp", hubCmd.Address, privateServerSideTLSCfg)
