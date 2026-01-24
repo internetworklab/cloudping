@@ -28,6 +28,8 @@ const (
 	AttributeKeyExactLocation      = "ExactLocation"
 	AttributeKeyCountryCode        = "CountryCode"
 	AttributeKeyCityName           = "CityName"
+	AttributeKeyASN                = "ProviderASN"
+	AttributeKeyISP                = "ProviderName"
 	AttributeKeyDomainRespondRange = "DomainRespondRange"
 	AttributeKeySupportUDP         = "SupportUDP"
 	AttributeKeySupportPMTU        = "SupportPMTU"
