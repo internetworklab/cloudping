@@ -30,6 +30,8 @@ const (
 	AttributeKeyCityName           = "CityName"
 	AttributeKeyASN                = "ProviderASN"
 	AttributeKeyISP                = "ProviderName"
+	AttributeKeyDN42ASN            = "DN42ProviderASN"
+	AttributeKeyDN42ISP            = "DN42ProviderName"
 	AttributeKeyDomainRespondRange = "DomainRespondRange"
 	AttributeKeySupportUDP         = "SupportUDP"
 	AttributeKeySupportPMTU        = "SupportPMTU"

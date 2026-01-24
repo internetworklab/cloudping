@@ -146,7 +146,9 @@ bin/globalping agent \
   --country-code=US \
   --city-name="Los Angeles" \
   --asn=AS35916 \
-  --isp="MULTACOM"
+  --isp="MULTACOM" \
+  --dn42-asn=AS4242421771 \
+  --dn42-isp="DUSTSTARS"
 ```
 
 By default, the agent use default public endpoint ":2112" to expose prometheus metrics, if you don't like it to be public, just change it to

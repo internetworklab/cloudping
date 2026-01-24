@@ -40,6 +40,8 @@ type AgentCmd struct {
 	CityName            string `help:"The city name to advertise to the hub, when present. Format: <name-of-the-city>"`
 	ASN                 string `help:"The ASN of the ISP that provides internet connectivity to the node. Format: AS<number>, e.g. AS65001"`
 	ISP                 string `help:"The name of the ISP that provides internet connectivity to the node"`
+	DN42ASN             string `name:"dn42-asn" help:"The ASN of the ISP that provides DN42 connectivity to the node. Format: AS<number>, e.g. AS4242421234"`
+	DN42ISP             string `name:"dn42-isp" help:"The name of the ISP that provides DN42 connectivity to the node"`
 
 	// If server address is empty, it won't register itself to the hub.
 	ServerAddress     string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
@@ -501,6 +503,14 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 		if isp := agentCmd.ISP; isp != "" {
 			attributes[pkgnodereg.AttributeKeyISP] = isp
+		}
+
+		if dn42asn := agentCmd.DN42ASN; dn42asn != "" {
+			attributes[pkgnodereg.AttributeKeyDN42ASN] = dn42asn
+		}
+
+		if dn42isp := agentCmd.DN42ISP; dn42isp != "" {
+			attributes[pkgnodereg.AttributeKeyDN42ISP] = dn42isp
 		}
 
 		if len(agentCmd.RespondRange) > 0 {
