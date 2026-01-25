@@ -12,6 +12,8 @@ type LineDrawCtx = {
   lastMetrics?: TextMetrics;
   x: number;
   maxWidth?: number;
+  maxRight?: number;
+  maxHeight?: number;
 };
 
 function drawLine(
@@ -31,15 +33,25 @@ function drawLine(
   ctx.fillText(line, lineCtx.x, lineCtx.y);
   const lineMs = ctx.measureText(line);
   const prevMaxWidth = lineCtx.maxWidth ?? 0;
+  const maxWidth = Math.max(prevMaxWidth, lineMs.width);
+  const prevMaxRight = lineCtx.maxRight ?? 0;
+  const maxRight = Math.max(prevMaxRight, lineCtx.x + lineMs.width);
+  const prevMaxHeight = lineCtx.maxHeight ?? 0;
+  const newHeight =
+    lineCtx.y +
+    lineMs.fontBoundingBoxAscent +
+    lineMs.fontBoundingBoxDescent +
+    lineCtx.lineGap;
+  const maxHeight = Math.max(prevMaxHeight, newHeight);
+  console.log("[dbg] maxRight:", maxRight);
+  console.log("[dbg] maxHeight:", maxHeight);
   return {
     ...lineCtx,
-    y:
-      lineCtx.y +
-      lineMs.fontBoundingBoxAscent +
-      lineMs.fontBoundingBoxDescent +
-      lineCtx.lineGap,
+    y: newHeight,
     lastMetrics: lineMs,
-    maxWidth: Math.max(prevMaxWidth, lineMs.width),
+    maxWidth,
+    maxRight,
+    maxHeight,
   };
 }
 
@@ -133,6 +145,13 @@ function carriageReturn(lineCtx: LineDrawCtx): LineDrawCtx {
 function Window() {
   const [w, setW] = useState(0);
   const [h, setH] = useState(0);
+  const [maxW, setMaxW] = useState(0);
+  const [maxH, setMaxH] = useState(0);
+
+  const dpi = window.devicePixelRatio;
+  const R = Math.max(w * dpi, maxW);
+  const H = Math.max(h * dpi, maxH);
+
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -176,8 +195,9 @@ function Window() {
     }
 
     const dpi = window.devicePixelRatio;
-    canvasEle.setAttribute("width", `${w * dpi}`);
-    canvasEle.setAttribute("height", `${h * dpi}`);
+
+    // canvasEle.setAttribute("width", `${w * dpi}`);
+    // canvasEle.setAttribute("height", `${h * dpi}`);
 
     const ctx = canvasEle.getContext("2d");
     if (!ctx) {
@@ -185,7 +205,7 @@ function Window() {
     }
 
     ctx.fillStyle = "#262626";
-    ctx.fillRect(0, 0, w * dpi, h * dpi);
+    ctx.fillRect(0, 0, R, H);
 
     const lines: string[] = [
       `Date: ${new Date().toISOString()}`,
@@ -295,6 +315,134 @@ function Window() {
         { content: "112ms 81ms/121ms/131ms" },
         { content: "8 sent, 7 replies, 12.5 loss" },
       ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "4" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "5" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "6" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "7" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "8" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb3.dod.us(11.1.2.5)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
     ];
     const cols = transposeTable(rows);
 
@@ -317,6 +465,13 @@ function Window() {
     );
 
     console.log("[dbg] paint.");
+    const maxR = colCtx.lineDrawCtx.maxRight ?? 0;
+    console.log("[dbg] maxRight:", maxR);
+    const maxH = colCtx.lineDrawCtx.maxHeight ?? 0;
+    console.log("[dbg] maxHeight:", maxH);
+
+    setMaxH(maxH);
+    setMaxW(maxR);
   });
 
   return (
@@ -325,13 +480,29 @@ function Window() {
         ref={boxRef}
         sx={{
           height: "400px",
+          overflow: "auto",
         }}
       >
-        <Box sx={{ width: "100%" }} component={"canvas"}></Box>
+        <canvas
+          style={{ width: "100%", height: "auto" }}
+          width={R}
+          height={H}
+        ></canvas>
       </Box>
-      <Box sx={{ paddingTop: 2, paddingLeft: 3, paddingRight: 3 }}>
+      <Box
+        sx={{
+          paddingTop: 2,
+          paddingLeft: 3,
+          paddingRight: 3,
+          display: "flex",
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
         <Box>W: {w}</Box>
         <Box>H: {h}</Box>
+        <Box>MaxW: {maxW.toFixed(0)}</Box>
+        <Box>MaxH: {maxH.toFixed(0)}</Box>
       </Box>
     </Fragment>
   );
