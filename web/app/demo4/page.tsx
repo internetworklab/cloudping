@@ -216,6 +216,22 @@ function Window(props: { canvasRef: React.RefObject<HTMLCanvasElement> }) {
     ctx.fillStyle = "#262626";
     ctx.fillRect(0, 0, R, H);
 
+    const deltaX = 10 * dpi;
+    const deltaY = 10 * dpi;
+    const translateMatrix = [
+      [1, 0, deltaX],
+      [0, 1, deltaY],
+      [0, 0, 1],
+    ];
+    ctx.setTransform(
+      translateMatrix[0][0],
+      translateMatrix[1][0],
+      translateMatrix[0][1],
+      translateMatrix[1][1],
+      translateMatrix[0][2],
+      translateMatrix[1][2]
+    );
+
     const lines: string[] = [
       `Date: ${new Date().toISOString()}`,
       "Source: Node NYC1, AS65001 SOMEISP, SomeCity US",
@@ -464,14 +480,14 @@ function Window(props: { canvasRef: React.RefObject<HTMLCanvasElement> }) {
       lineDrawCtx: carriageReturn(colCtx.lineDrawCtx),
     };
 
-    drawCursor(
-      colCtx.lineDrawCtx.x,
-      colCtx.lineDrawCtx.y,
-      ctx,
-      15 * dpi,
-      20 * dpi,
-      "#111"
-    );
+    // drawCursor(
+    //   colCtx.lineDrawCtx.x,
+    //   colCtx.lineDrawCtx.y,
+    //   ctx,
+    //   15 * dpi,
+    //   20 * dpi,
+    //   "#111"
+    // );
 
     console.log("[dbg] paint.");
     const maxR = colCtx.lineDrawCtx.maxRight ?? 0;
@@ -479,8 +495,8 @@ function Window(props: { canvasRef: React.RefObject<HTMLCanvasElement> }) {
     const maxH = colCtx.lineDrawCtx.maxHeight ?? 0;
     console.log("[dbg] maxHeight:", maxH);
 
-    setMaxH(maxH);
-    setMaxW(maxR);
+    setMaxW(maxR + 2 * deltaX);
+    setMaxH(maxH + 2 * deltaY);
   });
 
   const [showDbg, setShowDbg] = useState(false);
@@ -544,6 +560,7 @@ export default function Page() {
               justifyContent: "space-between",
               flexWrap: "wrap",
               gap: 2,
+              alignItems: "center",
             }}
           >
             Preview
