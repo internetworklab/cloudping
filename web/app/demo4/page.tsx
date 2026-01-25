@@ -18,6 +18,23 @@ export type TracerouteReportLocation = {
   countryAlpha2?: string;
 };
 
+function renderLoc(loc?: TracerouteReportLocation): string {
+  if (!loc) {
+    return "";
+  }
+  const locLine: string[] = [];
+  if (loc.city) {
+    locLine.push(loc.city);
+  }
+  if (loc.countryAlpha2) {
+    locLine.push(loc.countryAlpha2);
+  }
+  if (locLine.length === 0) {
+    return "";
+  }
+  return locLine.join(", ");
+}
+
 export type TracerouteReportISP = {
   // name of the isp, like 'Hurricane Electric'
   ispName: string;
@@ -26,11 +43,50 @@ export type TracerouteReportISP = {
   asn: string;
 };
 
+function renderISP(isp?: TracerouteReportISP): string {
+  if (!isp) {
+    return "";
+  }
+  const ispLine: string[] = [];
+  if (isp.asn) {
+    ispLine.push(isp.asn);
+  }
+  if (isp.ispName) {
+    ispLine.push(isp.ispName);
+  }
+  if (ispLine.length === 0) {
+    return "";
+  }
+  return ispLine.join(" ");
+}
+
 export type TracerouteReportSource = {
   nodeName: string;
   isp?: TracerouteReportISP;
   loc?: TracerouteReportLocation;
 };
+
+function renderSource(src?: TracerouteReportSource): string {
+  if (!src) {
+    return "";
+  }
+
+  if (!src.nodeName) {
+    return "";
+  }
+
+  const srcLine: string[] = [];
+  srcLine.push("Node " + src.nodeName);
+  const ispLine = renderISP(src.isp);
+  if (ispLine) {
+    srcLine.push(ispLine);
+  }
+  const locLine = renderLoc(src.loc);
+  if (locLine) {
+    srcLine.push(locLine);
+  }
+  return srcLine.join(", ");
+}
 
 export type TracerouteReportMode = "tcp" | "icmp" | "udp";
 
@@ -70,7 +126,7 @@ export type TracerouteReport = {
   date: number;
 
   // in case that a originating node is multi-homed/BGP
-  sources: TracerouteReport[];
+  sources: TracerouteReportSource[];
 
   // the domain or ip address of the target host
   destination: string;
@@ -87,7 +143,90 @@ export function renderTracerouteReport(report: TracerouteReport): {
   tabularData: Row[];
 } {
   const preamble: Row[] = [];
+
+  if (report.date !== 0) {
+    preamble.push([{ content: new Date(report.date).toISOString() }]);
+  }
+  for (const src of report.sources) {
+    const line = renderSource(src);
+    if (line) {
+      preamble.push([{ content: "Source: " + line }]);
+    }
+  }
+
+  if (report.destination) {
+    preamble.push([{ content: "Destination: " + report.destination }]);
+  }
+
+  if (report.mode) {
+    preamble.push([{ content: "Mode: " + report.mode.toUpperCase() }]);
+  }
+
   const tabularData: Row[] = [];
+  if (report.hops && report.hops.length > 0) {
+    const header: Row = [
+      { content: "TTL" },
+      { content: "Peers" },
+      { content: "ISP" },
+      { content: "Location" },
+      { content: "RTTs (last min/med/max)" },
+      { content: "Stat" },
+    ];
+    tabularData.push(header);
+
+    for (const hop of report.hops) {
+      for (let peerIdx in hop.peers) {
+        const peer = hop.peers[peerIdx];
+        const row: Row = [];
+
+        // TTL
+        if (peerIdx === "0") {
+          row.push({ content: String(hop.ttl) });
+        } else {
+          row.push({ content: "" });
+        }
+
+        // Peers
+        if (peer.timeout) {
+          row.push({ content: "*" });
+          for (let i = 1; i < header.length; i++) {
+            row.push({ content: "" });
+          }
+          tabularData.push(row);
+          continue;
+        } else {
+          let peerName = "";
+          if (peer.rdns) {
+            peerName = peer.rdns + " " + `(${peer.ip})`;
+          } else {
+            peerName = peer.ip;
+          }
+          row.push({ content: peerName });
+        }
+
+        // ISP
+        row.push({ content: renderISP(peer.isp) });
+
+        // Location
+        row.push({ content: renderLoc(peer.loc) });
+
+        // RTTs
+        if (peer.rtt) {
+          const samples = peer.rtt.samples.slice().sort((a, b) => a - b);
+          const min = samples[0];
+          const max = samples[samples.length - 1];
+          const med =
+            samples.length % 2 === 1
+              ? samples[Math.floor(samples.length / 2)]
+              : (samples[samples.length / 2 - 1] +
+                  samples[samples.length / 2]) /
+                2;
+          const rttStr = `${peer.rtt.lastMs}ms ${min}ms/${med}ms/${max}ms`;
+          row.push({ content: rttStr });
+        }
+      }
+    }
+  }
 
   return { preamble, tabularData };
 }
