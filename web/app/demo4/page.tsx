@@ -35,8 +35,8 @@ function drawLine(
     ...lineCtx,
     y:
       lineCtx.y +
-      lineMs.actualBoundingBoxAscent +
-      lineMs.actualBoundingBoxDescent +
+      lineMs.fontBoundingBoxAscent +
+      lineMs.fontBoundingBoxDescent +
       lineCtx.lineGap,
     lastMetrics: lineMs,
     maxWidth: Math.max(prevMaxWidth, lineMs.width),
@@ -63,10 +63,39 @@ type ColDrawCtx = {
   y0?: number;
 };
 
+type Cell = {
+  content: string;
+  empty?: boolean;
+};
+
+type Col = Cell[];
+
+type Row = Cell[];
+
+function transposeTable(rows: Row[]): Col[] {
+  if (rows.length === 0) {
+    return [];
+  }
+  const nCols = rows[0].length;
+  const cols: Col[] = [];
+  for (let c = 0; c < nCols; c++) {
+    const col: Col = [];
+    for (let r = 0; r < rows.length; r++) {
+      if (rows[r].length >= c + 1) {
+        col.push(rows[r][c]);
+      } else {
+        col.push({ content: "", empty: true });
+      }
+    }
+    cols.push(col);
+  }
+  return cols;
+}
+
 function drawCol(
   colCtx: ColDrawCtx,
   ctx: CanvasRenderingContext2D,
-  column: string[]
+  column: Col
 ): ColDrawCtx {
   let newColCtx: ColDrawCtx = {
     ...colCtx,
@@ -78,8 +107,8 @@ function drawCol(
     y: newColCtx.y0!,
   };
 
-  for (const row of column) {
-    newColCtx.lineDrawCtx = drawLine(newColCtx.lineDrawCtx, ctx, row);
+  for (const cell of column) {
+    newColCtx.lineDrawCtx = drawLine(newColCtx.lineDrawCtx, ctx, cell.content);
   }
 
   newColCtx.lineDrawCtx = {
@@ -160,15 +189,16 @@ function Window() {
 
     const lines: string[] = [
       `Date: ${new Date().toISOString()}`,
-      "Source: Node NYC1, AS65001 SOMEISP",
+      "Source: Node NYC1, AS65001 SOMEISP, SomeCity US",
       "Destination: pingable.burble.dn42",
+      "Mode: ICMP",
     ];
     let lineCtx: LineDrawCtx = {
       fillStyle: "#fff",
       baseline: "top",
       font: `${16 * dpi}px sans-serif`,
       y: 0,
-      lineGap: 10 * dpi,
+      lineGap: 6 * dpi,
       x: 0,
     };
 
@@ -178,19 +208,99 @@ function Window() {
 
     // drawCursor(lineCtx, ctx, 15 * dpi, 20 * dpi, "#111");
 
-    const col1 = ["col1", "A", "A1111", "A11", "A1111111", "A1"];
-
     let colCtx: ColDrawCtx = {
       lineDrawCtx: lineCtx,
-      columnGap: 10 * dpi,
+      columnGap: 30 * dpi,
     };
-    colCtx = drawCol(colCtx, ctx, col1);
 
-    const col2 = ["col2", "B", "B1111", "B11", "B11111", "B111"];
-    colCtx = drawCol(colCtx, ctx, col2);
+    const rows: Row[] = [
+      [
+        { content: "TTL" },
+        { content: "Peers" },
+        { content: "ISP" },
+        { content: "Location" },
+        { content: "RTTs (last min/med/max)" },
+        { content: "Stat" },
+      ],
+      [
+        { content: "1" },
+        { content: "RFC1819 (192.168.1.1)" },
+        { content: "" },
+        { content: "" },
+        { content: "10ms 1ms/5ms/11ms" },
+        { content: "10 sent, 8 replies, 20% loss" },
+      ],
+      [
+        { content: "" },
+        { content: "RFC1819 (192.168.2.1)" },
+        { content: "" },
+        { content: "" },
+        { content: "11ms 2ms/6ms/12ms" },
+        { content: "9 sent, 7 replies, 22.22% loss" },
+      ],
+      [{ content: "" }, { content: "*" }],
+      [
+        { content: "" },
+        { content: "10.147.0.1" },
+        { content: "" },
+        { content: "" },
+        { content: "5ms 1ms/4ms/7ms" },
+        { content: "8 sent, 7 replies, 12.5% loss" },
+      ],
+      [
+        { content: "2" },
+        { content: "h100.1e100.net (123.124.125.126)" },
+        { content: "AS65001 [EXAMPLEISP]" },
+        { content: "Frankfurt, DE" },
+        { content: "10ms 8ms/10ms/11ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "h101.1e100.net (123.124.125.127)" },
+        { content: "AS65001 [EXAMPLEISP]" },
+        { content: "Frankfurt, DE" },
+        { content: "10ms 8ms/10ms/11ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "3" },
+        { content: "h100.1e101.net (124.125.126.127)" },
+        { content: "AS65002 [EXAMPLEISP2]" },
+        { content: "Frankfurt, DE" },
+        { content: "12ms 8ms/12ms/14ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "124.125.126.128" },
+        { content: "AS65002 [EXAMPLEISP2]" },
+        { content: "Frankfurt, DE" },
+        { content: "12ms 8ms/12ms/13ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "4" },
+        { content: "bb1.dod.us(11.1.2.3)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/141ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+      [
+        { content: "" },
+        { content: "bb2.dod.us(11.1.2.4)" },
+        { content: "AS65003 [DoD]" },
+        { content: "Washington DC, US" },
+        { content: "112ms 81ms/121ms/131ms" },
+        { content: "8 sent, 7 replies, 12.5 loss" },
+      ],
+    ];
+    const cols = transposeTable(rows);
 
-    const col3 = ["col3", "C", "C1111", "C11", "C11111", "C111"];
-    colCtx = drawCol(colCtx, ctx, col3);
+    for (const col of cols) {
+      colCtx = drawCol(colCtx, ctx, col);
+    }
 
     colCtx = {
       ...colCtx,
@@ -217,7 +327,7 @@ function Window() {
           height: "400px",
         }}
       >
-        <Box sx={{ width: "100%", height: "100%" }} component={"canvas"}></Box>
+        <Box sx={{ width: "100%" }} component={"canvas"}></Box>
       </Box>
       <Box sx={{ paddingTop: 2, paddingLeft: 3, paddingRight: 3 }}>
         <Box>W: {w}</Box>
