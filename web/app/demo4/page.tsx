@@ -9,7 +9,7 @@ import {
   IconButton,
   Tooltip,
 } from "@mui/material";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import SaveIcon from "@mui/icons-material/Save";
 import { Row, CanvasTable } from "@/components/canvastable";
 
@@ -17,6 +17,35 @@ export type TracerouteReportLocation = {
   city?: string;
   countryAlpha2?: string;
 };
+
+function formatNumStr(num: string): string {
+  return num.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function getNumStats(arr: number[]):
+  | {
+      min: number;
+      max: number;
+      med: number;
+    }
+  | undefined {
+  if (arr.length > 0) {
+    const sorted = [...arr];
+    sorted.sort();
+
+    let med = 0;
+    if (arr.length % 2) {
+      med = sorted[Math.floor(arr.length / 2)];
+    } else {
+      med += sorted[arr.length / 2 - 1];
+      med += sorted[arr.length / 2];
+      med = med / 2;
+    }
+
+    return { min: sorted[0], max: sorted[sorted.length - 1], med };
+  }
+  return undefined;
+}
 
 function renderLoc(loc?: TracerouteReportLocation): string {
   if (!loc) {
@@ -95,10 +124,40 @@ export type TracerouteReportRTTStat = {
   samples: number[];
 };
 
+function renderRTTStat(stat?: TracerouteReportRTTStat): string {
+  if (!stat) {
+    return "";
+  }
+  const stats = getNumStats(stat.samples);
+  let rttStr = `${stat.lastMs}ms`;
+  if (stats) {
+    const statsLine = [
+      `${formatNumStr(stats.min.toFixed(2))}ms`,
+      `${formatNumStr(stats.med.toFixed(2))}ms`,
+      `${formatNumStr(stats.max.toFixed(2))}ms`,
+    ];
+    rttStr += ` ${statsLine.join("/")}`;
+  }
+  return rttStr;
+}
+
 export type TracerouteReportTXRXStat = {
   sent: number;
   replies: number;
 };
+
+function renderTXRXStat(stat?: TracerouteReportTXRXStat): string {
+  if (!stat) {
+    return "";
+  }
+  const lossPercent =
+    stat.sent > 0 ? ((stat.sent - stat.replies) / stat.sent) * 100 : 0;
+  return [
+    `${stat.sent} sent`,
+    `${stat.replies} replies`,
+    `${formatNumStr(lossPercent.toFixed(2))}% loss`,
+  ].join(", ");
+}
 
 export type TracerouteReportPeer = {
   // if this field is falsy, mark it with a '*' in the screen,
@@ -211,19 +270,12 @@ export function renderTracerouteReport(report: TracerouteReport): {
         row.push({ content: renderLoc(peer.loc) });
 
         // RTTs
-        if (peer.rtt) {
-          const samples = peer.rtt.samples.slice().sort((a, b) => a - b);
-          const min = samples[0];
-          const max = samples[samples.length - 1];
-          const med =
-            samples.length % 2 === 1
-              ? samples[Math.floor(samples.length / 2)]
-              : (samples[samples.length / 2 - 1] +
-                  samples[samples.length / 2]) /
-                2;
-          const rttStr = `${peer.rtt.lastMs}ms ${min}ms/${med}ms/${max}ms`;
-          row.push({ content: rttStr });
-        }
+        row.push({ content: renderRTTStat(peer.rtt) });
+
+        // Stats
+        row.push({ content: renderTXRXStat(peer.stat) });
+
+        tabularData.push(row);
       }
     }
   }
@@ -235,228 +287,56 @@ export default function Page() {
   const [show, setShow] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const preamble: Row[] = useMemo(() => {
-    return [
-      `Date: ${new Date().toISOString()}`,
-      "Source: Node NYC1, AS65001 SOMEISP, SomeCity US",
-      "Destination: pingable.burble.dn42",
-      "Mode: ICMP",
-    ].map((line) => [{ content: line }]);
+  const exampleReport = useMemo(() => {
+    const exampleReport: TracerouteReport = {
+      date: new Date().valueOf(),
+      sources: [
+        {
+          nodeName: "NYC1",
+          isp: { ispName: "SOMEISP", asn: "AS65001" },
+          loc: { countryAlpha2: "US", city: "New York" },
+        },
+      ],
+      destination: "www.example.com",
+      mode: "udp",
+      hops: [
+        {
+          ttl: 1,
+          peers: [
+            {
+              rdns: "RFC1819",
+              ip: "192.168.1.1",
+              rtt: { lastMs: 10, samples: [9, 11, 10, 5, 7, 8, 12, 11, 10, 9] },
+              stat: { sent: 10, replies: 8 },
+            },
+            {
+              rdns: "RFC1819",
+              ip: "192.168.2.1",
+              rtt: {
+                lastMs: 11,
+                samples: [10, 12, 11, 6, 8, 7, 13, 12, 11, 10],
+              },
+              stat: { sent: 10, replies: 7 },
+            },
+            {
+              timeout: true,
+              ip: "",
+            },
+            {
+              ip: "10.147.0.1",
+              rtt: { lastMs: 5, samples: [4, 6, 5, 1, 3, 2, 7, 6, 5, 4] },
+              stat: { sent: 10, replies: 9 },
+            },
+          ],
+        },
+      ],
+    };
+    return exampleReport;
   }, []);
 
-  const tabularData: Row[] = useMemo(() => {
-    return [
-      [
-        { content: "TTL" },
-        { content: "Peers" },
-        { content: "ISP" },
-        { content: "Location" },
-        { content: "RTTs (last min/med/max)" },
-        { content: "Stat" },
-      ],
-      [
-        { content: "1" },
-        { content: "RFC1819 (192.168.1.1)" },
-        { content: "" },
-        { content: "" },
-        { content: "10ms 1ms/5ms/11ms" },
-        { content: "10 sent, 8 replies, 20% loss" },
-      ],
-      [
-        { content: "" },
-        { content: "RFC1819 (192.168.2.1)" },
-        { content: "" },
-        { content: "" },
-        { content: "11ms 2ms/6ms/12ms" },
-        { content: "9 sent, 7 replies, 22.22% loss" },
-      ],
-      [{ content: "" }, { content: "*" }],
-      [
-        { content: "" },
-        { content: "10.147.0.1" },
-        { content: "" },
-        { content: "" },
-        { content: "5ms 1ms/4ms/7ms" },
-        { content: "8 sent, 7 replies, 12.5% loss" },
-      ],
-      [
-        { content: "2" },
-        { content: "h100.1e100.net (123.124.125.126)" },
-        { content: "AS65001 [EXAMPLEISP]" },
-        { content: "Frankfurt, DE" },
-        { content: "10ms 8ms/10ms/11ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "h101.1e100.net (123.124.125.127)" },
-        { content: "AS65001 [EXAMPLEISP]" },
-        { content: "Frankfurt, DE" },
-        { content: "10ms 8ms/10ms/11ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "3" },
-        { content: "h100.1e101.net (124.125.126.127)" },
-        { content: "AS65002 [EXAMPLEISP2]" },
-        { content: "Frankfurt, DE" },
-        { content: "12ms 8ms/12ms/14ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "124.125.126.128" },
-        { content: "AS65002 [EXAMPLEISP2]" },
-        { content: "Frankfurt, DE" },
-        { content: "12ms 8ms/12ms/13ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "4" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "4" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "5" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "6" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "7" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "8" },
-        { content: "bb1.dod.us(11.1.2.3)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/141ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb2.dod.us(11.1.2.4)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-      [
-        { content: "" },
-        { content: "bb3.dod.us(11.1.2.5)" },
-        { content: "AS65003 [DoD]" },
-        { content: "Washington DC, US" },
-        { content: "112ms 81ms/121ms/131ms" },
-        { content: "8 sent, 7 replies, 12.5 loss" },
-      ],
-    ];
-  }, []);
+  const { preamble, tabularData } = useMemo(() => {
+    return renderTracerouteReport(exampleReport);
+  }, [exampleReport]);
 
   return (
     <Box>
