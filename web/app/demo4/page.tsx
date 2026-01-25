@@ -204,7 +204,9 @@ export function renderTracerouteReport(report: TracerouteReport): {
   const preamble: Row[] = [];
 
   if (report.date !== 0) {
-    preamble.push([{ content: new Date(report.date).toISOString() }]);
+    preamble.push([
+      { content: `Date: ${new Date(report.date).toISOString()}` },
+    ]);
   }
   for (const src of report.sources) {
     const line = renderSource(src);
@@ -292,9 +294,9 @@ export default function Page() {
       date: new Date().valueOf(),
       sources: [
         {
-          nodeName: "NYC1",
-          isp: { ispName: "SOMEISP", asn: "AS65001" },
-          loc: { countryAlpha2: "US", city: "New York" },
+          nodeName: "LAX1",
+          isp: { ispName: "Cloudflare", asn: "AS13335" },
+          loc: { countryAlpha2: "US", city: "Los Angeles" },
         },
       ],
       destination: "www.example.com",
@@ -304,28 +306,135 @@ export default function Page() {
           ttl: 1,
           peers: [
             {
-              rdns: "RFC1819",
-              ip: "192.168.1.1",
-              rtt: { lastMs: 10, samples: [9, 11, 10, 5, 7, 8, 12, 11, 10, 9] },
-              stat: { sent: 10, replies: 8 },
+              ip: "203.0.113.1",
+              rtt: { lastMs: 0.5, samples: [0.4, 0.6, 0.5, 0.5, 0.5] },
+              stat: { sent: 5, replies: 5 },
             },
+          ],
+        },
+        {
+          ttl: 2,
+          peers: [
             {
-              rdns: "RFC1819",
-              ip: "192.168.2.1",
-              rtt: {
-                lastMs: 11,
-                samples: [10, 12, 11, 6, 8, 7, 13, 12, 11, 10],
-              },
-              stat: { sent: 10, replies: 7 },
+              rdns: "gw01.lax.example.com",
+              ip: "198.51.100.1",
+              isp: { ispName: "Level 3 Communications", asn: "AS3356" },
+              rtt: { lastMs: 1.2, samples: [1.1, 1.3, 1.2, 1.2, 1.1] },
+              stat: { sent: 5, replies: 5 },
             },
+          ],
+        },
+        {
+          ttl: 3,
+          peers: [
+            {
+              rdns: "ae5-1234.lax10.core.example.net",
+              ip: "192.0.2.1",
+              isp: { ispName: "Cogent Communications", asn: "AS174" },
+              loc: { city: "Los Angeles", countryAlpha2: "US" },
+              rtt: { lastMs: 2.8, samples: [2.5, 3.1, 2.8, 2.7, 3.0] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        {
+          ttl: 4,
+          peers: [
+            {
+              rdns: "be301.dal10.example.com",
+              ip: "203.0.113.10",
+              isp: { ispName: "Hurricane Electric", asn: "AS6939" },
+              loc: { city: "Dallas", countryAlpha2: "US" },
+              rtt: { lastMs: 18.5, samples: [17.8, 19.2, 18.5, 18.3, 18.7] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        {
+          ttl: 5,
+          peers: [
+            {
+              rdns: "ae0-123.atl10.example.net",
+              ip: "192.0.2.50",
+              isp: { ispName: "NTT Communications", asn: "AS2914" },
+              loc: { city: "Atlanta", countryAlpha2: "US" },
+              rtt: { lastMs: 32.1, samples: [31.5, 32.8, 32.1, 31.9, 32.3] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        {
+          ttl: 6,
+          peers: [
+            {
+              ip: "198.51.100.99",
+              isp: { ispName: "Example ISP Inc.", asn: "AS64512" },
+              rtt: { lastMs: 48.2, samples: [47.5, 49.0, 48.2, 48.0, 48.5] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        {
+          ttl: 7,
+          peers: [
+            {
+              rdns: "edge-router.example.com",
+              ip: "203.0.113.254",
+              isp: { ispName: "Example Hosting", asn: "AS64513" },
+              rtt: { lastMs: 52.3, samples: [51.8, 53.1, 52.3, 52.0, 52.5] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        {
+          ttl: 8,
+          peers: [
             {
               timeout: true,
               ip: "",
             },
+          ],
+        },
+        {
+          ttl: 9,
+          peers: [
             {
-              ip: "10.147.0.1",
-              rtt: { lastMs: 5, samples: [4, 6, 5, 1, 3, 2, 7, 6, 5, 4] },
-              stat: { sent: 10, replies: 9 },
+              rdns: "www.example.com",
+              ip: "93.184.216.34",
+              isp: { ispName: "Edgecast Networks", asn: "AS15133" },
+              loc: { city: "New York", countryAlpha2: "US" },
+              rtt: { lastMs: 65.4, samples: [64.8, 66.2, 65.4, 65.1, 65.7] },
+              stat: { sent: 5, replies: 5 },
+            },
+          ],
+        },
+        // 添加一个ECMP场景（同一跳有多个peer）
+        {
+          ttl: 10,
+          peers: [
+            {
+              rdns: "loadbalancer1.example.com",
+              ip: "192.0.2.100",
+              isp: { ispName: "Cloudflare", asn: "AS13335" },
+              loc: { city: "New York", countryAlpha2: "US" },
+              rtt: { lastMs: 66.1, samples: [65.5, 66.8, 66.1, 65.9, 66.3] },
+              stat: { sent: 5, replies: 5 },
+            },
+            {
+              rdns: "loadbalancer2.example.com",
+              ip: "192.0.2.101",
+              isp: { ispName: "Cloudflare", asn: "AS13335" },
+              loc: { city: "New York", countryAlpha2: "US" },
+              rtt: { lastMs: 66.0, samples: [65.4, 66.7, 66.0, 65.8, 66.2] },
+              stat: { sent: 5, replies: 5 },
+            },
+            {
+              rdns: "loadbalancer3.example.com",
+              ip: "192.0.2.102",
+              isp: { ispName: "Cloudflare", asn: "AS13335" },
+              loc: { city: "New York", countryAlpha2: "US" },
+              rtt: { lastMs: 65.9, samples: [65.3, 66.6, 65.9, 65.7, 66.1] },
+              stat: { sent: 5, replies: 5 },
             },
           ],
         },
