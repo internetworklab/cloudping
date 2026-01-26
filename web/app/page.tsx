@@ -37,6 +37,7 @@ import GitHubIcon from "@mui/icons-material/GitHub";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { About } from "@/components/about";
 import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
+import TelegramIcon from "@mui/icons-material/Telegram";
 
 const fakeSources: SourceOption[] = [
   {
@@ -142,6 +143,7 @@ export default function Home() {
   }
 
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
+  const tgInviteLink = process.env["NEXT_PUBLIC_TG_INVITE_LINK"];
   const dn42GeoIPRepo = process.env["NEXT_PUBLIC_DN42_GEOIP_REPO"];
   const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
@@ -168,7 +170,7 @@ export default function Home() {
               >
                 <Typography variant="h6">MyGlobalping</Typography>
               </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
                 {!!dn42GeoIPRepo && (
                   <Tooltip title="Go visit DN42 GeoIP Project">
                     <Link
@@ -176,10 +178,10 @@ export default function Home() {
                       href={dn42GeoIPRepo}
                       target="_blank"
                       variant="caption"
-                      sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                     >
-                      DN42GeoIP
                       <GitHubIcon />
+                      DN42GeoIP
                     </Link>
                   </Tooltip>
                 )}
@@ -190,14 +192,27 @@ export default function Home() {
                       href={repoAddr}
                       target="_blank"
                       variant="caption"
-                      sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                     >
-                      Project
                       <GitHubIcon />
+                      Project
                     </Link>
                   </Tooltip>
                 )}
-
+                {tgInviteLink!! && (
+                  <Tooltip title={"Join our Telegram group"}>
+                    <Link
+                      underline="hover"
+                      href={tgInviteLink}
+                      target={"_blank"}
+                      variant="caption"
+                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                    >
+                      <TelegramIcon />
+                      Chat
+                    </Link>
+                  </Tooltip>
+                )}
                 <Button
                   variant="contained"
                   color="primary"
