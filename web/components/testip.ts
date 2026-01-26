@@ -23,7 +23,6 @@ export type TestResult = {
 export function testIP(v: string): TestResult {
   const isValidIP = isValid(v);
   const addrObj = isValidIP ? parse(v) : undefined;
-  console.log("[dbg] addrObj:", addrObj);
 
   let isDN42IPv4 = false;
   let isDN42IPv6 = false;

@@ -14,6 +14,7 @@ import {
   Card,
   Tooltip,
   IconButton,
+  CssBaseline,
 } from "@mui/material";
 import {
   CSSProperties,
@@ -28,8 +29,15 @@ import { StopButton } from "./playpause";
 import { getLatencyColor } from "./colorfunc";
 import { IPDisp } from "./ipdisp";
 import {
+  ConnEntry,
   generatePingSampleStream,
   getNodes,
+  NodeAttrASN,
+  NodeAttrCityName,
+  NodeAttrCountryCode,
+  NodeAttrDN42ASN,
+  NodeAttrDN42ISP,
+  NodeAttrISP,
   PingSample,
 } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
@@ -46,6 +54,7 @@ import {
 import MapIcon from "@mui/icons-material/Map";
 import { useQuery } from "@tanstack/react-query";
 import { getNodeGroups } from "@/apis/utils";
+import { testIP } from "./testip";
 
 type TracerouteIPEntry = {
   ip: string;
@@ -360,6 +369,69 @@ function updateMarkers(
   return newMarkers;
 }
 
+function DisplayCurrentNode(props: {
+  currentNode: ConnEntry | undefined;
+  target: string;
+}) {
+  const { currentNode, target } = props;
+  if (!currentNode) {
+    return <Fragment></Fragment>;
+  }
+  const targetAttributes = testIP(target);
+  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
+  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
+
+  const city: string | undefined = currentNode?.attributes?.[NodeAttrCityName];
+  const countryAlpha2: string | undefined =
+    currentNode?.attributes?.[NodeAttrCountryCode];
+  const ispASN: string | undefined = currentNode?.attributes?.[NodeAttrASN];
+  const ispName: string | undefined = currentNode?.attributes?.[NodeAttrISP];
+  const dn42ISPASN: string | undefined =
+    currentNode?.attributes?.[NodeAttrDN42ASN];
+  const dn42ISPName: string | undefined =
+    currentNode?.attributes?.[NodeAttrDN42ISP];
+  console.log("[dbg] current node info:", {
+    city,
+    countryAlpha2,
+    ispASN,
+    ispName,
+    dn42ISPASN,
+    dn42ISPName,
+  });
+  if (isNeo || isDN42) {
+    return (
+      <Box sx={{ padding: 2 }}>
+        <Typography variant="body2">
+          From:{" "}
+          {[
+            ["Node", currentNode.node_name?.toUpperCase()],
+            [dn42ISPASN, dn42ISPName],
+            [city, countryAlpha2],
+          ]
+            .map((word) => word.filter((s) => !!s).join(" "))
+            .join(", ")}
+        </Typography>
+        <Typography variant="body2">To: {target}</Typography>
+      </Box>
+    );
+  }
+  return (
+    <Box sx={{ padding: 2 }}>
+      <Typography variant="body2">
+        From:{" "}
+        {[
+          ["Node", currentNode.node_name?.toUpperCase()],
+          [ispASN, ispName],
+          [city, countryAlpha2],
+        ]
+          .map((word) => word.filter((s) => !!s).join(" "))
+          .join(", ")}
+      </Typography>
+      <Typography variant="body2">To: {target}</Typography>
+    </Box>
+  );
+}
+
 export function TracerouteResultDisplay(props: {
   task: PendingTask;
   onDeleted: () => void;
@@ -425,10 +497,10 @@ export function TracerouteResultDisplay(props: {
             // in StrictMode, this will be called twice per sample
             setPageState(pageStateRef.current);
 
-            readerRef.current?.read().then(readNext);
+            readerRef.current?.read().then(readNext as any);
           }
         };
-        readerRef.current?.read().then(readNext);
+        readerRef.current?.read().then(readNext as any);
       }, 100);
     }
 
@@ -487,6 +559,14 @@ export function TracerouteResultDisplay(props: {
         stroke: "white",
         index: `(SRC)`,
       });
+    }
+  }
+
+  let currentNode: ConnEntry | undefined;
+  for (const key in conns) {
+    const connent = conns[key];
+    if (connent.node_name && connent.node_name === tabValue) {
+      currentNode = connent;
     }
   }
 
@@ -579,6 +659,11 @@ export function TracerouteResultDisplay(props: {
           />
         </Box>
       </Box>
+
+      <DisplayCurrentNode
+        currentNode={currentNode}
+        target={task?.targets?.at(0) || ""}
+      />
 
       {showMap && (
         <Box

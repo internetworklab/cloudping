@@ -8,11 +8,15 @@ export function getApiEndpoint(): string {
   );
 }
 
+export const NodeAttrCountryCode = "CountryCode";
+export const NodeAttrCityName = "CityName";
+export const NodeAttrISP = "ProviderName";
+export const NodeAttrASN = "ProviderASN";
+export const NodeAttrDN42ISP = "DN42ProviderName";
+export const NodeAttrDN42ASN = "DN42ProviderASN";
+
 export type NodeEntry = {
-  attributes?: {
-    CountryCode?: string;
-    CityName?: string;
-  };
+  attributes?: Record<string, string>;
   node_name?: string;
 };
 
