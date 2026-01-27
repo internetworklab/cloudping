@@ -436,6 +436,7 @@ function updateReportPeer(
         sent: 1,
         replies: sample.isTimeout ? 0 : 1,
       },
+      pmtu: sample.pmtu,
     };
   } else {
     peer = { ...peer };
@@ -464,6 +465,15 @@ function updateReportPeer(
       sent: (peer.stat?.sent || 0) + 1,
       replies: (peer.stat?.replies || 0) + (sample.isTimeout ? 0 : 1),
     };
+    if (peer.pmtu === undefined || peer.pmtu === null) {
+      peer.pmtu = sample.pmtu;
+    } else if (
+      sample.pmtu !== undefined &&
+      sample.pmtu !== null &&
+      peer.pmtu !== sample.pmtu
+    ) {
+      peer.pmtu = sample.pmtu;
+    }
 
     return peer;
   }

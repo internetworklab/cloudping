@@ -169,6 +169,7 @@ export type TracerouteReportPeer = {
   isp?: TracerouteReportISP;
   rtt?: TracerouteReportRTTStat;
   stat?: TracerouteReportTXRXStat;
+  pmtu?: number;
 };
 
 export type TracerouteReportHop = {
@@ -261,6 +262,9 @@ export function renderTracerouteReport(report: TracerouteReport): {
             peerName = peer.rdns + " " + `(${peer.ip})`;
           } else {
             peerName = peer.ip;
+          }
+          if (peer.pmtu !== undefined && peer.pmtu !== null) {
+            peerName += ` [PMTU=${peer.pmtu}]`;
           }
           row.push({ content: peerName });
         }
