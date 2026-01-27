@@ -129,7 +129,7 @@ function renderRTTStat(stat?: TracerouteReportRTTStat): string {
     return "";
   }
   const stats = getNumStats(stat.samples);
-  let rttStr = `${stat.lastMs}ms`;
+  let rttStr = `${formatNumStr(stat.lastMs.toFixed(2))}ms`;
   if (stats) {
     const statsLine = [
       `${formatNumStr(stats.min.toFixed(2))}ms`,
