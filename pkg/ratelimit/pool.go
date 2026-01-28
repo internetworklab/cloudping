@@ -90,7 +90,7 @@ func (pool *MemoryBasedRateLimitPool) WaitForRefresh(ctx context.Context) error 
 	return nil
 }
 
-func (pool *MemoryBasedRateLimitPool) Consume(ctx context.Context, key Keyable) (bool, error) {
+func (pool *MemoryBasedRateLimitPool) Consume(ctx context.Context, key string) (bool, error) {
 	serviceCh, ok := <-pool.serviceChan
 	if !ok {
 		return false, context.Canceled
@@ -100,7 +100,7 @@ func (pool *MemoryBasedRateLimitPool) Consume(ctx context.Context, key Keyable) 
 
 	serviceRequest := ServiceRequest{
 		Func: func(ctx context.Context) error {
-			resultCh <- pool.doConsume(key.GetRatelimitKey()) >= 0
+			resultCh <- pool.doConsume(key) >= 0
 			return nil
 		},
 		Err: make(chan error),
@@ -108,46 +108,4 @@ func (pool *MemoryBasedRateLimitPool) Consume(ctx context.Context, key Keyable) 
 	serviceCh <- serviceRequest
 
 	return <-resultCh, <-serviceRequest.Err
-}
-
-type MemoryBasedRateLimiter struct {
-	Pool RateLimitPool
-}
-
-func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context, input chan Keyable) (chan interface{}, chan error) {
-	outC := make(chan interface{})
-	outErrC := make(chan error, 1)
-
-	go func(ctx context.Context) {
-		defer close(outC)
-		defer close(outErrC)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case val, ok := <-input:
-				if !ok {
-					return
-				}
-
-				ok, err := rl.Pool.Consume(ctx, val)
-				if err != nil {
-					outErrC <- err
-					return
-				}
-
-				if !ok {
-					if err := rl.Pool.WaitForRefresh(ctx); err != nil {
-						outErrC <- err
-						return
-					}
-				}
-
-				outC <- val
-			}
-		}
-	}(ctx)
-
-	return outC, outErrC
 }
