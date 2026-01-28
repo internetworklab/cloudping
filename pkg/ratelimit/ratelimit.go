@@ -12,7 +12,8 @@ type MemoryBasedRateLimiter struct {
 	GetKey KeyFunc
 }
 
-func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context, input chan Keyable) (chan interface{}, chan error) {
+func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{}, chan error) {
+	inC := make(chan interface{})
 	outC := make(chan interface{})
 	outErrC := make(chan error, 1)
 
@@ -24,7 +25,7 @@ func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context, input chan Keyable)
 			select {
 			case <-ctx.Done():
 				return
-			case val, ok := <-input:
+			case val, ok := <-inC:
 				if !ok {
 					return
 				}
@@ -42,9 +43,22 @@ func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context, input chan Keyable)
 				}
 
 				if !ok {
-					if err := rl.Pool.WaitForRefresh(ctx); err != nil {
-						outErrC <- err
-						return
+					for {
+						err := rl.Pool.WaitForRefresh(ctx)
+						if err != nil {
+							outErrC <- err
+							return
+						}
+
+						ok, err = rl.Pool.Consume(ctx, key)
+						if err != nil {
+							outErrC <- err
+							return
+						}
+
+						if ok {
+							break
+						}
 					}
 				}
 
@@ -53,5 +67,5 @@ func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context, input chan Keyable)
 		}
 	}(ctx)
 
-	return outC, outErrC
+	return inC, outC, outErrC
 }
