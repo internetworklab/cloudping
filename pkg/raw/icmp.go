@@ -193,8 +193,6 @@ func (icmp4tr *ICMP4Transceiver) getPacket(rawConn *ipv4.RawConn, traceId int) (
 	replyObject.ICMPCode = pktIdentifier.ICMPCode
 	replyObject.LastHop = pktIdentifier.LastHop
 
-	log.Printf("[dbg] [ipv4] got packet, seq=%d, peer=%s", replyObject.Seq, replyObject.Peer)
-
 	return nBytes, &replyObject, nil
 }
 
@@ -208,7 +206,7 @@ func (icmp4tr *ICMP4Transceiver) getPackets(ctx context.Context, rawConn *ipv4.R
 		defer close(errCh)
 
 		for {
-			log.Printf("[dbg] [ipv4] getting packet, traceId=%d", traceId)
+
 			nBytes, pkt, err := icmp4tr.getPacket(rawConn, traceId)
 			if err != nil {
 				errCh <- err
@@ -331,7 +329,6 @@ func (icmp4tr *ICMP4Transceiver) GetIO(ctx context.Context) (chan<- ICMPSendRequ
 	// ReadFrom will result in error, so this receiving goroutine will return as well.
 	// Event chain: context done (or cancel) -> sending goroutine exit -> PacketConn close -> ReadFrom error -> receiving goroutine return
 	go func() {
-		defer log.Printf("[dbg] [ipv4] exitting icmp transceiver")
 
 		defer rawConn.Close()
 		defer close(outC)
@@ -346,7 +343,6 @@ func (icmp4tr *ICMP4Transceiver) GetIO(ctx context.Context) (chan<- ICMPSendRequ
 			case rxErr, ok := <-rxErrCh:
 				if ok && rxErr != nil {
 					errCh <- rxErr
-					log.Printf("[dbg] [ipv4] error is received, err=%v", rxErr)
 				}
 				return
 			case rxPkt, ok := <-rxPktsC:
@@ -354,9 +350,9 @@ func (icmp4tr *ICMP4Transceiver) GetIO(ctx context.Context) (chan<- ICMPSendRequ
 					return
 				}
 				outC <- rxPkt
-				log.Printf("[dbg] [ipv4] packet is received, seq=%d, peer=%s", rxPkt.Seq, rxPkt.Peer)
+
 			case req, ok := <-inC:
-				log.Printf("[dbg] [ipv4] got request, seq=%d, dst=%s", req.Seq, req.Dst.String())
+
 				if !ok {
 					return
 				}
@@ -364,7 +360,7 @@ func (icmp4tr *ICMP4Transceiver) GetIO(ctx context.Context) (chan<- ICMPSendRequ
 					errCh <- err
 					return
 				}
-				log.Printf("[dbg] [ipv4] packet is sent, seq=%d, dst=%s", req.Seq, req.Dst.String())
+
 			}
 		}
 	}()

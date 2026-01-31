@@ -61,10 +61,10 @@ func main() {
 	ratelimitPool.Run(ctx)
 
 	// since all requests yield the same key, so this is considered as a globally shared rate limiter
-	// globalSharedRL := &pkgratelimit.MemoryBasedRateLimiter{
-	// 	Pool:   ratelimitPool,
-	// 	GetKey: pkgratelimit.GlobalKeyFunc,
-	// }
+	globalSharedRL := &pkgratelimit.MemoryBasedRateLimiter{
+		Pool:   ratelimitPool,
+		GetKey: pkgratelimit.GlobalKeyFunc,
+	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -128,9 +128,9 @@ func main() {
 			icmpTr = icmp6tr
 		}
 
-		inC, outC, errC := icmpTr.GetIO(ctx)
-		// inC := rateLimitIO(ctx, inCRaw, globalSharedRL)
-		// defer close(inC)
+		inCRaw, outC, errC := icmpTr.GetIO(ctx)
+		inC := rateLimitIO(ctx, inCRaw, globalSharedRL)
+		defer close(inC)
 
 		icmpRequest := pkgraw.ICMPSendRequest{
 			Dst:        net.IPAddr{IP: dstIP[0]},

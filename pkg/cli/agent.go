@@ -27,7 +27,6 @@ import (
 	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgrouting "example.com/rbmq-demo/pkg/routing"
-	pkgthrottle "example.com/rbmq-demo/pkg/throttle"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -331,7 +330,6 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	ipinfoCacheHook := func(ctx context.Context, stats pkgipinfo.IPInfoRequestStats) {
 		// will remove this logging code later
-		// log.Printf("[dbg] IPInfo Request for ip: %s, cacheHit: %t, hasError: %t, durationMs: %f", stats.IP, stats.CacheHit, stats.HasError, stats.DurationMs)
 
 		commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
 		counterStore.IPInfoServedDurationMs.With(commonLabels).Add(stats.DurationMs)
@@ -356,22 +354,6 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	if agentCmd.SharedQuota < 1 {
 		log.Fatalf("shared quota must be greater than 0")
 	}
-
-	throttleConfig := pkgthrottle.TokenBasedThrottleConfig{
-		RefreshInterval:       1 * time.Second,
-		TokenQuotaPerInterval: agentCmd.SharedQuota,
-	}
-	tsSched, err := pkgthrottle.NewTimeSlicedEVLoopSched(&pkgthrottle.TimeSlicedEVLoopSchedConfig{})
-	if err != nil {
-		log.Fatalf("failed to create time sliced event loop scheduler: %v", err)
-	}
-	tsSchedRunerr := tsSched.Run(ctx)
-
-	throttle := pkgthrottle.NewTokenBasedThrottle(throttleConfig)
-	throttle.Run()
-
-	smoother := pkgthrottle.NewBurstSmoother(time.Duration(1000.0/float64(agentCmd.SharedQuota)) * time.Millisecond)
-	smoother.Run()
 
 	respondRangeNet := make([]net.IPNet, 0)
 	for _, rangeStr := range agentCmd.RespondRange {
@@ -622,11 +604,6 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	sig := <-sigs
 	log.Printf("Received signal: %v, exiting...", sig.String())
 	cancel()
-
-	err = <-tsSchedRunerr
-	if err != nil {
-		log.Fatalf("failed to run time sliced event loop scheduler: %v", err)
-	}
 
 	return nil
 }
