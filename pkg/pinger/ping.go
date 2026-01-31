@@ -12,6 +12,7 @@ import (
 	cryptoRand "crypto/rand"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"golang.org/x/net/ipv4"
@@ -21,6 +22,26 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+func rateLimitIO(ctx context.Context, inC chan<- pkgraw.ICMPSendRequest, rl pkgratelimit.RateLimiter) chan<- pkgraw.ICMPSendRequest {
+	rlIn, rlOut, _ := rl.GetIO(ctx)
+
+	go func() {
+		for item := range rlOut {
+			inC <- item.(pkgraw.ICMPSendRequest)
+		}
+	}()
+
+	wrappedInC := make(chan pkgraw.ICMPSendRequest)
+	go func() {
+		defer close(rlIn)
+		for item := range wrappedInC {
+			rlIn <- item
+		}
+	}()
+
+	return wrappedInC
+}
 
 type SimplePinger struct {
 	PingRequest   *SimplePingRequest
@@ -246,18 +267,15 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 			}
 		}()
 
-		go func() {
-			log.Printf("ICMPReceiving goroutine for %s is started", dst.String())
-			defer log.Printf("ICMPReceiving goroutine for %s is exitting", dst.String())
+		ratelimiterAny := ctx.Value(pkgutils.CtxKeySharedRateLimitEnforcer)
 
-			for reply := range transceiver.GetReceiver() {
-				if err := tracker.MarkReceived(reply.Seq, reply); err != nil {
-					log.Printf("In ICMPReceiving goroutine for %s, failed to mark received: %v", dst.String(), err)
-					return
-				}
-				counterStore.NumPktsReceived.With(commonLabels).Add(1.0)
+		inRawC, outC, errC := transceiver.GetIO(ctx)
+		inC := inRawC
+		if ratelimiterAny != nil {
+			if ratelimiter, ok := ratelimiterAny.(pkgratelimit.RateLimiter); ok && ratelimiter != nil {
+				inC = rateLimitIO(ctx, inRawC, ratelimiter)
 			}
-		}()
+		}
 
 		go func() {
 			log.Printf("ICMPSending goroutine for %s is started", dst.String())
@@ -269,6 +287,23 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					log.Printf("In ICMPSending goroutine for %s, got context done", dst.String())
 					transceiver.Close()
 					return
+				case rxPkt, ok := <-outC:
+					if !ok {
+						return
+					}
+
+					if err := tracker.MarkReceived(rxPkt.Seq, rxPkt); err != nil {
+						log.Printf("In ICMPReceiving goroutine for %s, failed to mark received: %v", dst.String(), err)
+						return
+					}
+					counterStore.NumPktsReceived.With(commonLabels).Add(1.0)
+
+				case rxErr, ok := <-errC:
+					if ok && rxErr != nil {
+						log.Printf("In ICMPSending goroutine for %s, got transceiver error: %v", dst.String(), rxErr)
+						return
+					}
+
 				case err := <-transceiverErrCh:
 					log.Printf("In ICMPSending goroutine for %s, got transceiver error: %v", dst.String(), err)
 					transceiver.Close()
@@ -289,13 +324,6 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						NexthopMTU: nexthopMTU,
 					}
 
-					senderCh, ok := <-transceiver.GetSender()
-					if !ok {
-						// the transceiver no longer accepts new requests
-						log.Printf("In ICMPSending goroutine for %s, transceiver no longer accepts new requests", dst.String())
-						return
-					}
-
 					// MarkSent first, then actually send it.
 					// otherwise, if send it before marking sent, and if the reply is received too early,
 					// there would be a race condition (the reply packet can't find the corresponding sent entry)
@@ -303,7 +331,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 						log.Printf("In ICMPSending goroutine for %s, failed to mark sent: %v", dst.String(), err)
 						return
 					}
-					senderCh <- req
+					inC <- req
 
 					counterStore.NumPktsSent.With(commonLabels).Add(1.0)
 				}

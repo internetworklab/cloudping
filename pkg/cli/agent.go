@@ -293,6 +293,7 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		RefreshIntv:     rlRefreshIntv,
 		NumTokensPerKey: agentCmd.SharedOutboundRateLimit,
 	}
+	sharedRateLimitPool.Run(ctx)
 
 	sharedRateLimitEnforcer := &pkgratelimit.MemoryBasedRateLimiter{
 		Pool:   sharedRateLimitPool,
