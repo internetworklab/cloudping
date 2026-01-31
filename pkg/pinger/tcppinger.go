@@ -156,11 +156,9 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 		intvMs := pinger.PingRequest.IntvMilliseconds
 		ticker := time.NewTicker(time.Duration(intvMs) * time.Millisecond)
 		tick := ticker.C
-		go func(ctx context.Context) {
-			if pinger.RateLimiter != nil {
-				tick = throttleTicker(ctx, ticker.C, pinger.RateLimiter)
-			}
-		}(ctx)
+		if pinger.RateLimiter != nil {
+			tick = throttleTicker(ctx, ticker.C, pinger.RateLimiter)
+		}
 
 		pktTimeoutMs := pinger.PingRequest.PktTimeoutMilliseconds
 		pktTimeout := time.Duration(pktTimeoutMs) * time.Millisecond
