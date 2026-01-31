@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
 	pkgtcping "example.com/rbmq-demo/pkg/tcping"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
@@ -21,6 +22,36 @@ type TCPSYNPinger struct {
 	OnReceived    pkgtcping.TCPSYNSenderHook
 	RespondRange  []net.IPNet
 	IPInfoAdapter pkgipinfo.GeneralIPInfoAdapter
+}
+
+func throttleTicker(ctx context.Context, src <-chan time.Time, rateLimit pkgratelimit.RateLimiter) <-chan time.Time {
+	inC, outC, _ := rateLimit.GetIO(ctx)
+
+	tick := make(chan time.Time)
+
+	go func() {
+		defer close(tick)
+		for t := range outC {
+			tick <- t.(time.Time)
+		}
+	}()
+
+	go func(ctx context.Context) {
+		defer close(inC)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t, ok := <-src:
+				if !ok {
+					return
+				}
+				inC <- t
+			}
+		}
+	}(ctx)
+
+	return tick
 }
 
 func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context) (net.IP, int, error) {
@@ -123,6 +154,15 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 
 		intvMs := pinger.PingRequest.IntvMilliseconds
 		ticker := time.NewTicker(time.Duration(intvMs) * time.Millisecond)
+		tick := ticker.C
+		go func(ctx context.Context) {
+			if rateLimitAny := ctx.Value(pkgutils.CtxKeySharedRateLimitEnforcer); rateLimitAny != nil {
+				rateLimit, ok := rateLimitAny.(pkgratelimit.RateLimiter)
+				if ok && rateLimit != nil {
+					tick = throttleTicker(ctx, ticker.C, rateLimit)
+				}
+			}
+		}(ctx)
 
 		pktTimeoutMs := pinger.PingRequest.PktTimeoutMilliseconds
 		pktTimeout := time.Duration(pktTimeoutMs) * time.Millisecond
@@ -198,7 +238,10 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 						return
 					}
 				}
-			case <-ticker.C:
+			case _, ok := <-tick:
+				if !ok {
+					return
+				}
 				initSeqNum := rand.Uint32()
 				synRequest := &pkgtcping.TCPSYNRequest{
 					DstIP:   dstIP,
