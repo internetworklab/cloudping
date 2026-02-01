@@ -16,10 +16,11 @@ import (
 )
 
 type QUICHandler struct {
-	Cr        *pkgconnreg.ConnRegistry
-	Timeout   time.Duration
-	Listener  *quicGo.Listener
-	JWTSecret []byte
+	Cr                *pkgconnreg.ConnRegistry
+	Timeout           time.Duration
+	Listener          *quicGo.Listener
+	JWTSecret         []byte
+	ShouldValidateJWT bool
 }
 
 func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg []byte) error {
@@ -31,22 +32,26 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 	}
 
 	if payload.Register != nil {
-		valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
-		if err != nil {
-			return fmt.Errorf("failed to validate JWT of peer %s: %v", key, err)
-		}
+		var mapClaims *jwt.MapClaims = nil
+		if handler.ShouldValidateJWT {
+			valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
+			if err != nil {
+				return fmt.Errorf("failed to validate JWT of peer %s: %v", key, err)
+			}
 
-		if !valid {
-			return fmt.Errorf("invalid JWT of peer %s", key)
-		}
+			if !valid {
+				return fmt.Errorf("invalid JWT of peer %s", key)
+			}
 
-		if token == nil {
-			return fmt.Errorf("couldn't get JWT token of peer %s", key)
-		}
+			if token == nil {
+				return fmt.Errorf("couldn't get JWT token of peer %s", key)
+			}
 
-		mapClaims, ok := token.Claims.(*jwt.MapClaims)
-		if !ok {
-			return fmt.Errorf("couldn't convert JWT claims to map claims of peer %s", key)
+			var ok bool
+			mapClaims, ok = token.Claims.(*jwt.MapClaims)
+			if !ok {
+				return fmt.Errorf("couldn't convert JWT claims to map claims of peer %s", key)
+			}
 		}
 
 		if err := cr.Register(key, *payload.Register, mapClaims); err != nil {
