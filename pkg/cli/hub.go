@@ -157,9 +157,10 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		}
 		log.Printf("Listening on %s for QUIC operations", hubCmd.QUICListenAddress)
 		quicHandler := pkghandler.QUICHandler{
-			Cr:       cr,
-			Timeout:  wsTimeout,
-			Listener: quicListener,
+			Cr:                cr,
+			Timeout:           wsTimeout,
+			Listener:          quicListener,
+			ShouldValidateJWT: false,
 		}
 		go quicHandler.Serve()
 	}
@@ -271,10 +272,11 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Fatalf("Failed to load JWT secret: %v", err)
 		}
 		quicHandler := pkghandler.QUICHandler{
-			Cr:        cr,
-			Timeout:   wsTimeout,
-			Listener:  quicListener,
-			JWTSecret: jwtSec,
+			Cr:                cr,
+			Timeout:           wsTimeout,
+			Listener:          quicListener,
+			JWTSecret:         jwtSec,
+			ShouldValidateJWT: true,
 		}
 		go quicHandler.Serve()
 		log.Printf("Listening on UDP address %s for JWT-authenticated handlers", quicListener.Addr())
