@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -10,6 +11,31 @@ import (
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+func QuicValidateJWT(tokenString *string, secret []byte) (bool, *jwt.Token, error) {
+	if tokenString == nil {
+		return false, nil, fmt.Errorf("token string is nil")
+	}
+	token, err := jwt.Parse(*tokenString, func(token *jwt.Token) (any, error) {
+		// in future, one should determine which key to use base on the 'kid' (key ID) claim of the token
+		// for now, return a fixed key is enough, becuase the people who use our service can be counted on one hand.
+		return secret, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to parse JWT: %v", err)
+	}
+
+	if token == nil {
+		return false, nil, fmt.Errorf("couldn't get JWT token")
+	}
+
+	if !token.Valid {
+		return false, nil, fmt.Errorf("invalid JWT")
+	}
+
+	return true, token, nil
+}
 
 func WithJWTAuth(handler http.Handler, secret []byte) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,18 +66,8 @@ func WithJWTAuth(handler http.Handler, secret []byte) http.Handler {
 			log.Printf("WARN: JWT middleware is applied but JWT secret is too short, is that reliable ? (")
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-			// in future, one should determine which key to use base on the 'kid' (key ID) claim of the token
-			// for now, return a fixed key is enough, becuase the people who use our service can be counted on one hand.
-			return secret, nil
-		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-
-		if err != nil {
-			rejectWithErr()
-			return
-		}
-
-		if !token.Valid {
+		valid, token, err := QuicValidateJWT(&tokenString, secret)
+		if err != nil || !valid || token == nil {
 			rejectWithErr()
 			return
 		}

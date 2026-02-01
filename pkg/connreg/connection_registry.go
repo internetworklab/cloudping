@@ -8,11 +8,13 @@ import (
 	"time"
 
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
+	"github.com/golang-jwt/jwt/v5"
 	quicGo "github.com/quic-go/quic-go"
 )
 
 type RegisterPayload struct {
-	NodeName string `json:"node_name"`
+	NodeName string  `json:"node_name"`
+	Token    *string `json:"token,omitempty"`
 }
 
 type EchoDirection string
@@ -52,6 +54,7 @@ type ConnRegistryData struct {
 	LastHeartbeat *uint64              `json:"last_heartbeat,omitempty"`
 	Attributes    ConnectionAttributes `json:"attributes,omitempty"`
 	QUICConn      *quicGo.Conn         `json:"-"`
+	Claims        *jwt.MapClaims       `json:"claims,omitempty"`
 }
 
 func (regData *ConnRegistryData) Clone() *ConnRegistryData {
@@ -99,7 +102,7 @@ func (cr *ConnRegistry) CloseConnection(key string) {
 	cr.datastore.Delete(key)
 }
 
-func (cr *ConnRegistry) Register(key string, payload RegisterPayload) error {
+func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims *jwt.MapClaims) error {
 	log.Printf("Registering connection from %s, node name: %s", key, payload.NodeName)
 
 	_, found := cr.datastore.Get(key, func(valany interface{}) error {
@@ -110,6 +113,7 @@ func (cr *ConnRegistry) Register(key string, payload RegisterPayload) error {
 		}
 		entry.NodeName = &payload.NodeName
 		entry.RegisteredAt = &now
+		entry.Claims = claims
 		return nil
 	})
 
