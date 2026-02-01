@@ -55,6 +55,7 @@ type NodeRegistrationAgent struct {
 	ServerName        string
 	CustomCertPool    *x509.CertPool
 	UseQUIC           bool
+	Token             *string
 
 	wsConn     *websocket.Conn
 	quicConn   *quicGo.Conn
@@ -163,6 +164,7 @@ func (agent *NodeRegistrationAgent) getRegisterPayload() pkgframing.MessagePaylo
 	log.Printf("Using node name: %s", agent.NodeName)
 	registerPayload := pkgconnreg.RegisterPayload{
 		NodeName: agent.NodeName,
+		Token:    agent.Token,
 	}
 	registerMsg := pkgframing.MessagePayload{
 		Register: &registerPayload,

@@ -34,9 +34,9 @@ func main() {
 		Certificates: []tls.Certificate{certPair},
 		NextProtos:   []string{"h3"},
 	}
-	h3Listener, err := quicGo.ListenAddr("0.0.0.0:18443", tlsConfig, nil)
+	h3Listener, err := quicGo.ListenAddr("0.0.0.0:18447", tlsConfig, nil)
 	if err != nil {
-		log.Fatalf("failed to listen on address 0.0.0.0:18443: %v", err)
+		log.Fatalf("failed to listen on address 0.0.0.0:18447: %v", err)
 	}
 	udpAddr, ok := h3Listener.Addr().(*net.UDPAddr)
 	if !ok {
@@ -92,7 +92,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 		}),
 		ConnContext: func(ctx context.Context, c *quicGo.Conn) context.Context {
-			log.Printf("Connection accepted, append connection %p to context", c)
+			log.Printf("Connection accepted, append connection %p to context, remote: %s, local: %s", c, c.RemoteAddr(), c.LocalAddr())
 			return context.WithValue(ctx, MyCtxKeyConn, c)
 		},
 	}

@@ -8,18 +8,22 @@ import (
 	"log"
 	"time"
 
+	pkgauth "example.com/rbmq-demo/pkg/auth"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgframing "example.com/rbmq-demo/pkg/framing"
+	"github.com/golang-jwt/jwt/v5"
 	quicGo "github.com/quic-go/quic-go"
 )
 
 type QUICHandler struct {
-	Cr       *pkgconnreg.ConnRegistry
-	Timeout  time.Duration
-	Listener *quicGo.Listener
+	Cr        *pkgconnreg.ConnRegistry
+	Timeout   time.Duration
+	Listener  *quicGo.Listener
+	JWTSecret []byte
 }
 
-func handleMessage(key string, stream *quicGo.Stream, cr *pkgconnreg.ConnRegistry, msg []byte) error {
+func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg []byte) error {
+	cr := handler.Cr
 	var payload pkgframing.MessagePayload
 	err := json.Unmarshal(msg, &payload)
 	if err != nil {
@@ -27,7 +31,27 @@ func handleMessage(key string, stream *quicGo.Stream, cr *pkgconnreg.ConnRegistr
 	}
 
 	if payload.Register != nil {
-		cr.Register(key, *payload.Register)
+		valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
+		if err != nil {
+			return fmt.Errorf("failed to validate JWT of peer %s: %v", key, err)
+		}
+
+		if !valid {
+			return fmt.Errorf("invalid JWT of peer %s", key)
+		}
+
+		if token == nil {
+			return fmt.Errorf("couldn't get JWT token of peer %s", key)
+		}
+
+		mapClaims, ok := token.Claims.(*jwt.MapClaims)
+		if !ok {
+			return fmt.Errorf("couldn't convert JWT claims to map claims of peer %s", key)
+		}
+
+		if err := cr.Register(key, *payload.Register, mapClaims); err != nil {
+			return fmt.Errorf("failed to register connection from %s: %v", key, err)
+		}
 	}
 	if payload.Echo != nil {
 		if payload.Echo.Direction == pkgconnreg.EchoDirectionC2S {
@@ -114,7 +138,7 @@ func (h *QUICHandler) Handle(conn *quicGo.Conn) {
 				scanner := bufio.NewScanner(stream)
 				for scanner.Scan() {
 					line := scanner.Bytes()
-					if err := handleMessage(remoteKey, stream, cr, line); err != nil {
+					if err := h.handleMessage(remoteKey, stream, line); err != nil {
 						connErrCh <- fmt.Errorf("failed to handle text message from %s: %v", remoteKey, err)
 						return
 					}

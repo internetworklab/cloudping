@@ -35,7 +35,7 @@ func handleTextMessage(conn *websocket.Conn, cr *pkgconnreg.ConnRegistry, msg []
 
 	key := conn.RemoteAddr().String()
 	if payload.Register != nil {
-		cr.Register(key, *payload.Register)
+		cr.Register(key, *payload.Register, nil)
 	}
 	if payload.Echo != nil {
 		if payload.Echo.Direction == pkgconnreg.EchoDirectionC2S {

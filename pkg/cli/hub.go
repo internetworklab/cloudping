@@ -52,6 +52,31 @@ type HubCmd struct {
 	JWTAuthListenAddress   string `name:"jwt-auth-listener-address" help:"Address to listen on for JWT authentication"`
 	JWTAuthListenerCert    string `name:"jwt-auth-listener-cert" help:"Server TLS certificate"`
 	JWTAuthListenerCertKey string `name:"jwt-auth-listener-cert-key" help:"Server TLS certificate key"`
+	JWTAuthSecretFromEnv   string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
+	JWTAuthSecretFromFile  string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+}
+
+func getJWTSecret(hubCmd *HubCmd) ([]byte, error) {
+	if envVar := hubCmd.JWTAuthSecretFromEnv; envVar != "" {
+		secret := os.Getenv(envVar)
+		if secret == "" {
+			return nil, fmt.Errorf("JWT secret is not set in environment variable %s", envVar)
+		}
+		return []byte(secret), nil
+	}
+
+	if filePath := hubCmd.JWTAuthSecretFromFile; filePath != "" {
+		secret, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read JWT secret file %s: %v", filePath, err)
+		}
+		if len(secret) == 0 {
+			return nil, fmt.Errorf("JWT secret file %s is empty", filePath)
+		}
+		return secret, nil
+	}
+
+	return nil, fmt.Errorf("no JWT secret is set")
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
@@ -241,10 +266,15 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Fatalf("Failed to listen on UDP address %s: %v", listenAddress, err)
 		}
 
-		quicHandler := pkghandler.HTTP3Handler{
-			Cr:       cr,
-			Timeout:  wsTimeout,
-			Listener: quicListener,
+		jwtSec, err := getJWTSecret(&hubCmd)
+		if err != nil {
+			log.Fatalf("Failed to load JWT secret: %v", err)
+		}
+		quicHandler := pkghandler.QUICHandler{
+			Cr:        cr,
+			Timeout:   wsTimeout,
+			Listener:  quicListener,
+			JWTSecret: jwtSec,
 		}
 		go quicHandler.Serve()
 		log.Printf("Listening on UDP address %s for JWT-authenticated handlers", quicListener.Addr())
