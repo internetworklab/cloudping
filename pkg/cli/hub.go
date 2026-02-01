@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -11,9 +10,11 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	pkgauth "example.com/rbmq-demo/pkg/auth"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkghandler "example.com/rbmq-demo/pkg/handler"
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
@@ -27,8 +28,9 @@ var upgrader = websocket.Upgrader{}
 type HubCmd struct {
 	PeerCAs       []string `help:"A list of path to the CAs use to verify peer certificates, can be specified multiple times"`
 	Address       string   `help:"The address to listen on for private operations" default:":8080"`
-	AddressPublic string   `help:"The address to listen on for public operations" default:":8082"`
-	WebSocketPath string   `help:"The path to the WebSocket endpoint" default:"/ws"`
+	AddressPublic string   `help:"The address to listen on for public operations"`
+
+	WebSocketPath string `help:"The path to the WebSocket endpoint" default:"/ws"`
 
 	// When the hub is calling functions exposed by the agent, it have to authenticate itself to the agent.
 	ClientCert    string `help:"The path to the client certificate" type:"path"`
@@ -46,8 +48,9 @@ type HubCmd struct {
 
 	PktCountClamp *int `help:"The maximum number of packets to send for a single ping task"`
 
-	WebSocketTimeout  string `help:"The timeout for a WebSocket connection" default:"60s"`
-	QUICListenAddress string `help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
+	WebSocketTimeout     string `help:"The timeout for a WebSocket connection" default:"60s"`
+	QUICListenAddress    string `help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
+	JWTAuthListenAddress string `name:"jwt-auth-listen" help:"Address to listen on for JWT authentication"`
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
@@ -173,60 +176,85 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 
-	privateServer := http.Server{
-		Handler: muxerPrivate,
-	}
-	publicServer := http.Server{
-		Handler: muxerPublic,
-	}
+	waitListeners := sync.WaitGroup{}
 
-	privateListener, err := tls.Listen("tcp", hubCmd.Address, privateServerSideTLSCfg)
-	if err != nil {
-		log.Fatalf("Failed to listen on address %s: %v", hubCmd.Address, err)
-	}
-	log.Printf("Listening on %s for private operations", hubCmd.Address)
-
-	publicListener, err := net.Listen("tcp", hubCmd.AddressPublic)
-	if err != nil {
-		log.Fatalf("Failed to listen on address %s: %v", hubCmd.AddressPublic, err)
-	}
-	log.Printf("Listening on %s for public operations", hubCmd.AddressPublic)
-
-	go func() {
-		log.Printf("Starting private server on %s", privateListener.Addr())
-		err = privateServer.Serve(privateListener)
+	if hubCmd.Address != "" {
+		waitListeners.Add(1)
+		privateListener, err := tls.Listen("tcp", hubCmd.Address, privateServerSideTLSCfg)
 		if err != nil {
-			if err != http.ErrServerClosed {
-				log.Fatalf("Failed to serve: %v", err)
-			}
+			log.Fatalf("Failed to listen on address %s: %v", hubCmd.Address, err)
 		}
-	}()
+		log.Printf("Listening on %s for private operations", hubCmd.Address)
 
-	go func() {
-		log.Printf("Starting public server on %s", publicListener.Addr())
-		err = publicServer.Serve(publicListener)
-		if err != nil {
-			if err != http.ErrServerClosed {
-				log.Fatalf("Failed to serve: %v", err)
+		go func() {
+			log.Printf("Starting private server on %s", privateListener.Addr())
+			privateServer := http.Server{
+				Handler: muxerPrivate,
 			}
+			err = privateServer.Serve(privateListener)
+			if err != nil {
+				if err != http.ErrServerClosed {
+					log.Fatalf("Failed to serve: %v", err)
+				}
+			}
+		}()
+
+	}
+
+	if hubCmd.AddressPublic != "" {
+		waitListeners.Add(1)
+		publicListener, err := net.Listen("tcp", hubCmd.AddressPublic)
+		if err != nil {
+			log.Fatalf("Failed to listen on address %s: %v", hubCmd.AddressPublic, err)
 		}
-	}()
+		log.Printf("Listening on %s for public operations", hubCmd.AddressPublic)
+		go func() {
+			log.Printf("Starting public server on %s", publicListener.Addr())
+			publicServer := http.Server{
+				Handler: muxerPublic,
+			}
+			err = publicServer.Serve(publicListener)
+			if err != nil {
+				if err != http.ErrServerClosed {
+					log.Fatalf("Failed to serve: %v", err)
+				}
+			}
+		}()
+
+	}
+
+	if hubCmd.JWTAuthListenAddress != "" {
+		waitListeners.Add(1)
+		jwtAuthListener, err := net.Listen("tcp", hubCmd.JWTAuthListenAddress)
+		if err != nil {
+			log.Fatalf("Failed to listen on address %s: %v", hubCmd.JWTAuthListenAddress, err)
+		}
+		log.Printf("Listening on %s for JWT authentication", hubCmd.JWTAuthListenAddress)
+
+		go func() {
+			log.Printf("Starting public server on %s", jwtAuthListener.Addr())
+			secret := os.Getenv("JWT_SECRET")
+			if secret == "" {
+				log.Fatalf("JWT_SECRET is not set")
+			}
+			secretBytes := []byte(secret)
+			jwtAuthServer := http.Server{
+				Handler: pkgauth.WithJWTAuth(muxerPrivate, secretBytes),
+			}
+
+			err = jwtAuthServer.Serve(jwtAuthListener)
+			if err != nil {
+				if err != http.ErrServerClosed {
+					log.Fatalf("Failed to serve: %v", err)
+				}
+			}
+		}()
+
+	}
 
 	sig := <-sigs
 	log.Printf("Received %s, shutting down ...", sig.String())
 	sm.Close()
-
-	log.Println("Shutting down private server...")
-	err = privateServer.Shutdown(context.TODO())
-	if err != nil {
-		log.Printf("Failed to shutdown server: %v", err)
-	}
-
-	log.Println("Shutting down public server...")
-	err = publicServer.Shutdown(context.TODO())
-	if err != nil {
-		log.Printf("Failed to shutdown public server: %v", err)
-	}
 
 	return nil
 }

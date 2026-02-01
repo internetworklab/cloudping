@@ -14,7 +14,9 @@ bin/globalping hub \
   --server-cert=/root/services/globalping/hub/certs/peer.pem \
   --server-cert-key=/root/services/globalping/hub/certs/peer-key.pem \
   --web-socket-path=/ws \
-  --address=:28080 \
-  --address-public=:8082 \
+  --address=:28082 \
+  --address-public=:8084 \
   --min-pkt-interval=300ms \
-  --max-pkt-timeout=3000ms
+  --max-pkt-timeout=3000ms \
+  --quic-listen-address=":18447" \
+  --jwt-auth-listen=":18448"
