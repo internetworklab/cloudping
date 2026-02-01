@@ -70,7 +70,7 @@ type AgentCmd struct {
 	TLSListenAddress string `help:"Address to listen on for TLS" default:"localhost:8081"`
 
 	// when http listen address is not empty, it will serve http requests without any TLS authentication
-	HTTPListenAddress string `help:"Address to listen on for HTTP" default:""`
+	HTTPListenAddress string `help:"Address to listen on for HTTP"`
 
 	SharedQuota                int    `help:"Shared quota for the traceroute (packets per second)" default:"10"`
 	DN42IPInfoProvider         string `help:"APIEndpoint of DN42 IPInfo provider" default:"https://dn42-query.netneighbor.me/ipinfo/lite/query"`
