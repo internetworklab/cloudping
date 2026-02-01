@@ -19,4 +19,6 @@ bin/globalping hub \
   --min-pkt-interval=300ms \
   --max-pkt-timeout=3000ms \
   --quic-listen-address=":18447" \
-  --jwt-auth-listen=":18448"
+  --jwt-auth-listener-address=":18448" \
+  --jwt-auth-listener-cert=/root/services/globalping/hub/certs/peer.pem \
+  --jwt-auth-listener-cert-key=/root/services/globalping/hub/certs/peer-key.pem 

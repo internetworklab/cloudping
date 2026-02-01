@@ -6,8 +6,14 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"net/http"
+	"strings"
+	"time"
 
+	pkgutils "example.com/rbmq-demo/pkg/utils"
 	quicGo "github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	quicHttp3 "github.com/quic-go/quic-go/http3"
 )
 
 type MyCtxKey string
@@ -38,42 +44,59 @@ func main() {
 	}
 	log.Printf("Listening on UDP address %s", udpAddr.String())
 
-	for {
-		conn, err := h3Listener.Accept(context.Background())
-		if err != nil {
-			log.Fatalf("failed to accept connection: %v", err)
-		}
+	server := &quicHttp3.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			remote := pkgutils.GetRemoteAddr(r)
 
-		log.Printf("Accepted connection: %p %s", conn, conn.RemoteAddr())
+			log.Printf("Received new http request from remote %s, method: %s, url: %s, headers:\n", remote, r.Method, r.URL.String())
+			for k, vals := range r.Header {
+				log.Printf("  %s: %s", k, strings.Join(vals, ", "))
+			}
 
-		go func(conn *quicGo.Conn) {
-			defer log.Printf("Closing connection: %p %s", conn, conn.RemoteAddr())
-			for {
-				log.Printf("Accepting stream from connection: %p %s", conn, conn.RemoteAddr())
-				stream, err := conn.AcceptStream(context.Background())
-				if err != nil {
-					log.Printf("failed to accept stream: %v", err)
-					break
-				}
-				log.Printf("Accepted stream: %p %d from connection: %s", stream, stream.StreamID(), conn.RemoteAddr())
-
-				go func(stream *quicGo.Stream) {
+			if streamer, ok := w.(http3.HTTPStreamer); ok {
+				log.Printf("Converted http.ResponseWriter to http3.HTTPStreamer, hijacking connection, remote: %s ...", remote)
+				stream := streamer.HTTPStream()
+				streamID := stream.StreamID()
+				go func(ctx context.Context, stream *quicHttp3.Stream) {
 					defer stream.Close()
-					defer log.Printf("Closing stream: %p %d", stream, stream.StreamID())
-
+					scanner := bufio.NewScanner(stream)
+					timeoutIntv, _ := time.ParseDuration("30s")
+					log.Printf("Started to handling ping/pong stream #%d from client. remote: %s", streamID, remote)
 					for {
-						scanner := bufio.NewScanner(stream)
-						for scanner.Scan() {
-							line := scanner.Text()
-							log.Printf("Received line: %s", line)
-						}
-						if err := scanner.Err(); err != nil {
-							log.Printf("failed to scan stream: %v", err)
-							break
+						select {
+						case <-ctx.Done():
+							log.Printf("Context done, closing stream #%d of remote %s.", streamID, remote)
+							return
+						default:
+							if err := stream.SetReadDeadline(time.Now().Add(timeoutIntv)); err != nil {
+								log.Printf("failed to set read deadline to stream #%d of remote %s: %v", streamID, remote, err)
+								return
+							}
+
+							if ok := scanner.Scan(); !ok {
+								if err := scanner.Err(); err != nil {
+									log.Printf("failed to scan stream #%d of remote %s: %v", streamID, remote, err)
+									return
+								}
+								log.Printf("Stream #%d of remote %s closed, closing stream.", streamID, remote)
+								return
+							}
+							line := scanner.Bytes()
+							log.Printf("Received line from stream #%d of remote %s: %s", streamID, remote, line)
+
 						}
 					}
-				}(stream)
+
+				}(r.Context(), stream)
 			}
-		}(conn)
+			w.WriteHeader(http.StatusOK)
+		}),
+		ConnContext: func(ctx context.Context, c *quicGo.Conn) context.Context {
+			log.Printf("Connection accepted, append connection %p to context", c)
+			return context.WithValue(ctx, MyCtxKeyConn, c)
+		},
+	}
+	if err := server.ServeListener(h3Listener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
 }

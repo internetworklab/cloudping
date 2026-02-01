@@ -10,11 +10,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
-	pkgauth "example.com/rbmq-demo/pkg/auth"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkghandler "example.com/rbmq-demo/pkg/handler"
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
@@ -48,9 +46,12 @@ type HubCmd struct {
 
 	PktCountClamp *int `help:"The maximum number of packets to send for a single ping task"`
 
-	WebSocketTimeout     string `help:"The timeout for a WebSocket connection" default:"60s"`
-	QUICListenAddress    string `help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
-	JWTAuthListenAddress string `name:"jwt-auth-listen" help:"Address to listen on for JWT authentication"`
+	WebSocketTimeout  string `help:"The timeout for a WebSocket connection" default:"60s"`
+	QUICListenAddress string `help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
+
+	JWTAuthListenAddress   string `name:"jwt-auth-listener-address" help:"Address to listen on for JWT authentication"`
+	JWTAuthListenerCert    string `name:"jwt-auth-listener-cert" help:"Server TLS certificate"`
+	JWTAuthListenerCertKey string `name:"jwt-auth-listener-cert-key" help:"Server TLS certificate key"`
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
@@ -127,7 +128,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	if hubCmd.QUICListenAddress != "" {
 		quicListener, err := quicGo.ListenAddr(hubCmd.QUICListenAddress, privateServerSideTLSCfg, nil)
 		if err != nil {
-			log.Fatalf("Failed to listen on address %s: %v", hubCmd.QUICListenAddress, err)
+			log.Fatalf("Failed to listen on UDP address %s: %v", hubCmd.QUICListenAddress, err)
 		}
 		log.Printf("Listening on %s for QUIC operations", hubCmd.QUICListenAddress)
 		quicHandler := pkghandler.QUICHandler{
@@ -176,10 +177,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 
-	waitListeners := sync.WaitGroup{}
-
 	if hubCmd.Address != "" {
-		waitListeners.Add(1)
 		privateListener, err := tls.Listen("tcp", hubCmd.Address, privateServerSideTLSCfg)
 		if err != nil {
 			log.Fatalf("Failed to listen on address %s: %v", hubCmd.Address, err)
@@ -202,7 +200,6 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	}
 
 	if hubCmd.AddressPublic != "" {
-		waitListeners.Add(1)
 		publicListener, err := net.Listen("tcp", hubCmd.AddressPublic)
 		if err != nil {
 			log.Fatalf("Failed to listen on address %s: %v", hubCmd.AddressPublic, err)
@@ -223,33 +220,34 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	}
 
-	if hubCmd.JWTAuthListenAddress != "" {
-		waitListeners.Add(1)
-		jwtAuthListener, err := net.Listen("tcp", hubCmd.JWTAuthListenAddress)
-		if err != nil {
-			log.Fatalf("Failed to listen on address %s: %v", hubCmd.JWTAuthListenAddress, err)
+	if listenAddress := hubCmd.JWTAuthListenAddress; listenAddress != "" {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: false,
+			NextProtos:         []string{"h3", "ws", "h2", "http/1.1"},
 		}
-		log.Printf("Listening on %s for JWT authentication", hubCmd.JWTAuthListenAddress)
-
-		go func() {
-			log.Printf("Starting public server on %s", jwtAuthListener.Addr())
-			secret := os.Getenv("JWT_SECRET")
-			if secret == "" {
-				log.Fatalf("JWT_SECRET is not set")
-			}
-			secretBytes := []byte(secret)
-			jwtAuthServer := http.Server{
-				Handler: pkgauth.WithJWTAuth(muxerPrivate, secretBytes),
-			}
-
-			err = jwtAuthServer.Serve(jwtAuthListener)
-			if err != nil {
-				if err != http.ErrServerClosed {
-					log.Fatalf("Failed to serve: %v", err)
+		if certPath := hubCmd.JWTAuthListenerCert; certPath != "" {
+			if keyPath := hubCmd.JWTAuthListenerCertKey; keyPath != "" {
+				cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+				if err != nil {
+					log.Fatalf("Failed to load server certificate for JWT listener: %v", err)
 				}
+				tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+				log.Printf("Loaded server cert pair from %s and %s for JWT listener", certPath, keyPath)
 			}
-		}()
+		}
 
+		quicListener, err := quicGo.ListenAddr(listenAddress, tlsConfig, nil)
+		if err != nil {
+			log.Fatalf("Failed to listen on UDP address %s: %v", listenAddress, err)
+		}
+
+		quicHandler := pkghandler.HTTP3Handler{
+			Cr:       cr,
+			Timeout:  wsTimeout,
+			Listener: quicListener,
+		}
+		go quicHandler.Serve()
+		log.Printf("Listening on UDP address %s for JWT-authenticated handlers", quicListener.Addr())
 	}
 
 	sig := <-sigs
