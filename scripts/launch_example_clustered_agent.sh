@@ -20,4 +20,4 @@ bin/globalping agent \
   --ip2location-api-endpoint="https://api.ip2location.io" \
   --dn42-ip2location-api-endpoint="https://regquery.ping2.sh/ip2location/v1/query" \
   --jwt-token-from-env-var="JWT_TOKEN" \
-  --log-echo-replies="true"
+  --log-echo-replies="false"

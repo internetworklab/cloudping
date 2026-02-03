@@ -32,7 +32,7 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 	}
 
 	if payload.Register != nil {
-		var mapClaims *jwt.MapClaims = nil
+		var mapClaims jwt.MapClaims = nil
 		if handler.ShouldValidateJWT {
 			valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
 			if err != nil {
@@ -48,7 +48,7 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 			}
 
 			var ok bool
-			mapClaims, ok = token.Claims.(*jwt.MapClaims)
+			mapClaims, ok = token.Claims.(jwt.MapClaims)
 			if !ok {
 				return fmt.Errorf("couldn't convert JWT claims to map claims of peer %s", key)
 			}

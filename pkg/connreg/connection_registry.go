@@ -54,7 +54,7 @@ type ConnRegistryData struct {
 	LastHeartbeat *uint64              `json:"last_heartbeat,omitempty"`
 	Attributes    ConnectionAttributes `json:"attributes,omitempty"`
 	QUICConn      *quicGo.Conn         `json:"-"`
-	Claims        *jwt.MapClaims       `json:"claims,omitempty"`
+	Claims        jwt.MapClaims        `json:"claims,omitempty"`
 }
 
 func (regData *ConnRegistryData) Clone() *ConnRegistryData {
@@ -102,7 +102,7 @@ func (cr *ConnRegistry) CloseConnection(key string) {
 	cr.datastore.Delete(key)
 }
 
-func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims *jwt.MapClaims) error {
+func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims jwt.MapClaims) error {
 	log.Printf("Registering connection from %s, node name: %s", key, payload.NodeName)
 
 	_, found := cr.datastore.Get(key, func(valany interface{}) error {
