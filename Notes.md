@@ -1,3 +1,10 @@
+# How to Generate a JWT token for testing purposes ?
+
+```shell
+bin/globalping jwt sign 2>/dev/null
+# then make sure `JWT_TOKEN=<the_token>` is presented in the `.env` file
+```
+
 # How to Generate Self-signed CA and cert pairs for m-TLS ?
 
 We have some example cfssl JSON files in `certs/manifests`, you can generate example
