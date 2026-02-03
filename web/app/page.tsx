@@ -140,7 +140,14 @@ export default function Home() {
   ];
 
   let headerCardStyles: CSSProperties[] = [
-    { padding: 2, display: "flex", flexDirection: "column", gap: 2 },
+    {
+      padding: 2,
+      display: "flex",
+      flexDirection: "column",
+      gap: 2,
+      position: "relative",
+      zIndex: 1,
+    },
   ];
 
   if (onGoingTasks.length === 0) {
