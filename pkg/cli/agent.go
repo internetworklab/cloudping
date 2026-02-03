@@ -81,7 +81,7 @@ type AgentCmd struct {
 	IP2LocationAPIEndpoint     string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
 	// Prometheus stuffs
-	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112" default:"127.0.0.1:2112"`
+	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112"`
 	MetricsPath          string `help:"Path of the Prometheus metrics endpoint, e.g. /metrics" default:"/metrics"`
 
 	// Bonus features
@@ -518,8 +518,14 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	}
 
 	if nodeName := agentCmd.NodeName; nodeName != "" {
-		if srvAddr := agentCmd.ServerAddress; srvAddr != "" {
-			log.Printf("Running in cluster mode, acting as an agent, will advertise self as: %s, hub: %s", nodeName, srvAddr)
+		if agentCmd.ServerAddress != "" || agentCmd.QUICServerAddress != "" {
+			log.Printf("Running in cluster mode, acting as an agent, will advertise self as: %s", nodeName)
+			if wsServer := agentCmd.ServerAddress; wsServer != "" {
+				log.Printf("Hub's WebSocket server: %s", wsServer)
+			}
+			if quicServer := agentCmd.QUICServerAddress; quicServer != "" {
+				log.Printf("Hub's QUIC server: %s", quicServer)
+			}
 			attributes := make(pkgconnreg.ConnectionAttributes)
 			attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
 			attributes[pkgnodereg.AttributeKeyNodeName] = nodeName

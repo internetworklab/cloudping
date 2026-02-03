@@ -64,8 +64,8 @@ type NodeRegistrationAgent struct {
 }
 
 func (agent *NodeRegistrationAgent) Init() error {
-	if agent.ServerAddress == "" {
-		return fmt.Errorf("server address is required")
+	if agent.ServerAddress == "" && agent.QUICServerAddress == "" {
+		return fmt.Errorf("either server address or QUIC server address is required")
 	}
 
 	if agent.NodeName == "" {
