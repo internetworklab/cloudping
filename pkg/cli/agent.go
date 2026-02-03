@@ -47,10 +47,10 @@ type AgentCmd struct {
 	ServerAddress     string `help:"WebSocket endpoint of the hub"`
 	QUICServerAddress string `help:"QUIC endpoint of the hub"`
 
-	// PeerCAs are use to verify certs presented by the peer,
+	// PeerCA are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
-	// Simply put, PeerCAs are what agent is use to verify the hub's cert, and what hub is use to verify the agent's cert.
-	PeerCAs []string `help:"PeerCAs are custom CAs use to verify the hub (server)'s certificate, if none is provided, will use the system CAs to do so. PeerCAs are also use to verify the client's certificate when functioning as a server."`
+	// Simply put, PeerCA are what agent is use to verify the hub's cert, and what hub is use to verify the agent's cert.
+	PeerCA []string `name:"peer-ca" help:"PeerCAs are custom CAs use to verify the hub (server)'s certificate, when none are provided, system CAs are used to do the job. PeerCAs are also use to verify the client's certificate when functioning as a server."`
 
 	// Agent will connect to the hub (sometimes), so this is the TLS name (mostly CN field or DNS Alt Name) of the hub.
 	ServerName string `help:"We connect to the server via TLS, this is to verify the server's certificate, at least one of the DNSAltName fields in the server-presented certificate must match this value"`
@@ -75,10 +75,10 @@ type AgentCmd struct {
 	HTTPListenAddress string `help:"Address to listen on for plaintext HTTP requests, only use this for debugging purposes"`
 
 	// IPInfo/IP2Location related settings
-	DN42IPInfoProvider         string `help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
-	DN42IP2LocationAPIEndpoint string `help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider"`
-	IPInfoCacheValiditySecs    int    `help:"The validity of the IPInfo cache in seconds" default:"600"`
-	IP2LocationAPIEndpoint     string `help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
+	DN42IPInfoProvider         string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
+	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider"`
+	IPInfoCacheValiditySecs    int    `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600"`
+	IP2LocationAPIEndpoint     string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
 	// Prometheus stuffs
 	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112" default:"127.0.0.1:2112"`
@@ -377,11 +377,9 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	cachedAutoIPInfoDispatcher.Run(ctx)
 	ipinfoReg.RegisterAdapter(cachedAutoIPInfoDispatcher)
 
-	customCAs, err := pkgutils.NewCustomCAPool(agentCmd.PeerCAs)
+	customCAs, err := pkgutils.NewCustomCAPool(agentCmd.PeerCA)
 	if err != nil {
-		log.Fatalf("Failed to create custom CA pool: %v", err)
-	} else if len(agentCmd.PeerCAs) > 0 {
-		log.Printf("Appended custom CAs: %s", strings.Join(agentCmd.PeerCAs, ", "))
+		log.Fatalf("Failed to load custom CA pool: %v", err)
 	}
 
 	respondRangeNet := make([]net.IPNet, 0)
