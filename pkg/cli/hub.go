@@ -25,8 +25,8 @@ var upgrader = websocket.Upgrader{}
 
 type HubCmd struct {
 	PublicHTTPListenAddress  string `name:"public-http-listen-address" help:"The address to listen on for public operations"`
-	WebSocketListenAddress   string `name:"mtls-websocket-listen-address" help:"The address to listen on for private operations" default:":8080"`
-	QUICMTLSListenAddress    string `name:"mtls-quic-listen-address" help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
+	WebSocketListenAddress   string `name:"mtls-websocket-listen-address" help:"The address to listen on for private operations"`
+	QUICMTLSListenAddress    string `name:"mtls-quic-listen-address" help:"The address to listen on for QUIC"`
 	QUICJWTAuthListenAddress string `name:"jwt-quic-listen-address" help:"Address to listen on for JWT authentication"`
 
 	WebSocketPath    string `help:"The path to the WebSocket upgrade handler" default:"/ws"`
