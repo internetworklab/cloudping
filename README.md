@@ -73,6 +73,5 @@ Take a look at [docs/how-to-join.md](docs/how-to-join.md) for how to join a new 
 
 ## Todos
 
-- Token-based Authentication
 - Multiple Hub instances for High-Availability
-
+- Telegram Bot for JWT Token Issuing
