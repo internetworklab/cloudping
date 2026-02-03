@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
@@ -144,7 +145,7 @@ func (agent *NodeRegistrationAgent) getTLSConfig() (*tls.Config, error) {
 }
 
 func (agent *NodeRegistrationAgent) connectWs(tlsConfig *tls.Config) (*websocket.Conn, error) {
-	log.Printf("Agent %s started, connecting to %s", agent.NodeName, agent.ServerAddress)
+	log.Printf("Agent %s started, connecting to WebSocket server %s", agent.NodeName, agent.ServerAddress)
 	dialer := &websocket.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
 		HandshakeTimeout: 45 * time.Second,
@@ -156,12 +157,11 @@ func (agent *NodeRegistrationAgent) connectWs(tlsConfig *tls.Config) (*websocket
 		return nil, fmt.Errorf("failed to dial %s: %v", agent.ServerAddress, err)
 	}
 
-	log.Printf("Connected to server %s: remote address: %s", agent.ServerAddress, c.RemoteAddr())
+	log.Printf("Connected to WebSocket server %s: remote address: %s", agent.ServerAddress, c.RemoteAddr())
 	return c, nil
 }
 
 func (agent *NodeRegistrationAgent) getRegisterPayload() pkgframing.MessagePayload {
-	log.Printf("Using node name: %s", agent.NodeName)
 	registerPayload := pkgconnreg.RegisterPayload{
 		NodeName: agent.NodeName,
 		Token:    agent.Token,
@@ -173,8 +173,6 @@ func (agent *NodeRegistrationAgent) getRegisterPayload() pkgframing.MessagePaylo
 		registerMsg.AttributesAnnouncement = &pkgconnreg.AttributesAnnouncementPayload{
 			Attributes: agent.NodeAttributes,
 		}
-		s, _ := json.Marshal(registerMsg.AttributesAnnouncement)
-		log.Printf("Will announcing attributes: %+v", string(s))
 	}
 	return registerMsg
 }
@@ -211,7 +209,14 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 		}
 
 		if agent.UseQUIC {
-			tlsConfig.NextProtos = []string{"h3"}
+			if !slices.Contains(tlsConfig.NextProtos, "h3") {
+				if tlsConfig.NextProtos == nil {
+					tlsConfig.NextProtos = make([]string, 0)
+				}
+				tlsConfig.NextProtos = append(tlsConfig.NextProtos, "h3")
+			}
+
+			log.Printf("Dialing QUIC address %s", agent.QUICServerAddress)
 			quicConn, err := quicGo.DialAddr(ctx, agent.QUICServerAddress, tlsConfig, nil)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to dial QUIC address %s: %v", agent.QUICServerAddress, err)

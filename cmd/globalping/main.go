@@ -17,9 +17,10 @@ import (
 var buildVersionText []byte
 
 var CLI struct {
-	Agent pkgcli.AgentCmd `cmd:"agent"`
-	Hub   pkgcli.HubCmd   `cmd:"hub"`
-	Bot   pkgcli.BotCmd   `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
+	Agent pkgcli.AgentCmd   `cmd:"agent"`
+	Hub   pkgcli.HubCmd     `cmd:"hub"`
+	Bot   pkgcli.BotCmd     `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
+	Jwt   pkgcli.JWTCommand `cmd:"jwt" help:"Manage JWT tokens"`
 }
 
 func main() {

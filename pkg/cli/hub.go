@@ -52,31 +52,13 @@ type HubCmd struct {
 	JWTAuthListenAddress   string `name:"jwt-auth-listener-address" help:"Address to listen on for JWT authentication"`
 	JWTAuthListenerCert    string `name:"jwt-auth-listener-cert" help:"Server TLS certificate"`
 	JWTAuthListenerCertKey string `name:"jwt-auth-listener-cert-key" help:"Server TLS certificate key"`
-	JWTAuthSecretFromEnv   string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
-	JWTAuthSecretFromFile  string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+
+	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
+	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
 }
 
-func getJWTSecret(hubCmd *HubCmd) ([]byte, error) {
-	if envVar := hubCmd.JWTAuthSecretFromEnv; envVar != "" {
-		secret := os.Getenv(envVar)
-		if secret == "" {
-			return nil, fmt.Errorf("JWT secret is not set in environment variable %s", envVar)
-		}
-		return []byte(secret), nil
-	}
-
-	if filePath := hubCmd.JWTAuthSecretFromFile; filePath != "" {
-		secret, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read JWT secret file %s: %v", filePath, err)
-		}
-		if len(secret) == 0 {
-			return nil, fmt.Errorf("JWT secret file %s is empty", filePath)
-		}
-		return secret, nil
-	}
-
-	return nil, fmt.Errorf("no JWT secret is set")
+func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
+	return getJWTSecFromSomewhere(hubCmd.JWTAuthSecretFromEnv, hubCmd.JWTAuthSecretFromFile)
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
@@ -133,7 +115,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		ClientAuth:         tls.RequireAndVerifyClientCert,
 		ClientCAs:          certPool,
 		InsecureSkipVerify: false,
-		NextProtos:         []string{"h3", "ws", "h2", "http/1.1"},
+		NextProtos:         []string{"h3"},
 	}
 	if hubCmd.ServerCert != "" && hubCmd.ServerCertKey != "" {
 		cert, err := tls.LoadX509KeyPair(hubCmd.ServerCert, hubCmd.ServerCertKey)
@@ -249,7 +231,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	if listenAddress := hubCmd.JWTAuthListenAddress; listenAddress != "" {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
-			NextProtos:         []string{"h3", "ws", "h2", "http/1.1"},
+			NextProtos:         []string{"h3"},
 		}
 		if certPath := hubCmd.JWTAuthListenerCert; certPath != "" {
 			if keyPath := hubCmd.JWTAuthListenerCertKey; keyPath != "" {
@@ -267,7 +249,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Fatalf("Failed to listen on UDP address %s: %v", listenAddress, err)
 		}
 
-		jwtSec, err := getJWTSecret(&hubCmd)
+		jwtSec, err := hubCmd.getJWTSecret()
 		if err != nil {
 			log.Fatalf("Failed to load JWT secret: %v", err)
 		}

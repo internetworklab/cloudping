@@ -43,12 +43,9 @@ type AgentCmd struct {
 	DN42ASN             string `name:"dn42-asn" help:"The ASN of the ISP that provides DN42 connectivity to the node. Format: AS<number>, e.g. AS4242421234"`
 	DN42ISP             string `name:"dn42-isp" help:"The name of the ISP that provides DN42 connectivity to the node"`
 
-	// If server address is empty, it won't register itself to the hub.
-	ServerAddress     string `help:"WebSocket Address of the hub" default:"wss://hub.example.com:8080/ws"`
-	QUICServerAddress string `help:"QUIC Address of the hub"`
-
-	RespondRange       []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
-	DomainRespondRange []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
+	// If both the (ws) server address and the QUIC server address are empty, it won't register itself to the hub.
+	ServerAddress     string `help:"WebSocket endpoint of the hub"`
+	QUICServerAddress string `help:"QUIC endpoint of the hub"`
 
 	// PeerCAs are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
@@ -56,45 +53,69 @@ type AgentCmd struct {
 	PeerCAs []string `help:"PeerCAs are custom CAs use to verify the hub (server)'s certificate, if none is provided, will use the system CAs to do so. PeerCAs are also use to verify the client's certificate when functioning as a server."`
 
 	// Agent will connect to the hub (sometimes), so this is the TLS name (mostly CN field or DNS Alt Name) of the hub.
-	ServerName string `help:"Also use to verify the server's certificate"`
+	ServerName string `help:"We connect to the server via TLS, this is to verify the server's certificate, at least one of the DNSAltName fields in the server-presented certificate must match this value"`
+
+	AgentTickInterval string `help:"The interval between node registration agent's tick" default:"5s"`
+
+	JWTTokenFromEnvVar string `help:"The environment variable name to read the JWT token from" default:"JWT_TOKEN"`
+	JWTTokenFromFile   string `help:"The file path to read the JWT token from" type:"path"`
 
 	// When the agent is connecting to the hub, the hub needs to authenticate the client, so the client (the agent) also have to present a cert
 	// to complete the m-TLS authentication process.
-	ClientCert    string `help:"The path to the client certificate" type:"path"`
-	ClientCertKey string `help:"The path to the client certificate key" type:"path"`
+	ClientCert    string `help:"The path to the client certificate, i.e. the cert to use when acting as a client" type:"path"`
+	ClientCertKey string `help:"The path to the client certificate key, i.e. the key of the cert to use when acting as a client" type:"path"`
 
 	// Agent also functions as a server (i.e. provides public tls-secured endpoint, so it might also needs a cert pair)
-	ServerCert    string `help:"The path to the server certificate" type:"path"`
-	ServerCertKey string `help:"The path to the server key" type:"path"`
+	ServerCert    string `help:"The path to the server certificate, i.e. the cert to use when acting as a server" type:"path"`
+	ServerCertKey string `help:"The path to the server key, i.e. the key of the cert to use when acting as a server" type:"path"`
 
-	TLSListenAddress string `help:"Address to listen on for TLS" default:"localhost:8081"`
+	TLSListenAddress string `help:"Address to listen on for incoming TLS connections when the hub is expected to call this via the advertised public TLS endpoint"`
 
 	// when http listen address is not empty, it will serve http requests without any TLS authentication
-	HTTPListenAddress string `help:"Address to listen on for HTTP"`
+	HTTPListenAddress string `help:"Address to listen on for plaintext HTTP requests, only use this for debugging purposes"`
 
-	SharedQuota                int    `help:"Shared quota for the traceroute (packets per second)" default:"10"`
-	DN42IPInfoProvider         string `help:"APIEndpoint of DN42 IPInfo provider" default:"https://dn42-query.netneighbor.me/ipinfo/lite/query"`
-	DN42IP2LocationAPIEndpoint string `help:"APIEndpoint of DN42 IP2Location provider"`
+	// IPInfo/IP2Location related settings
+	DN42IPInfoProvider         string `help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
+	DN42IP2LocationAPIEndpoint string `help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider"`
+	IPInfoCacheValiditySecs    int    `help:"The validity of the IPInfo cache in seconds" default:"600"`
+	IP2LocationAPIEndpoint     string `help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
 	// Prometheus stuffs
-	MetricsListenAddress string `help:"Endpoint to expose prometheus metrics" default:":2112"`
-	MetricsPath          string `help:"Path to expose prometheus metrics" default:"/metrics"`
+	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112" default:"127.0.0.1:2112"`
+	MetricsPath          string `help:"Path of the Prometheus metrics endpoint, e.g. /metrics" default:"/metrics"`
 
+	// Bonus features
 	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"false"`
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"false"`
 	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"false"`
 	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"false"`
 
-	IPInfoCacheValiditySecs int `help:"The validity of the IPInfo cache in seconds" default:"600"`
-
-	IP2LocationAPIEndpoint string `help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
-
-	AgentTickInterval string `help:"The interval between node registration agent's tick" default:"5s"`
-
+	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`
 
-	SharedOutboundRateLimit                int    `name:"shared-outbound-ratelimit" help:"The shared outbound rate limit in packets per second" default:"100"`
-	SharedOutboundRateLimitRefreshInterval string `name:"shared-outbound-ratelimit-refresh-interval" help:"The refresh interval of the shared outbound rate limit" default:"1s"`
+	// Throttling/restriction related settings for how to protect ourselves from abuses
+	SharedOutboundRateLimit                int      `name:"shared-outbound-ratelimit" help:"Shared quota for limiting the outbound traffic (packets per refresh interval)" default:"100"`
+	SharedOutboundRateLimitRefreshInterval string   `name:"shared-outbound-ratelimit-refresh-interval" help:"The refresh interval of the shared outbound rate limit" default:"1s"`
+	RespondRange                           []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
+	DomainRespondRange                     []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
+}
+
+func (agentCmd *AgentCmd) getJWTToken() string {
+	if envVar := agentCmd.JWTTokenFromEnvVar; envVar != "" {
+		if token := os.Getenv(envVar); token != "" {
+			return token
+		}
+	}
+
+	if filePath := agentCmd.JWTTokenFromFile; filePath != "" {
+		if data, err := os.ReadFile(filePath); err == nil {
+			if token := strings.TrimSpace(string(data)); token != "" {
+				return token
+			}
+		}
+	}
+
+	return ""
 }
 
 type PingHandler struct {
@@ -287,7 +308,6 @@ func getDN42IPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, e
 	return pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider), nil
 }
 
-const defaultTickInterval = 5 * time.Second
 const minTickInterval = 1000 * time.Millisecond
 
 func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
@@ -364,10 +384,6 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		log.Printf("Appended custom CAs: %s", strings.Join(agentCmd.PeerCAs, ", "))
 	}
 
-	if agentCmd.SharedQuota < 1 {
-		log.Fatalf("shared quota must be greater than 0")
-	}
-
 	respondRangeNet := make([]net.IPNet, 0)
 	for _, rangeStr := range agentCmd.RespondRange {
 		_, nw, err := net.ParseCIDR(rangeStr)
@@ -402,83 +418,90 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxedHandler = pkgmyprom.WithCounterStoreHandler(muxedHandler, counterStore)
 	muxedHandler = pkgratelimit.WithRatelimiters(muxedHandler, sharedRateLimitPool, sharedRateLimitEnforcer)
 
-	// TLSConfig to apply when acting as a server (i.e. we provide services, peer calls us)
-	serverSideTLSCfg := &tls.Config{
-		ClientAuth: tls.RequireAndVerifyClientCert,
-	}
-	if customCAs != nil {
-		serverSideTLSCfg.ClientCAs = customCAs
-	}
-
-	if agentCmd.ServerCert != "" && agentCmd.ServerCertKey != "" {
-		cert, err := tls.LoadX509KeyPair(agentCmd.ServerCert, agentCmd.ServerCertKey)
+	if promListenAddr := agentCmd.MetricsListenAddress; promListenAddr != "" {
+		prometheusListener, err := net.Listen("tcp", promListenAddr)
 		if err != nil {
-			log.Fatalf("failed to load server certificate: %v", err)
+			log.Fatalf("failed to listen on address for prometheus metrics: %s: %v", promListenAddr, err)
 		}
-		if serverSideTLSCfg.Certificates == nil {
-			serverSideTLSCfg.Certificates = make([]tls.Certificate, 0)
-		}
-		serverSideTLSCfg.Certificates = append(serverSideTLSCfg.Certificates, cert)
-		log.Printf("Loaded server certificate: %s and key: %s", agentCmd.ServerCert, agentCmd.ServerCertKey)
-	}
+		defer prometheusListener.Close()
+		log.Printf("Listening on address %s for prometheus metrics", promListenAddr)
 
-	prometheusListener, err := net.Listen("tcp", agentCmd.MetricsListenAddress)
-	if err != nil {
-		log.Fatalf("failed to listen on address for prometheus metrics: %s: %v", agentCmd.MetricsListenAddress, err)
-	}
-	log.Printf("Listening on address %s for prometheus metrics", agentCmd.MetricsListenAddress)
-
-	go func() {
-		log.Printf("Serving prometheus metrics on address %s", prometheusListener.Addr())
-		handler := promhttp.Handler()
-		serveMux := http.NewServeMux()
-		serveMux.Handle(agentCmd.MetricsPath, handler)
-		server := http.Server{
-			Handler: serveMux,
-		}
-		if err := server.Serve(prometheusListener); err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				log.Fatalf("failed to serve prometheus metrics: %v", err)
-			}
-			log.Println("Prometheus metrics server exitted")
-		}
-	}()
-
-	listener, err := tls.Listen("tcp", agentCmd.TLSListenAddress, serverSideTLSCfg)
-	if err != nil {
-		log.Fatalf("failed to listen on address %s: %v", agentCmd.TLSListenAddress, err)
-	}
-	defer listener.Close()
-	log.Printf("Listening on address %s", agentCmd.TLSListenAddress)
-
-	go func() {
-		server := http.Server{
-			Handler:   muxedHandler,
-			TLSConfig: serverSideTLSCfg,
-		}
-		log.Printf("Serving HTTPS requests on address %s", listener.Addr())
-		if err := server.Serve(listener); err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				log.Fatalf("failed to serve: %v", err)
-			}
-			log.Println("Server exitted")
-		}
 		go func() {
-			<-ctx.Done()
-			log.Println("Shutting down server")
-			server.Shutdown(ctx)
+			log.Printf("Serving prometheus metrics on address %s", prometheusListener.Addr())
+			handler := promhttp.Handler()
+			serveMux := http.NewServeMux()
+			serveMux.Handle(agentCmd.MetricsPath, handler)
+			server := http.Server{
+				Handler: serveMux,
+			}
+			if err := server.Serve(prometheusListener); err != nil {
+				if !errors.Is(err, net.ErrClosed) {
+					log.Fatalf("failed to serve prometheus metrics: %v", err)
+				}
+				log.Println("Prometheus metrics server exitted")
+			}
 		}()
-	}()
+	}
 
-	if agentCmd.HTTPListenAddress != "" {
-		listener, err := net.Listen("tcp", agentCmd.HTTPListenAddress)
+	if tlsListenAddr := agentCmd.TLSListenAddress; tlsListenAddr != "" {
+		// TLSConfig to apply when acting as a server (i.e. we provide services, peer calls us)
+		serverSideTLSCfg := &tls.Config{
+			ClientAuth: tls.RequireAndVerifyClientCert,
+		}
+		if customCAs != nil {
+			serverSideTLSCfg.ClientCAs = customCAs
+		}
+
+		if srvCert := agentCmd.ServerCert; srvCert != "" {
+			if srvCertKey := agentCmd.ServerCertKey; srvCertKey != "" {
+				cert, err := tls.LoadX509KeyPair(srvCert, srvCertKey)
+				if err != nil {
+					log.Fatalf("failed to load server certificate: %v", err)
+				}
+				if serverSideTLSCfg.Certificates == nil {
+					serverSideTLSCfg.Certificates = make([]tls.Certificate, 0)
+				}
+				serverSideTLSCfg.Certificates = append(serverSideTLSCfg.Certificates, cert)
+				log.Printf("Loaded server certificate: %s and key: %s", srvCert, srvCertKey)
+			}
+		}
+
+		listener, err := tls.Listen("tcp", tlsListenAddr, serverSideTLSCfg)
 		if err != nil {
-			log.Fatalf("failed to listen on address %s: %v", agentCmd.HTTPListenAddress, err)
+			log.Fatalf("failed to listen on address %s: %v", tlsListenAddr, err)
 		}
 		defer listener.Close()
-		log.Printf("Listening on address %s", agentCmd.HTTPListenAddress)
+		log.Printf("Listening on address %s for TLS endpoint", tlsListenAddr)
+
 		go func() {
-			log.Printf("Serving HTTP requests on address %s", listener.Addr())
+			server := http.Server{
+				Handler:   muxedHandler,
+				TLSConfig: serverSideTLSCfg,
+			}
+			log.Printf("Serving HTTPS requests on address %s", listener.Addr())
+			if err := server.Serve(listener); err != nil {
+				if !errors.Is(err, net.ErrClosed) {
+					log.Fatalf("failed to serve: %v", err)
+				}
+				log.Println("Server exitted")
+			}
+			go func() {
+				<-ctx.Done()
+				log.Println("Shutting down server")
+				server.Shutdown(ctx)
+			}()
+		}()
+	}
+
+	if plainHTTPListenAddr := agentCmd.HTTPListenAddress; plainHTTPListenAddr != "" {
+		listener, err := net.Listen("tcp", plainHTTPListenAddr)
+		if err != nil {
+			log.Fatalf("failed to listen on address %s: %v", plainHTTPListenAddr, err)
+		}
+		defer listener.Close()
+		log.Printf("Listening on address %s for plaintext HTTP requests", plainHTTPListenAddr)
+		go func() {
+			log.Printf("Serving plaintext HTTP requests on address %s", listener.Addr())
 			server := &http.Server{
 				Handler: muxedHandler,
 			}
@@ -496,120 +519,147 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		}()
 	}
 
-	if agentCmd.NodeName != "" && agentCmd.ServerAddress != "" {
-		log.Printf("Will advertise self as: %s endpoint: %s hub: %s", agentCmd.NodeName, agentCmd.HttpEndpoint, agentCmd.ServerAddress)
-		attributes := make(pkgconnreg.ConnectionAttributes)
-		attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
-		attributes[pkgnodereg.AttributeKeyNodeName] = agentCmd.NodeName
-		attributes[pkgnodereg.AttributeKeyHttpEndpoint] = agentCmd.HttpEndpoint
-		if agentCmd.ExactLocationLatLon != "" {
-			attributes[pkgnodereg.AttributeKeyExactLocation] = agentCmd.ExactLocationLatLon
-		}
+	if nodeName := agentCmd.NodeName; nodeName != "" {
+		if srvAddr := agentCmd.ServerAddress; srvAddr != "" {
+			log.Printf("Running in cluster mode, acting as an agent, will advertise self as: %s, hub: %s", nodeName, srvAddr)
+			attributes := make(pkgconnreg.ConnectionAttributes)
+			attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
+			attributes[pkgnodereg.AttributeKeyNodeName] = nodeName
 
-		if alpha2 := agentCmd.CountryCode; alpha2 != "" {
-			attributes[pkgnodereg.AttributeKeyCountryCode] = alpha2
-		}
-
-		if city := agentCmd.CityName; city != "" {
-			attributes[pkgnodereg.AttributeKeyCityName] = city
-		}
-
-		if asn := agentCmd.ASN; asn != "" {
-			attributes[pkgnodereg.AttributeKeyASN] = asn
-		}
-
-		if isp := agentCmd.ISP; isp != "" {
-			attributes[pkgnodereg.AttributeKeyISP] = isp
-		}
-
-		if dn42asn := agentCmd.DN42ASN; dn42asn != "" {
-			attributes[pkgnodereg.AttributeKeyDN42ASN] = dn42asn
-		}
-
-		if dn42isp := agentCmd.DN42ISP; dn42isp != "" {
-			attributes[pkgnodereg.AttributeKeyDN42ISP] = dn42isp
-		}
-
-		if len(agentCmd.RespondRange) > 0 {
-			attributes[pkgnodereg.AttributeKeyRespondRange] = strings.Join(agentCmd.RespondRange, ",")
-		}
-
-		if len(agentCmd.DomainRespondRange) > 0 {
-			// the domain respond range involved complex regex string literals, so better encode it somehow before transmitting it over the wire.
-			rangesJsonB, err := json.Marshal(agentCmd.DomainRespondRange)
-			if err != nil {
-				log.Fatalf("failed to marshal domain respond range: %v", err)
+			if httpEndpoint := agentCmd.HttpEndpoint; httpEndpoint != "" {
+				log.Printf("Advertising HTTP endpoint: %s", httpEndpoint)
+				attributes[pkgnodereg.AttributeKeyHttpEndpoint] = httpEndpoint
 			}
-			attributes[pkgnodereg.AttributeKeyDomainRespondRange] = string(rangesJsonB)
-		}
 
-		if agentCmd.SupportUDP {
-			attributes[pkgnodereg.AttributeKeySupportUDP] = "true"
-		}
-
-		if agentCmd.SupportPMTU {
-			attributes[pkgnodereg.AttributeKeySupportPMTU] = "true"
-		}
-
-		if agentCmd.SupportTCP {
-			attributes[pkgnodereg.AttributeKeySupportTCP] = "true"
-		}
-
-		if agentCmd.SupportDNS {
-			attributes[pkgnodereg.AttributeKeyDNSProbeCapability] = "true"
-		}
-
-		if agentCmd.QUICServerAddress != "" {
-			attributes[pkgnodereg.AttributeKeySupportQUICTunnel] = "true"
-		}
-
-		versionJ, _ := json.Marshal(sharedCtx.BuildVersion)
-		attributes[pkgnodereg.AttributeKeyVersion] = string(versionJ)
-
-		agent := pkgnodereg.NodeRegistrationAgent{
-			HTTPMuxer:         muxedHandler,
-			ServerAddress:     agentCmd.ServerAddress,
-			QUICServerAddress: agentCmd.QUICServerAddress,
-			UseQUIC:           agentCmd.QUICServerAddress != "",
-			NodeName:          agentCmd.NodeName,
-			ClientCert:        agentCmd.ClientCert,
-			ClientCertKey:     agentCmd.ClientCertKey,
-			TickInterval:      defaultTickInterval,
-			LogEchoReplies:    agentCmd.LogEchoReplies,
-		}
-
-		if customTickIntv := agentCmd.AgentTickInterval; customTickIntv != "" {
-			intv, err := time.ParseDuration(customTickIntv)
-			if err == nil && int64(intv) >= int64(minTickInterval) {
-				agent.TickInterval = intv
+			if exactLoc := agentCmd.ExactLocationLatLon; exactLoc != "" {
+				log.Printf("Advertising exact location: %s", exactLoc)
+				attributes[pkgnodereg.AttributeKeyExactLocation] = exactLoc
 			}
-		}
 
-		agent.NodeAttributes = attributes
-		log.Println("Node attributes will be announced as:", attributes)
+			if alpha2 := agentCmd.CountryCode; alpha2 != "" {
+				log.Printf("Advertising country code: %s", alpha2)
+				attributes[pkgnodereg.AttributeKeyCountryCode] = alpha2
+			}
 
-		log.Println("Initializing node registration agent...")
-		if err = agent.Init(); err != nil {
-			log.Fatalf("Failed to initialize agent: %v", err)
-		}
+			if city := agentCmd.CityName; city != "" {
+				log.Printf("Advertising city name: %s", city)
+				attributes[pkgnodereg.AttributeKeyCityName] = city
+			}
 
-		log.Println("Starting node registration agent...")
+			if asn := agentCmd.ASN; asn != "" {
+				log.Printf("Advertising ASN: %s", asn)
+				attributes[pkgnodereg.AttributeKeyASN] = asn
+			}
 
-		agent.CustomCertPool = customCAs
-		agent.ServerName = agentCmd.ServerName
-		go func() {
-			for {
-				nodeRegAgentErrCh := agent.Run(ctx)
-				if err, ok := <-nodeRegAgentErrCh; ok && err != nil {
-					log.Printf("Node registration agent exited with error: %v, restarting...", err)
-					time.Sleep(3 * time.Second)
-					continue
+			if isp := agentCmd.ISP; isp != "" {
+				log.Printf("Advertising ISP: %s", isp)
+				attributes[pkgnodereg.AttributeKeyISP] = isp
+			}
+
+			if dn42asn := agentCmd.DN42ASN; dn42asn != "" {
+				log.Printf("Advertising DN42 ASN: %s", dn42asn)
+				attributes[pkgnodereg.AttributeKeyDN42ASN] = dn42asn
+			}
+
+			if dn42isp := agentCmd.DN42ISP; dn42isp != "" {
+				log.Printf("Advertising DN42 ISP: %s", dn42isp)
+				attributes[pkgnodereg.AttributeKeyDN42ISP] = dn42isp
+			}
+
+			if len(agentCmd.RespondRange) > 0 {
+				respondRange := strings.Join(agentCmd.RespondRange, ",")
+				log.Printf("Advertising IP respond range: %s", respondRange)
+				attributes[pkgnodereg.AttributeKeyRespondRange] = respondRange
+			}
+
+			if len(agentCmd.DomainRespondRange) > 0 {
+				// the domain respond range involved complex regex string literals, so better encode it somehow before transmitting it over the wire.
+				rangesJsonB, err := json.Marshal(agentCmd.DomainRespondRange)
+				if err != nil {
+					log.Fatalf("failed to marshal domain respond range: %v", err)
 				}
-				log.Println("Node registration agent exited normally")
-				return
+				rangeJSON := string(rangesJsonB)
+				log.Printf("Advertising domain respond range: %s", rangeJSON)
+				attributes[pkgnodereg.AttributeKeyDomainRespondRange] = rangeJSON
 			}
 
-		}()
+			if agentCmd.SupportUDP {
+				attributes[pkgnodereg.AttributeKeySupportUDP] = "true"
+			}
+
+			if agentCmd.SupportPMTU {
+				attributes[pkgnodereg.AttributeKeySupportPMTU] = "true"
+			}
+
+			if agentCmd.SupportTCP {
+				attributes[pkgnodereg.AttributeKeySupportTCP] = "true"
+			}
+
+			if agentCmd.SupportDNS {
+				attributes[pkgnodereg.AttributeKeyDNSProbeCapability] = "true"
+			}
+
+			if quicAddr := agentCmd.QUICServerAddress; quicAddr != "" {
+				attributes[pkgnodereg.AttributeKeySupportQUICTunnel] = "true"
+			}
+
+			versionJ, _ := json.Marshal(sharedCtx.BuildVersion)
+			attributes[pkgnodereg.AttributeKeyVersion] = string(versionJ)
+
+			agent := pkgnodereg.NodeRegistrationAgent{
+				HTTPMuxer:         muxedHandler,
+				ServerAddress:     agentCmd.ServerAddress,
+				QUICServerAddress: agentCmd.QUICServerAddress,
+				UseQUIC:           agentCmd.QUICServerAddress != "",
+				NodeName:          agentCmd.NodeName,
+				ClientCert:        agentCmd.ClientCert,
+				ClientCertKey:     agentCmd.ClientCertKey,
+				LogEchoReplies:    agentCmd.LogEchoReplies,
+				ServerName:        agentCmd.ServerName,
+				CustomCertPool:    customCAs,
+			}
+
+			if token := agentCmd.getJWTToken(); token != "" {
+				agent.Token = &token
+			}
+
+			agent.TickInterval, err = time.ParseDuration(agentCmd.AgentTickInterval)
+			if err != nil {
+				log.Fatalf("failed to parse agent tick interval: %v", err)
+			}
+
+			if customTickIntv := agentCmd.AgentTickInterval; customTickIntv != "" {
+				intv, err := time.ParseDuration(customTickIntv)
+				if err == nil && int64(intv) >= int64(minTickInterval) {
+					agent.TickInterval = intv
+				}
+			}
+			log.Printf("Agent tick interval: %s", agent.TickInterval.String())
+
+			agent.NodeAttributes = attributes
+			log.Println("Node attributes will be announced as:", attributes)
+
+			log.Println("Initializing node registration agent...")
+			if err = agent.Init(); err != nil {
+				log.Fatalf("Failed to initialize agent: %v", err)
+			}
+
+			log.Println("Starting node registration agent...")
+
+			go func() {
+				for {
+					nodeRegAgentErrCh := agent.Run(ctx)
+					if err, ok := <-nodeRegAgentErrCh; ok && err != nil {
+						log.Printf("Node registration agent exited with error: %v, restarting...", err)
+						time.Sleep(3 * time.Second)
+						continue
+					}
+					log.Println("Node registration agent exited normally")
+					return
+				}
+
+			}()
+		}
 	}
 
 	sigs := make(chan os.Signal, 1)
