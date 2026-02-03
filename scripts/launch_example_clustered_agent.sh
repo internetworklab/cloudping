@@ -9,7 +9,7 @@ bin/globalping agent \
   --node-name="vie1" \
   --peer-ca="https://github.com/internetworklab/globalping/raw/refs/heads/master/confed/hub/ca.pem" \
   --server-name="globalping-hub.exploro.one" \
-  --quic-server-address="globalping-hub.exploro.one:18443" \
+  --quic-server-address="globalping-hub.exploro.one:18447" \
   --client-cert="/root/services/globalping/agent/certs/peer.pem" \
   --client-cert-key="/root/services/globalping/agent/certs/peer-key.pem" \
   --exact-location-lat-lon="48.1952,16.3503" \

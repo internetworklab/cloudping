@@ -24,34 +24,28 @@ import (
 var upgrader = websocket.Upgrader{}
 
 type HubCmd struct {
-	PeerCAs       []string `help:"A list of path to the CAs use to verify peer certificates, can be specified multiple times"`
-	Address       string   `help:"The address to listen on for private operations" default:":8080"`
-	AddressPublic string   `help:"The address to listen on for public operations"`
+	PublicHTTPListenAddress  string `name:"public-http-listen-address" help:"The address to listen on for public operations"`
+	WebSocketListenAddress   string `name:"mtls-websocket-listen-address" help:"The address to listen on for private operations" default:":8080"`
+	QUICMTLSListenAddress    string `name:"mtls-quic-listen-address" help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
+	QUICJWTAuthListenAddress string `name:"jwt-quic-listen-address" help:"Address to listen on for JWT authentication"`
 
-	WebSocketPath string `help:"The path to the WebSocket endpoint" default:"/ws"`
+	WebSocketPath    string `help:"The path to the WebSocket upgrade handler" default:"/ws"`
+	WebSocketTimeout string `help:"The timeout for a WebSocket connection" default:"60s"`
 
 	// When the hub is calling functions exposed by the agent, it have to authenticate itself to the agent.
 	ClientCert    string `help:"The path to the client certificate" type:"path"`
 	ClientCertKey string `help:"The path to the client certificate key" type:"path"`
 
 	// Certificates to present to the clients when the hub itself is acting as a server.
-	ServerCert    string `help:"The path to the server certificate" type:"path"`
-	ServerCertKey string `help:"The path to the server certificate key" type:"path"`
+	PeerCA        []string `name:"peer-ca" help:"A list of path to the CAs use to verify peer certificates, can be specified multiple times"`
+	ServerCert    string   `help:"The path to the server certificate" type:"path"`
+	ServerCertKey string   `help:"The path to the server certificate key" type:"path"`
 
 	ResolverAddress         string `help:"The address of the resolver to use for DNS resolution" default:"172.20.0.53:53"`
 	OutOfRespondRangePolicy string `help:"The policy to apply when a target is out of the respond range of a node" enum:"allow,deny" default:"allow"`
-
-	MinPktInterval string `help:"The minimum interval between packets"`
-	MaxPktTimeout  string `help:"The maximum timeout for a packet"`
-
-	PktCountClamp *int `help:"The maximum number of packets to send for a single ping task"`
-
-	WebSocketTimeout  string `help:"The timeout for a WebSocket connection" default:"60s"`
-	QUICListenAddress string `help:"The address to listen on for QUIC" default:"0.0.0.0:18443"`
-
-	JWTAuthListenAddress   string `name:"jwt-auth-listener-address" help:"Address to listen on for JWT authentication"`
-	JWTAuthListenerCert    string `name:"jwt-auth-listener-cert" help:"Server TLS certificate"`
-	JWTAuthListenerCertKey string `name:"jwt-auth-listener-cert-key" help:"Server TLS certificate key"`
+	MinPktInterval          string `help:"The minimum interval between packets"`
+	MaxPktTimeout           string `help:"The maximum timeout for a packet"`
+	PktCountClamp           *int   `help:"The maximum number of packets to send for a single ping task"`
 
 	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
 	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
@@ -88,11 +82,11 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		log.Printf("PktCountClamp is set to %d", *hubCmd.PktCountClamp)
 	}
 
-	customCAs, err := pkgutils.NewCustomCAPool(hubCmd.PeerCAs)
+	customCAs, err := pkgutils.NewCustomCAPool(hubCmd.PeerCA)
 	if err != nil {
 		log.Fatalf("Failed to create custom CA pool: %v", err)
-	} else if len(hubCmd.PeerCAs) > 0 {
-		log.Printf("Appended custom CAs: %s", strings.Join(hubCmd.PeerCAs, ", "))
+	} else if len(hubCmd.PeerCA) > 0 {
+		log.Printf("Appended custom CAs: %s", strings.Join(hubCmd.PeerCA, ", "))
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -132,12 +126,11 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		privateServerSideTLSCfg.ClientCAs = customCAs
 	}
 
-	if hubCmd.QUICListenAddress != "" {
-		quicListener, err := quicGo.ListenAddr(hubCmd.QUICListenAddress, privateServerSideTLSCfg, nil)
+	if listenAddress := hubCmd.QUICMTLSListenAddress; listenAddress != "" {
+		quicListener, err := quicGo.ListenAddr(listenAddress, privateServerSideTLSCfg, nil)
 		if err != nil {
-			log.Fatalf("Failed to listen on UDP address %s: %v", hubCmd.QUICListenAddress, err)
+			log.Fatalf("Failed to listen on UDP address %s: %v", listenAddress, err)
 		}
-		log.Printf("Listening on %s for QUIC operations", hubCmd.QUICListenAddress)
 		quicHandler := pkghandler.QUICHandler{
 			Cr:                cr,
 			Timeout:           wsTimeout,
@@ -145,6 +138,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			ShouldValidateJWT: false,
 		}
 		go quicHandler.Serve()
+		log.Printf("Listening and serving on %s for mtls-authenticated QUIC operations", listenAddress)
 	}
 
 	wsHandler := pkghandler.NewWebsocketHandler(&upgrader, cr, wsTimeout)
@@ -185,15 +179,14 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 
-	if hubCmd.Address != "" {
-		privateListener, err := tls.Listen("tcp", hubCmd.Address, privateServerSideTLSCfg)
+	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {
+		privateListener, err := tls.Listen("tcp", listenAddress, privateServerSideTLSCfg)
 		if err != nil {
-			log.Fatalf("Failed to listen on address %s: %v", hubCmd.Address, err)
+			log.Fatalf("Failed to listen on address %s: %v", listenAddress, err)
 		}
-		log.Printf("Listening on %s for private operations", hubCmd.Address)
 
 		go func() {
-			log.Printf("Starting private server on %s", privateListener.Addr())
+			log.Printf("Listening and serving on %s for private operations from mtls-authenticated websocket", listenAddress)
 			privateServer := http.Server{
 				Handler: muxerPrivate,
 			}
@@ -207,14 +200,13 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	}
 
-	if hubCmd.AddressPublic != "" {
-		publicListener, err := net.Listen("tcp", hubCmd.AddressPublic)
+	if listenAddress := hubCmd.PublicHTTPListenAddress; listenAddress != "" {
+		publicListener, err := net.Listen("tcp", listenAddress)
 		if err != nil {
-			log.Fatalf("Failed to listen on address %s: %v", hubCmd.AddressPublic, err)
+			log.Fatalf("Failed to listen on address %s: %v", listenAddress, err)
 		}
-		log.Printf("Listening on %s for public operations", hubCmd.AddressPublic)
 		go func() {
-			log.Printf("Starting public server on %s", publicListener.Addr())
+			log.Printf("Listening and serving on %s for public operations", listenAddress)
 			publicServer := http.Server{
 				Handler: muxerPublic,
 			}
@@ -228,21 +220,9 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	}
 
-	if listenAddress := hubCmd.JWTAuthListenAddress; listenAddress != "" {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: false,
-			NextProtos:         []string{"h3"},
-		}
-		if certPath := hubCmd.JWTAuthListenerCert; certPath != "" {
-			if keyPath := hubCmd.JWTAuthListenerCertKey; keyPath != "" {
-				cert, err := tls.LoadX509KeyPair(certPath, keyPath)
-				if err != nil {
-					log.Fatalf("Failed to load server certificate for JWT listener: %v", err)
-				}
-				tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
-				log.Printf("Loaded server cert pair from %s and %s for JWT listener", certPath, keyPath)
-			}
-		}
+	if listenAddress := hubCmd.QUICJWTAuthListenAddress; listenAddress != "" {
+		tlsConfig := privateServerSideTLSCfg.Clone()
+		tlsConfig.ClientAuth = tls.NoClientCert
 
 		quicListener, err := quicGo.ListenAddr(listenAddress, tlsConfig, nil)
 		if err != nil {
@@ -261,7 +241,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			ShouldValidateJWT: true,
 		}
 		go quicHandler.Serve()
-		log.Printf("Listening on UDP address %s for JWT-authenticated handlers", quicListener.Addr())
+		log.Printf("Listening and serving on UDP address %s for JWT-authenticated handlers", quicListener.Addr())
 	}
 
 	sig := <-sigs
