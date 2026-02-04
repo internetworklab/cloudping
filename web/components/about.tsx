@@ -19,7 +19,7 @@ export function About(props: { open: boolean; onClose: () => void }) {
     queryKey: ["version", "web"],
     queryFn: () =>
       fetch(
-        process.env?.["NEXT_PUBLIC_WEB_VERSION_TXT"] || "/version.txt"
+        process.env?.["NEXT_PUBLIC_WEB_VERSION_TXT"] || "/version.txt",
       ).then((res) => res.text()),
   });
 
@@ -27,7 +27,7 @@ export function About(props: { open: boolean; onClose: () => void }) {
     queryKey: ["version", "hub"],
     queryFn: () =>
       fetch(
-        (process.env?.["NEXT_PUBLIC_API_ENDPOINT"] || "") + "/version"
+        (process.env?.["NEXT_PUBLIC_API_ENDPOINT"] || "") + "/version",
       ).then((res) => res.json()),
   });
 
@@ -65,7 +65,7 @@ export function About(props: { open: boolean; onClose: () => void }) {
 
   return (
     <Dialog maxWidth="sm" fullWidth open={open} onClose={onClose}>
-      <DialogTitle>About MyGlobalping</DialogTitle>
+      <DialogTitle>About CloudPing</DialogTitle>
       <DialogContent>
         <Box>
           <Typography gutterBottom>Web Version</Typography>

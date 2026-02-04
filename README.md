@@ -1,8 +1,8 @@
-# MyGlobalping
+# CloudPing
 
-MyGlobalping is not [globalping.io](https://globalping.io) (which is more famous and official), nor does it has anything to do with it.
+CloudPing is a web-based ping & traceroute project, providing easy to use interface, helping users to have an intuitive view about miscellaneous network informations like how the IP packets get routed through or how well is the round-trip latency. We believe that publish these network tracing & diagnosis capabilities via cloud is a good idea, hence the name 'CloudPing'.
 
-MyGlobalping is a web-based ping & traceroute project, providing easy to use interface, helping users to have an intuitive view about miscellaneous network informations like how the IP packets get routed through or how well is the round-trip latency.
+This project is mainly a hobby project, and, it has no affiliation with [globalping.io](https://globalping.io) (run by jsDelivr), which is of larger scale and more official.
 
 ## Features
 
@@ -69,7 +69,7 @@ The APIs of the system are not intended to be called directly by end users; only
 
 ## Clustering
 
-MyGlobalping system is designed to be distributed. There is a hub and many agents. The hub and agents communicate through mTLS-protected channels. An agent doesn't talk to other agents but only to the hub, and the hub only talks to agents. There is only one hub in a cluster.
+CloudPing system is designed to be distributed. There is a hub and many agents. The hub and agents communicate through mTLS-protected channels. An agent doesn't talk to other agents but only to the hub, and the hub only talks to agents. There is only one hub in a cluster.
 
 Take a look at [docs/how-to-join.md](docs/how-to-join.md) for how to join a new agent to a cluster. It's no more complicated than just advertising itself to the hub.
 
