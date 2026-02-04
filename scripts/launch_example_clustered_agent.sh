@@ -6,7 +6,11 @@ script_dir=$(dirname $script_path)
 cd $script_dir/..
 
 bin/globalping agent \
-  --node-name="vie1" \
-  --peer-ca="https://github.com/internetworklab/globalping/raw/refs/heads/master/confed/hub/ca.pem" \
-  --quic-server-address="globalping-hub.exploro.one:18448" \
-  --exact-location-lat-lon="48.1952,16.3503" 
+  --node-name="lax1" \
+  --exact-location-lat-lon="48.1952,16.3503" \
+  --country-code="US" \
+  --city-name="Los Angeles" \
+  --asn="AS35916" \
+  --isp="MULTACOM" \
+  --dn42-asn="AS4242421771" \
+  --dn42-isp="DUSTSTARS"

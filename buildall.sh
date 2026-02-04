@@ -9,4 +9,4 @@ cd $script_dir
 docker buildx build \
   --platform linux/arm64,linux/amd64 \
   --push \
-  --tag ghcr.io/internetworklab/globalping:latest .
+  --tag ghcr.io/internetworklab/cloudping:latest .

@@ -45,12 +45,12 @@ type AgentCmd struct {
 
 	// If both the (ws) server address and the QUIC server address are empty, it won't register itself to the hub.
 	ServerAddress     string `help:"WebSocket endpoint of the hub"`
-	QUICServerAddress string `help:"QUIC endpoint of the hub"`
+	QUICServerAddress string `help:"QUIC endpoint of the hub" default:"globalping-hub.exploro.one:18448"`
 
 	// PeerCA are use to verify certs presented by the peer,
 	// For agent, the peer is the hub, for hub, the peer is the agent.
 	// Simply put, PeerCA are what agent is use to verify the hub's cert, and what hub is use to verify the agent's cert.
-	PeerCA []string `name:"peer-ca" help:"PeerCAs are custom CAs use to verify the hub (server)'s certificate, when none are provided, system CAs are used to do the job. PeerCAs are also use to verify the client's certificate when functioning as a server."`
+	PeerCA []string `name:"peer-ca" help:"PeerCAs are custom CAs use to verify the hub (server)'s certificate, when none are provided, system CAs are used to do the job. PeerCAs are also use to verify the client's certificate when functioning as a server." default:"https://github.com/internetworklab/cloudping/raw/refs/heads/master/confed/hub/ca.pem"`
 
 	// Agent will connect to the hub (sometimes), so this is the TLS name (mostly CN field or DNS Alt Name) of the hub.
 	ServerName string `help:"We connect to the server via TLS, this is to verify the server's certificate, at least one of the DNSAltName fields in the server-presented certificate must match this value"`
