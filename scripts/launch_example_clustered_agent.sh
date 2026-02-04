@@ -5,8 +5,6 @@ script_dir=$(dirname $script_path)
 
 cd $script_dir/..
 
-# --server-name="globalping-hub.exploro.one" \
-
 bin/globalping agent \
   --node-name="vie1" \
   --peer-ca="https://github.com/internetworklab/globalping/raw/refs/heads/master/confed/hub/ca.pem" \
