@@ -119,6 +119,8 @@ DN42_ASN=AS4242421234
 DN42_ISP=YOUR-DN42-AS
 ```
 
+Just don't forget to replace the informations in `.env` with that of yours, such as node name (node name must not be conflict with current node names), locations and ASNs.
+
 .env.inside:
 
 ```
