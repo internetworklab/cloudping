@@ -75,10 +75,11 @@ type AgentCmd struct {
 	HTTPListenAddress string `help:"Address to listen on for plaintext HTTP requests, only use this for debugging purposes"`
 
 	// IPInfo/IP2Location related settings
-	DN42IPInfoProvider         string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
-	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider" default:"https://regquery.ping2.sh/ip2location/v1/query"`
-	IPInfoCacheValiditySecs    int    `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600"`
-	IP2LocationAPIEndpoint     string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
+	DN42IPInfoProvider             string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
+	DN42IP2LocationAPIEndpoint     string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider" default:"https://regquery.ping2.sh/ip2location/v1/query"`
+	IPInfoCacheValiditySecs        int    `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600"`
+	IP2LocationAPIEndpoint         string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://ping2.sh/api/proxy/ip2location"`
+	AppendJWTTokenToIP2LocationAPI bool   `name:"append-bearer-header-to-ip2location-requests" help:"Append JWT token to IP2Location API endpoint" default:"true"`
 
 	// Prometheus stuffs
 	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112"`
@@ -283,7 +284,12 @@ func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapte
 	ip2LocationAPIKey := os.Getenv("IP2LOCATION_API_KEY")
 	if ip2LocationEndpoint != "" && ip2LocationAPIKey != "" {
 		log.Printf("Using IP2Location API Service: %s", ip2LocationEndpoint)
-		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey, "ip2location")
+		var extraHeaders http.Header = nil
+		if agentCmd.AppendJWTTokenToIP2LocationAPI {
+			extraHeaders = http.Header{}
+			extraHeaders.Set("Authorization", fmt.Sprintf("Bearer %s", agentCmd.getJWTToken()))
+		}
+		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey, "ip2location", extraHeaders)
 		return ip2LocationIPInfoAdapter, nil
 	}
 
@@ -302,7 +308,7 @@ func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapte
 
 func getDN42IPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, error) {
 	if agentCmd.DN42IP2LocationAPIEndpoint != "" {
-		return pkgipinfo.NewIP2LocationIPInfoAdapter(agentCmd.DN42IP2LocationAPIEndpoint, "", "dn42"), nil
+		return pkgipinfo.NewIP2LocationIPInfoAdapter(agentCmd.DN42IP2LocationAPIEndpoint, "", "dn42", nil), nil
 	}
 
 	return pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider), nil

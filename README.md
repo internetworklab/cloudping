@@ -75,3 +75,5 @@ Take a look at [docs/how-to-join.md](docs/how-to-join.md) for how to join a new 
 
 - Re-write 'how-to-join.md' documentation
 - Then, add a 'Join' link in the home page of ping2.sh / ping.dn42
+- Implement an IP2Location proxy to handle requests from the agents
+

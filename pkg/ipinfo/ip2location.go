@@ -10,16 +10,18 @@ import (
 )
 
 type IP2LocationIPInfoAdapter struct {
-	APIEndpoint string
-	APIKey      string
-	CustomName  string
+	APIEndpoint  string
+	APIKey       string
+	CustomName   string
+	ExtraHeaders http.Header
 }
 
-func NewIP2LocationIPInfoAdapter(apiEndpoint string, apiKey string, customName string) GeneralIPInfoAdapter {
+func NewIP2LocationIPInfoAdapter(apiEndpoint string, apiKey string, customName string, extraHeaders http.Header) GeneralIPInfoAdapter {
 	return &IP2LocationIPInfoAdapter{
-		APIEndpoint: apiEndpoint,
-		APIKey:      apiKey,
-		CustomName:  customName,
+		APIEndpoint:  apiEndpoint,
+		APIKey:       apiKey,
+		CustomName:   customName,
+		ExtraHeaders: extraHeaders,
 	}
 }
 
@@ -54,6 +56,10 @@ func (ia *IP2LocationIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*
 	req, err := http.NewRequestWithContext(ctx, "GET", urlObj.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create http request: %v", err)
+	}
+
+	if ia.ExtraHeaders != nil {
+		req.Header = ia.ExtraHeaders
 	}
 
 	resp, err := http.DefaultClient.Do(req)

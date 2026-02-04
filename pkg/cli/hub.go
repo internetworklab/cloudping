@@ -13,8 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	pkgauth "example.com/rbmq-demo/pkg/auth"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkghandler "example.com/rbmq-demo/pkg/handler"
+	pkgproxy "example.com/rbmq-demo/pkg/proxy"
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/gorilla/websocket"
@@ -169,6 +171,17 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		PktCountClamp:           hubCmd.PktCountClamp,
 	}
 
+	jwtSec, err := hubCmd.getJWTSecret()
+	if err != nil {
+		return fmt.Errorf("failed to get JWT secret: %v", err)
+	}
+
+	var proxyHandler http.Handler = &pkgproxy.IP2LocationProxyHandler{
+		BackendEndpoint: "https://api.ip2location.io/v2/",
+		APIKey:          os.Getenv("IP2LOCATION_API_KEY"),
+	}
+	proxyHandler = pkgauth.WithJWTAuth(proxyHandler, jwtSec)
+
 	// muxerPrivate is for privileged rw operations
 	muxerPrivate := http.NewServeMux()
 	muxerPrivate.Handle(hubCmd.WebSocketPath, wsHandler)
@@ -178,6 +191,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/conns", connsHandler)
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
+	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
 
 	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {
 		privateListener, err := tls.Listen("tcp", listenAddress, privateServerSideTLSCfg)
@@ -229,10 +243,6 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Fatalf("Failed to listen on UDP address %s: %v", listenAddress, err)
 		}
 
-		jwtSec, err := hubCmd.getJWTSecret()
-		if err != nil {
-			log.Fatalf("Failed to load JWT secret: %v", err)
-		}
 		quicHandler := pkghandler.QUICHandler{
 			Cr:                cr,
 			Timeout:           wsTimeout,
