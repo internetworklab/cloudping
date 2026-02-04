@@ -2,8 +2,6 @@
 
 CloudPing is a web-based ping & traceroute project, providing easy to use interface, helping users to have an intuitive view about miscellaneous network informations like how the IP packets get routed through or how well is the round-trip latency. We believe that publish these network tracing & diagnosis capabilities via cloud is a good idea, hence the name 'CloudPing'.
 
-This project is mainly a hobby project, and, it has no affiliation with [globalping.io](https://globalping.io) (run by jsDelivr), which is of larger scale and more official.
-
 ## Features
 
 - Ping, Traceroute (UDP flavor or ICMP flavor)
