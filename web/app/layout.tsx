@@ -17,6 +17,7 @@ import LightModeIcon from "@mui/icons-material/LightMode";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import ContrastIcon from "@mui/icons-material/Contrast";
 import { firstLetterCap } from "@/components/strings";
+import { useSiteName } from "@/components/sitename";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -123,10 +124,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { siteName } = useSiteName();
   return (
     <html lang="en">
       <head>
-        <title key="mytitle">MyGlobalping</title>
+        <title key="mytitle">{siteName}</title>
         <meta
           key="mydescription"
           name="description"

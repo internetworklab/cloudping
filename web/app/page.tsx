@@ -39,6 +39,7 @@ import { About } from "@/components/about";
 import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 import TelegramIcon from "@mui/icons-material/Telegram";
 import { testIP } from "@/components/testip";
+import { SiteName } from "@/components/sitename";
 
 const fakeSources: SourceOption[] = [
   {
@@ -184,7 +185,9 @@ export default function Home() {
                   flexWrap: "wrap",
                 }}
               >
-                <Typography variant="h6">MyGlobalping</Typography>
+                <Typography variant="h6">
+                  <SiteName />
+                </Typography>
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
                 {!!dn42GeoIPRepo && (
