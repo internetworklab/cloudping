@@ -16,19 +16,40 @@ import (
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Please note, sensitive data such as token are provided via env, not presented in the command line.
 type BotCmd struct {
-	ListenAddress  string `help:"Address to listen on." type:"string" default:":8083"`
-	PublicEndpoint string `help:"Public endpoint of the bot." type:"string"`
+	ListenAddress         string `help:"Address to listen on." type:"string" default:":8083"`
+	PublicEndpoint        string `help:"Public endpoint of the bot." type:"string"`
+	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
+	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
 }
 
+func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
+	return getJWTSecFromSomewhere(botCmd.JWTAuthSecretFromEnv, botCmd.JWTAuthSecretFromFile)
+}
+
+type CtxKey string
+
+const (
+	CtxKeyJWTSecret = CtxKey("jwt_secret")
+)
+
 func (botCmd *BotCmd) Run() error {
+
+	secret, err := botCmd.getJWTSecret()
+	if err != nil {
+		return fmt.Errorf("failed to get JWT secret: %v", err)
+	}
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	ctx = context.WithValue(ctx, CtxKeyJWTSecret, secret)
 
 	botToken := os.Getenv("TG_BOT_TOKEN")
 	if botToken == "" {
@@ -45,7 +66,7 @@ func (botCmd *BotCmd) Run() error {
 	}
 
 	opts := []bot.Option{
-		bot.WithDefaultHandler(handler),
+		bot.WithDefaultHandler(handleDefault),
 		bot.WithWebhookSecretToken(tgWebSocketSecret),
 	}
 
@@ -68,9 +89,10 @@ func (botCmd *BotCmd) Run() error {
 	startedAt := time.Now()
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
 
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), startHandler)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), pingHandler)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), uptimeHandler)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), handleStart)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), handlePing)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), handleUptime)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), handleToken)
 
 	go b.StartWebhook(ctx)
 
@@ -101,7 +123,7 @@ func (botCmd *BotCmd) Run() error {
 	return nil
 }
 
-func handler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func handleDefault(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		if update.Message.Chat.Type == models.ChatTypePrivate {
 			// private message
@@ -120,7 +142,7 @@ func handler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 }
 
-func startHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		if update.Message.Chat.Type == models.ChatTypePrivate {
 			b.SendMessage(ctx, &bot.SendMessageParams{
@@ -131,7 +153,7 @@ func startHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 }
 
-func pingHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		txt := "Pong!"
 		b.SendMessage(ctx, &bot.SendMessageParams{
@@ -148,7 +170,7 @@ func pingHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 }
 
-func uptimeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+func handleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		startedAt := ctx.Value(pkgutils.CtxKeyStartedAt).(time.Time)
 		uptime := time.Since(startedAt)
@@ -164,5 +186,60 @@ func uptimeHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 				},
 			},
 		})
+	}
+}
+
+func getSubjectFromMessage(message *models.Message) string {
+	if message.Chat.Type == models.ChatTypePrivate {
+		return message.Chat.Username
+	} else if message.Chat.Type == models.ChatTypeGroup || message.Chat.Type == models.ChatTypeSupergroup {
+		return message.Chat.Title
+	}
+	return ""
+}
+
+func handleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
+	secret := ctx.Value(CtxKeyJWTSecret).([]byte)
+	if secret == nil {
+		panic("JWT secret is not set")
+	}
+
+	if update.Message != nil {
+		if update.Message.Chat.Type == models.ChatTypePrivate {
+			issuer := "globalping-hub"
+			subject := getSubjectFromMessage(update.Message)
+			if subject == "" {
+				b.SendMessage(ctx, &bot.SendMessageParams{
+					ChatID: update.Message.Chat.ID,
+					Text:   "Error: Failed to get subject from message",
+				})
+				return
+			}
+			subject = fmt.Sprintf("telegram:@%s", subject)
+
+			tokenId := uuid.New().String()
+
+			tokenObject := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+				Issuer:   issuer,
+				Subject:  subject,
+				IssuedAt: jwt.NewNumericDate(time.Now()),
+				ID:       tokenId,
+			})
+
+			tokenString, err := tokenObject.SignedString(secret)
+			if err != nil {
+				b.SendMessage(ctx, &bot.SendMessageParams{
+					ChatID: update.Message.Chat.ID,
+					Text:   fmt.Sprintf("Error: Failed to sign token: %v", err.Error()),
+				})
+				return
+			}
+
+			b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   fmt.Sprintf("Token: %s", tokenString),
+			})
+			defer log.Printf("issued token for %s, token id: %s", subject, tokenId)
+		}
 	}
 }
