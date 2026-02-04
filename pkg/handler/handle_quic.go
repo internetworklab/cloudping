@@ -12,6 +12,7 @@ import (
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgframing "example.com/rbmq-demo/pkg/framing"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	quicGo "github.com/quic-go/quic-go"
 )
 
@@ -91,14 +92,14 @@ func (h *QUICHandler) Serve() {
 			return
 		}
 		log.Printf("Accepted QUIC connection: %p %s", conn, conn.RemoteAddr())
-		go h.Handle(conn)
+		key := uuid.New().String()
+		go h.Handle(conn, key)
 	}
 }
 
-func (h *QUICHandler) Handle(conn *quicGo.Conn) {
+func (h *QUICHandler) Handle(conn *quicGo.Conn, remoteKey string) {
 	cr := h.Cr
 
-	remoteKey := conn.RemoteAddr().String()
 	cr.OpenConnection(remoteKey, conn)
 	log.Printf("Connection opened for %s, total connections: %d", remoteKey, cr.Count())
 

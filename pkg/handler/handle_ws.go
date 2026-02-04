@@ -9,6 +9,7 @@ import (
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgframing "example.com/rbmq-demo/pkg/framing"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -26,14 +27,18 @@ func NewWebsocketHandler(upgrader *websocket.Upgrader, cr *pkgconnreg.ConnRegist
 	}
 }
 
-func handleTextMessage(conn *websocket.Conn, cr *pkgconnreg.ConnRegistry, msg []byte) error {
+func (handler *WebsocketHandler) handleTextMessage(key string, conn *websocket.Conn, msg []byte) error {
+	cr := handler.cr
+	if cr == nil {
+		return fmt.Errorf("connection registry is not set")
+	}
+
 	var payload pkgframing.MessagePayload
 	err := json.Unmarshal(msg, &payload)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal message from %s: %v", conn.RemoteAddr(), err)
+		return fmt.Errorf("failed to unmarshal message from %s: %v", key, err)
 	}
 
-	key := conn.RemoteAddr().String()
 	if payload.Register != nil {
 		cr.Register(key, *payload.Register, nil)
 	}
@@ -51,11 +56,11 @@ func handleTextMessage(conn *websocket.Conn, cr *pkgconnreg.ConnRegistry, msg []
 			}
 			responseJSON, err := json.Marshal(responsePayload)
 			if err != nil {
-				return fmt.Errorf("failed to marshal response payload for %s: %v", conn.RemoteAddr(), err)
+				return fmt.Errorf("failed to marshal response payload for %s: %v", key, err)
 			}
 			err = conn.WriteMessage(websocket.TextMessage, responseJSON)
 			if err != nil {
-				return fmt.Errorf("failed to write response message to %s: %v", conn.RemoteAddr(), err)
+				return fmt.Errorf("failed to write response message to %s: %v", key, err)
 			}
 		}
 	}
@@ -74,18 +79,18 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteKey := conn.RemoteAddr().String()
+	remoteKey := uuid.New().String()
 	cr.OpenConnection(remoteKey, nil)
-	log.Printf("Connection opened for %s, total connections: %d", conn.RemoteAddr(), cr.Count())
+	log.Printf("Connection opened for %s, total connections: %d", remoteKey, cr.Count())
 
 	defer func() {
-		log.Printf("Closing WebSocket connection: %s", conn.RemoteAddr())
+		log.Printf("Closing WebSocket connection: %s", remoteKey)
 		err := conn.Close()
 		if err != nil {
-			log.Printf("Failed to close WebSocket connection for %s: %v", conn.RemoteAddr(), err)
+			log.Printf("Failed to close WebSocket connection for %s: %v", remoteKey, err)
 		}
 		cr.CloseConnection(remoteKey)
-		log.Printf("Connection closed for %s, remaining connections: %d", conn.RemoteAddr(), cr.Count())
+		log.Printf("Connection closed for %s, remaining connections: %d", remoteKey, cr.Count())
 	}()
 
 	var gcTimer *time.Timer = nil
@@ -106,29 +111,29 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
-				connErrCh <- fmt.Errorf("failed to read message from %s: %v", conn.RemoteAddr(), err)
+				connErrCh <- fmt.Errorf("failed to read message from %s: %v", remoteKey, err)
 				break
 			}
 
 			switch msgType {
 			case websocket.TextMessage:
-				if err := handleTextMessage(conn, cr, msg); err != nil {
-					log.Printf("Failed to handle text message from %s: %v", conn.RemoteAddr(), err)
+				if err := h.handleTextMessage(remoteKey, conn, msg); err != nil {
+					log.Printf("Failed to handle text message from %s: %v", remoteKey, err)
 					continue
 				}
 				gcTimer.Reset(h.timeout)
 			default:
-				log.Printf("Received unknown message type from %s: %d", conn.RemoteAddr(), msgType)
+				log.Printf("Received unknown message type from %s: %d", remoteKey, msgType)
 			}
 		}
 	}()
 
 	select {
 	case <-gcTimer.C:
-		log.Printf("Garbage collection timeout for %s, closing connection", conn.RemoteAddr())
+		log.Printf("Garbage collection timeout for %s, closing connection", remoteKey)
 	case err := <-connErrCh:
 		if err != nil {
-			log.Printf("Connection error for %s: %v", conn.RemoteAddr(), err)
+			log.Printf("Connection error for %s: %v", remoteKey, err)
 		}
 	}
 }
