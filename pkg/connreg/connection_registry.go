@@ -47,14 +47,22 @@ func (echopayload *EchoPayload) CalculateDelays(now time.Time) (rtt time.Duratio
 
 type ConnectionAttributes map[string]string
 
+type AuthenticationType string
+
+const (
+	AuthenticationTypeJWT  AuthenticationType = "jwt"
+	AuthenticationTypeMTLS AuthenticationType = "mtls"
+)
+
 type ConnRegistryData struct {
-	NodeName      *string              `json:"node_name,omitempty"`
-	ConnectedAt   uint64               `json:"connected_at"`
-	RegisteredAt  *uint64              `json:"registered_at,omitempty"`
-	LastHeartbeat *uint64              `json:"last_heartbeat,omitempty"`
-	Attributes    ConnectionAttributes `json:"attributes,omitempty"`
-	QUICConn      *quicGo.Conn         `json:"-"`
-	Claims        jwt.MapClaims        `json:"claims,omitempty"`
+	NodeName       *string              `json:"node_name,omitempty"`
+	ConnectedAt    uint64               `json:"connected_at"`
+	RegisteredAt   *uint64              `json:"registered_at,omitempty"`
+	LastHeartbeat  *uint64              `json:"last_heartbeat,omitempty"`
+	Attributes     ConnectionAttributes `json:"attributes,omitempty"`
+	QUICConn       *quicGo.Conn         `json:"-"`
+	Claims         jwt.MapClaims        `json:"-"`
+	Authentication AuthenticationType   `json:"authentication"`
 }
 
 func (regData *ConnRegistryData) Clone() *ConnRegistryData {
@@ -113,7 +121,14 @@ func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims jwt
 		}
 		entry.NodeName = &payload.NodeName
 		entry.RegisteredAt = &now
-		entry.Claims = claims
+
+		if claims != nil {
+			entry.Claims = claims
+			entry.Authentication = AuthenticationTypeJWT
+		} else {
+			entry.Authentication = AuthenticationTypeMTLS
+		}
+
 		return nil
 	})
 
