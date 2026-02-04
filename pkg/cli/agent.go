@@ -281,8 +281,8 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, error) {
 	ip2LocationEndpoint := agentCmd.IP2LocationAPIEndpoint
-	ip2LocationAPIKey := os.Getenv("IP2LOCATION_API_KEY")
-	if ip2LocationEndpoint != "" && ip2LocationAPIKey != "" {
+	if ip2LocationEndpoint != "" {
+		ip2LocationAPIKey := os.Getenv("IP2LOCATION_API_KEY")
 		log.Printf("Using IP2Location API Service: %s", ip2LocationEndpoint)
 		var extraHeaders http.Header = nil
 		if agentCmd.AppendJWTTokenToIP2LocationAPI {

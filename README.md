@@ -65,11 +65,67 @@ A client certificate pair is required for calling the agent's API endpoint, whic
 
 The APIs of the system are not intended to be called directly by end users; only developers should do that.
 
-## Clustering
+## Join Agent
 
-CloudPing system is designed to be distributed. There is a hub and many agents. The hub and agents communicate through mTLS-protected channels. An agent doesn't talk to other agents but only to the hub, and the hub only talks to agents. There is only one hub in a cluster.
+To run your cloudping agent and join our cluster, prepare three files:
 
-Take a look at [docs/how-to-join.md](docs/how-to-join.md) for how to join a new agent to a cluster. It's no more complicated than just advertising itself to the hub.
+docker-compose.yaml:
+
+```
+networks:
+  globalping:
+    name: globalping
+    enable_ipv6: false
+    ipam:
+      driver: default
+      config:
+        - subnet: "${SUBNET_OVERRIDE}"
+services:
+  agent:
+    container_name: globalping-agent
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:${VERSION}
+    working_dir: /app/globalping
+    networks:
+      - globalping
+    volumes:
+      - "./.env.inside:/app/globalping/.env:ro" # .env.inside has some sensitive data, such as apikeys for invoking third-party services.
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--node-name=${NODE_NAME}"
+      - "--exact-location-lat-lon=${EXACT_LOCATION_LAT_LON}"
+      - "--country-code=${ALPHA2}"
+      - "--city-name=${CITY}"
+      - "--asn=${ASN}"
+      - "--isp=${ISP}"
+      - "--dn42-asn=${DN42_ASN}"
+      - "--dn42-isp=${DN42_ISP}"
+    mem_limit: 256m
+```
+
+.env:
+
+```
+NODE_NAME=nue1
+SUBNET_OVERRIDE=192.168.253.0/30
+EXACT_LOCATION_LAT_LON=48.1952,16.3503
+VERSION=latest
+ALPHA2=AT
+CITY=Vienna
+ASN=AS197540
+ISP=netcup GmbH
+DN42_ASN=AS4242421234
+DN42_ISP=YOUR-DN42-AS
+```
+
+.env.inside:
+
+```
+JWT_TOKEN=<jwt_token>
+```
+
+Gra the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
 
 ## Todos
 

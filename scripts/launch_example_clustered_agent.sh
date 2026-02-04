@@ -6,8 +6,6 @@ script_dir=$(dirname $script_path)
 cd $script_dir/..
 
 bin/globalping agent \
-  --ip2location-api-endpoint="http://localhost:8084/proxy/ip2location" \
-  --append-bearer-header-to-ip2location-requests="true" \
   --node-name="lax1" \
   --exact-location-lat-lon="48.1952,16.3503" \
   --country-code="US" \
