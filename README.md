@@ -127,4 +127,4 @@ Just don't forget to replace the informations in `.env` with that of yours, such
 JWT_TOKEN=<jwt_token>
 ```
 
-Gra the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
+Grab the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
