@@ -126,10 +126,3 @@ JWT_TOKEN=<jwt_token>
 ```
 
 Gra the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
-
-## Todos
-
-- Re-write 'how-to-join.md' documentation
-- Then, add a 'Join' link in the home page of ping2.sh / ping.dn42
-- Implement an IP2Location proxy to handle requests from the agents
-
