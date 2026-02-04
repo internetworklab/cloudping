@@ -76,7 +76,7 @@ type AgentCmd struct {
 
 	// IPInfo/IP2Location related settings
 	DN42IPInfoProvider         string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
-	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider"`
+	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider" default:"https://regquery.ping2.sh/ip2location/v1/query"`
 	IPInfoCacheValiditySecs    int    `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600"`
 	IP2LocationAPIEndpoint     string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://api.ip2location.io/v2/"`
 
@@ -85,10 +85,10 @@ type AgentCmd struct {
 	MetricsPath          string `help:"Path of the Prometheus metrics endpoint, e.g. /metrics" default:"/metrics"`
 
 	// Bonus features
-	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"false"`
-	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"false"`
-	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"false"`
-	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"false"`
+	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"true"`
+	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"true"`
+	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"true"`
+	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"true"`
 
 	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`

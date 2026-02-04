@@ -73,4 +73,5 @@ Take a look at [docs/how-to-join.md](docs/how-to-join.md) for how to join a new 
 
 ## Todos
 
-- Multiple Hub instances for High-Availability
+- Re-write 'how-to-join.md' documentation
+- Then, add a 'Join' link in the home page of ping2.sh / ping.dn42
