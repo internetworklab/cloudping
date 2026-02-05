@@ -128,3 +128,8 @@ JWT_TOKEN=<jwt_token>
 ```
 
 Grab the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
+
+## Todo List
+
+- HTTP Probe (http/1.1, http/2, http/3)
+- Key Revocation List
