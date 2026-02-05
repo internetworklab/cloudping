@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ const (
 	TransportEventNameMethod               = "method"
 	TransportEventNameURL                  = "url"
 	TransportEventNameProto                = "proto"
+	TransportEventNameRequestLine          = "request-line"
 	TransportEventNameStatus               = "status"
 	TransportEventNameSize                 = "size"
 	TransportEventNameRequestHeadersStart  = "request-headers-start"
@@ -75,6 +77,11 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		Type:  TransportEventTypeRequest,
 		Name:  TransportEventNameProto,
 		Value: req.Proto,
+	}
+	t.eventChan <- TransportEvent{
+		Type:  TransportEventTypeRequest,
+		Name:  TransportEventNameRequestLine,
+		Value: fmt.Sprintf("%s %s %s", req.Method, req.URL.RequestURI(), req.Proto),
 	}
 
 	// 2. Log Request Headers
@@ -153,7 +160,15 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 const defaultBufSize = 1024
 
-func sendRequest(ctx context.Context, url string, extraHeaders http.Header) (<-chan TransportEvent, <-chan error) {
+type HTTPProto string
+
+const (
+	HTTPProtoHTTP1 HTTPProto = "http/1.1"
+	HTTPProtoHTTP2 HTTPProto = "http/2"
+	HTTPProtoHTTP3 HTTPProto = "http/3"
+)
+
+func sendRequest(ctx context.Context, url string, extraHeaders http.Header, httpProto HTTPProto) (<-chan TransportEvent, <-chan error) {
 
 	eventChan := make(chan TransportEvent)
 	errChan := make(chan error)
@@ -168,8 +183,36 @@ func sendRequest(ctx context.Context, url string, extraHeaders http.Header) (<-c
 			return
 		}
 
+		defaultTransport = defaultTransport.Clone()
+		if defaultTransport.Protocols == nil {
+			defaultTransport.Protocols = &http.Protocols{}
+		}
+
+		defaultTransport.TLSClientConfig = &tls.Config{
+			NextProtos: []string{"http/1.1"},
+		}
+
+		defaultTransport.Protocols.SetHTTP1(false)
+		defaultTransport.Protocols.SetHTTP2(false)
+		defaultTransport.Protocols.SetUnencryptedHTTP2(false)
+		defaultTransport.ForceAttemptHTTP2 = false
+
+		switch httpProto {
+		case HTTPProtoHTTP1:
+			defaultTransport.Protocols.SetHTTP1(true)
+			defaultTransport.ForceAttemptHTTP2 = false
+		case HTTPProtoHTTP2:
+			defaultTransport.Protocols.SetHTTP2(true)
+			defaultTransport.ForceAttemptHTTP2 = true
+			defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
+		case HTTPProtoHTTP3:
+			panic("HTTP/3 is not supported")
+		default:
+			panic("Invalid HTTP protocol")
+		}
+
 		customTransport := &loggingTransport{
-			underlyingTransport: defaultTransport.Clone(),
+			underlyingTransport: defaultTransport,
 			eventChan:           eventChan,
 			errChan:             errChan,
 		}
@@ -231,7 +274,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
 	defer cancel()
 
-	eventChan, errChan := sendRequest(ctx, url, headers)
+	eventChan, errChan := sendRequest(ctx, url, headers, HTTPProtoHTTP2)
 
 	log.Println("Starting to listen for events")
 	for {
