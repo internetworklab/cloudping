@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
 
 type TransportEventType string
@@ -55,7 +57,7 @@ func (e *TransportEvent) String() string {
 
 // loggingTransport wraps an existing http.RoundTripper
 type loggingTransport struct {
-	underlyingTransport *http.Transport
+	underlyingTransport http.RoundTripper
 	eventChan           chan<- TransportEvent
 	errChan             <-chan error
 }
@@ -168,6 +170,45 @@ const (
 	HTTPProtoHTTP3 HTTPProto = "http/3"
 )
 
+func getTransport(httpProto HTTPProto) (http.RoundTripper, error) {
+	// Clone the system's default transport
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("Could not cast http.DefaultTransport to *http.Transport")
+
+	}
+
+	defaultTransport = defaultTransport.Clone()
+	if defaultTransport.Protocols == nil {
+		defaultTransport.Protocols = &http.Protocols{}
+	}
+
+	defaultTransport.TLSClientConfig = &tls.Config{
+		NextProtos: []string{"http/1.1"},
+	}
+
+	defaultTransport.Protocols.SetHTTP1(false)
+	defaultTransport.Protocols.SetHTTP2(false)
+	defaultTransport.Protocols.SetUnencryptedHTTP2(false)
+	defaultTransport.ForceAttemptHTTP2 = false
+
+	switch httpProto {
+	case HTTPProtoHTTP1:
+		defaultTransport.Protocols.SetHTTP1(true)
+		defaultTransport.ForceAttemptHTTP2 = false
+	case HTTPProtoHTTP2:
+		defaultTransport.Protocols.SetHTTP2(true)
+		defaultTransport.ForceAttemptHTTP2 = true
+		defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
+	case HTTPProtoHTTP3:
+		tr := &quicHTTP3.Transport{}
+		return tr, nil
+	default:
+		panic("Invalid HTTP protocol")
+	}
+	return defaultTransport, nil
+}
+
 func sendRequest(ctx context.Context, url string, extraHeaders http.Header, httpProto HTTPProto) (<-chan TransportEvent, <-chan error) {
 
 	eventChan := make(chan TransportEvent)
@@ -176,39 +217,10 @@ func sendRequest(ctx context.Context, url string, extraHeaders http.Header, http
 		defer close(eventChan)
 		defer close(errChan)
 
-		// Clone the system's default transport
-		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-		if !ok {
-			errChan <- fmt.Errorf("Could not cast http.DefaultTransport to *http.Transport")
+		defaultTransport, err := getTransport(httpProto)
+		if err != nil {
+			errChan <- err
 			return
-		}
-
-		defaultTransport = defaultTransport.Clone()
-		if defaultTransport.Protocols == nil {
-			defaultTransport.Protocols = &http.Protocols{}
-		}
-
-		defaultTransport.TLSClientConfig = &tls.Config{
-			NextProtos: []string{"http/1.1"},
-		}
-
-		defaultTransport.Protocols.SetHTTP1(false)
-		defaultTransport.Protocols.SetHTTP2(false)
-		defaultTransport.Protocols.SetUnencryptedHTTP2(false)
-		defaultTransport.ForceAttemptHTTP2 = false
-
-		switch httpProto {
-		case HTTPProtoHTTP1:
-			defaultTransport.Protocols.SetHTTP1(true)
-			defaultTransport.ForceAttemptHTTP2 = false
-		case HTTPProtoHTTP2:
-			defaultTransport.Protocols.SetHTTP2(true)
-			defaultTransport.ForceAttemptHTTP2 = true
-			defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
-		case HTTPProtoHTTP3:
-			panic("HTTP/3 is not supported")
-		default:
-			panic("Invalid HTTP protocol")
 		}
 
 		customTransport := &loggingTransport{
@@ -274,7 +286,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
 	defer cancel()
 
-	eventChan, errChan := sendRequest(ctx, url, headers, HTTPProtoHTTP2)
+	eventChan, errChan := sendRequest(ctx, url, headers, HTTPProtoHTTP3)
 
 	log.Println("Starting to listen for events")
 	for {
