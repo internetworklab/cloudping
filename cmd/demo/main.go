@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -34,13 +32,15 @@ const (
 	TransportEventNameProto                = "proto"
 	TransportEventNameRequestLine          = "request-line"
 	TransportEventNameStatus               = "status"
-	TransportEventNameSize                 = "size"
+	TransportEventNameTransferEncoding     = "transfer-encoding"
+	TransportEventNameContentLength        = "content-length"
 	TransportEventNameRequestHeadersStart  = "request-headers-start"
 	TransportEventNameRequestHeadersEnd    = "request-headers-end"
 	TransportEventNameResponseHeadersStart = "response-headers-start"
 	TransportEventNameResponseHeadersEnd   = "response-headers-end"
 	TransportEventNameBodyStart            = "body-start"
 	TransportEventNameBodyEnd              = "body-end"
+	TransportEventNameBodyBytesRead        = "body-bytes-read"
 	TransportEventNameBodyChunkBase64      = "body-chunk-base64"
 )
 
@@ -139,23 +139,16 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		Value: "---- End Response Headers ----",
 	}
 
-	// 3. Log Response Size
-	// Note: We must read the body to get the size. To ensure the caller
-	// can still read the body, we must "reset" it after reading.
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	resp.Body.Close() // Close the original body
-
 	t.eventChan <- TransportEvent{
 		Type:  TransportEventTypeResponse,
-		Name:  TransportEventNameSize,
-		Value: fmt.Sprintf("%d", len(bodyBytes)),
+		Name:  TransportEventNameTransferEncoding,
+		Value: strings.Join(resp.TransferEncoding, " "),
 	}
-
-	// Restore the body for the caller to read
-	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	t.eventChan <- TransportEvent{
+		Type:  TransportEventTypeResponse,
+		Name:  TransportEventNameContentLength,
+		Value: fmt.Sprintf("%d", resp.ContentLength),
+	}
 
 	return resp, nil
 }
@@ -209,7 +202,17 @@ func getTransport(httpProto HTTPProto) (http.RoundTripper, error) {
 	return defaultTransport, nil
 }
 
-func sendRequest(ctx context.Context, url string, extraHeaders http.Header, httpProto HTTPProto) (<-chan TransportEvent, <-chan error) {
+type HTTPProbe struct {
+	URL          string
+	ExtraHeaders http.Header
+	Proto        HTTPProto
+	SizeLimit    *int64
+}
+
+func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <-chan error) {
+	url := probe.URL
+	extraHeaders := probe.ExtraHeaders
+	httpProto := probe.Proto
 
 	eventChan := make(chan TransportEvent)
 	errChan := make(chan error)
@@ -247,14 +250,28 @@ func sendRequest(ctx context.Context, url string, extraHeaders http.Header, http
 			return
 		}
 
-		bufSize := defaultBufSize
-		buf := make([]byte, bufSize)
 		eventChan <- TransportEvent{
 			Type:  TransportEventTypeMetadata,
 			Name:  TransportEventNameBodyStart,
 			Value: "---- Start Response Body ----",
 		}
+		var sizeLimit int64 = 0
+		if probe.SizeLimit != nil {
+			sizeLimit = *probe.SizeLimit
+		}
+		var bodyBytesRead int64 = 0
 		for {
+			var bufSize int64 = defaultBufSize
+			if probe.SizeLimit != nil {
+				remainCapacity := sizeLimit - bodyBytesRead
+				if remainCapacity >= 0 && bufSize >= remainCapacity {
+					bufSize = remainCapacity
+				}
+			}
+			if bufSize <= 0 {
+				break
+			}
+			buf := make([]byte, bufSize)
 			n, err := resp.Body.Read(buf)
 			if err != nil {
 				break
@@ -265,11 +282,21 @@ func sendRequest(ctx context.Context, url string, extraHeaders http.Header, http
 				Name:  TransportEventNameBodyChunkBase64,
 				Value: base64.StdEncoding.EncodeToString(buf[:n]),
 			}
+
+			bodyBytesRead += int64(n)
+			if probe.SizeLimit != nil && bodyBytesRead >= sizeLimit {
+				break
+			}
 		}
 		eventChan <- TransportEvent{
 			Type:  TransportEventTypeResponse,
 			Name:  TransportEventNameBodyEnd,
 			Value: "---- End Response Body ----",
+		}
+		eventChan <- TransportEvent{
+			Type:  TransportEventTypeResponse,
+			Name:  TransportEventNameBodyBytesRead,
+			Value: fmt.Sprintf("%d", bodyBytesRead),
 		}
 
 	}(ctx)
@@ -286,7 +313,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
 	defer cancel()
 
-	eventChan, errChan := sendRequest(ctx, url, headers, HTTPProtoHTTP3)
+	readLimit := int64(2097)
+	probe := HTTPProbe{
+		URL:          url,
+		ExtraHeaders: headers,
+		Proto:        HTTPProtoHTTP3,
+		SizeLimit:    &readLimit,
+	}
+	eventChan, errChan := sendRequest(ctx, probe)
 
 	log.Println("Starting to listen for events")
 	for {
