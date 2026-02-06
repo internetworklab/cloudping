@@ -27,21 +27,24 @@ const (
 type TransportEventName string
 
 const (
-	TransportEventNameMethod               = "method"
-	TransportEventNameURL                  = "url"
-	TransportEventNameProto                = "proto"
-	TransportEventNameRequestLine          = "request-line"
-	TransportEventNameStatus               = "status"
-	TransportEventNameTransferEncoding     = "transfer-encoding"
-	TransportEventNameContentLength        = "content-length"
-	TransportEventNameRequestHeadersStart  = "request-headers-start"
-	TransportEventNameRequestHeadersEnd    = "request-headers-end"
-	TransportEventNameResponseHeadersStart = "response-headers-start"
-	TransportEventNameResponseHeadersEnd   = "response-headers-end"
-	TransportEventNameBodyStart            = "body-start"
-	TransportEventNameBodyEnd              = "body-end"
-	TransportEventNameBodyBytesRead        = "body-bytes-read"
-	TransportEventNameBodyChunkBase64      = "body-chunk-base64"
+	TransportEventNameMethod                        = "method"
+	TransportEventNameURL                           = "url"
+	TransportEventNameProto                         = "proto"
+	TransportEventNameRequestLine                   = "request-line"
+	TransportEventNameStatus                        = "status"
+	TransportEventNameTransferEncoding              = "transfer-encoding"
+	TransportEventNameContentLength                 = "content-length"
+	TransportEventNameRequestHeadersStart           = "request-headers-start"
+	TransportEventNameRequestHeadersEnd             = "request-headers-end"
+	TransportEventNameResponseHeadersStart          = "response-headers-start"
+	TransportEventNameResponseHeadersEnd            = "response-headers-end"
+	TransportEventNameSkipMalformedResponseHeader   = "skip-malformed-response-header"
+	TransportEventNameResponseHeaderFieldsTruncated = "response-header-fields-truncated"
+	TransportEventNameBodyStart                     = "body-start"
+	TransportEventNameBodyEnd                       = "body-end"
+	TransportEventNameBodyBytesRead                 = "body-bytes-read"
+	TransportEventNameBodyChunkBase64               = "body-chunk-base64"
+	TransportEventNameBodyReadTruncated             = "body-read-truncated"
 )
 
 type TransportEvent struct {
@@ -60,7 +63,10 @@ type loggingTransport struct {
 	underlyingTransport http.RoundTripper
 	eventChan           chan<- TransportEvent
 	errChan             <-chan error
+	headerFieldsLimit   *int
 }
+
+const maxHeaderFieldSize = 4 * 1024
 
 // RoundTrip implements the http.RoundTripper interface
 func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -126,11 +132,33 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		Name:  TransportEventNameResponseHeadersStart,
 		Value: "---- Start Response Headers ----",
 	}
-	for name, values := range resp.Header {
-		t.eventChan <- TransportEvent{
-			Type:  TransportEventTypeResponseHeader,
-			Name:  TransportEventName(name),
-			Value: strings.Join(values, " "),
+	numHeaderFieldsRead := 0
+	if t.headerFieldsLimit == nil || (t.headerFieldsLimit != nil && *t.headerFieldsLimit > 0) {
+		for name, values := range resp.Header {
+
+			val := strings.Join(values, " ")
+			if len(name)+len(val) > maxHeaderFieldSize {
+				t.eventChan <- TransportEvent{
+					Type:  TransportEventTypeMetadata,
+					Name:  TransportEventNameSkipMalformedResponseHeader,
+					Value: fmt.Sprintf("maxHeaderFieldSize=%d", maxHeaderFieldSize),
+				}
+				continue
+			}
+			t.eventChan <- TransportEvent{
+				Type:  TransportEventTypeResponseHeader,
+				Name:  TransportEventName(name),
+				Value: strings.Join(values, " "),
+			}
+			numHeaderFieldsRead++
+			if t.headerFieldsLimit != nil && numHeaderFieldsRead >= *t.headerFieldsLimit {
+				t.eventChan <- TransportEvent{
+					Type:  TransportEventTypeMetadata,
+					Name:  TransportEventNameResponseHeaderFieldsTruncated,
+					Value: fmt.Sprintf("read=%d,limit=%d", numHeaderFieldsRead, *t.headerFieldsLimit),
+				}
+				break
+			}
 		}
 	}
 	t.eventChan <- TransportEvent{
@@ -168,7 +196,6 @@ func getTransport(httpProto HTTPProto) (http.RoundTripper, error) {
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("Could not cast http.DefaultTransport to *http.Transport")
-
 	}
 
 	defaultTransport = defaultTransport.Clone()
@@ -207,6 +234,9 @@ type HTTPProbe struct {
 	ExtraHeaders http.Header
 	Proto        HTTPProto
 	SizeLimit    *int64
+
+	// limit the number of response headers fields, too many header fields will be ignored
+	NumHeadersFieldsLimit *int
 }
 
 func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <-chan error) {
@@ -230,6 +260,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 			underlyingTransport: defaultTransport,
 			eventChan:           eventChan,
 			errChan:             errChan,
+			headerFieldsLimit:   probe.NumHeadersFieldsLimit,
 		}
 
 		// Create a client using the custom transport
@@ -285,6 +316,11 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 
 			bodyBytesRead += int64(n)
 			if probe.SizeLimit != nil && bodyBytesRead >= sizeLimit {
+				eventChan <- TransportEvent{
+					Type:  TransportEventTypeResponse,
+					Name:  TransportEventNameBodyReadTruncated,
+					Value: fmt.Sprintf("read=%d,limit=%d", bodyBytesRead, sizeLimit),
+				}
 				break
 			}
 		}
@@ -313,12 +349,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
 	defer cancel()
 
-	readLimit := int64(2097)
+	maxHeadersFields := 100
+	responseSizeLimit := int64(4 * 1024)
 	probe := HTTPProbe{
-		URL:          url,
-		ExtraHeaders: headers,
-		Proto:        HTTPProtoHTTP3,
-		SizeLimit:    &readLimit,
+		URL:                   url,
+		ExtraHeaders:          headers,
+		Proto:                 HTTPProtoHTTP3,
+		NumHeadersFieldsLimit: &maxHeadersFields,
+		SizeLimit:             &responseSizeLimit,
 	}
 	eventChan, errChan := sendRequest(ctx, probe)
 
