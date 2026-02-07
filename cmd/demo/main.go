@@ -7,17 +7,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	quicGo "github.com/quic-go/quic-go"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
 
 type TransportEventType string
 
 const (
+	TransportEventTypeConnection     = "connection"
 	TransportEventTypeRequest        = "request"
 	TransportEventTypeRequestHeader  = "request-header"
 	TransportEventTypeResponse       = "response"
@@ -31,6 +34,9 @@ const (
 	TransportEventNameMethod                        = "method"
 	TransportEventNameURL                           = "url"
 	TransportEventNameProto                         = "proto"
+	TransportEventNameDialStarted                   = "dial-started"
+	TransportEventNameDialCompleted                 = "dial-completed"
+	TransportEventNameDialError                     = "dial-error"
 	TransportEventNameRequestLine                   = "request-line"
 	TransportEventNameStatus                        = "status"
 	TransportEventNameTransferEncoding              = "transfer-encoding"
@@ -78,6 +84,10 @@ func NewLogger(evChan chan<- TransportEvent) *Logger {
 	return &Logger{
 		evChan: evChan,
 	}
+}
+
+func (lg *Logger) Close() {
+	close(lg.evChan)
 }
 
 func (lg *Logger) Log(Type TransportEventType, Name TransportEventName, Value string) {
@@ -147,16 +157,58 @@ const (
 	HTTPProtoHTTP3 HTTPProto = "http/3"
 )
 
-func getTransport(httpProto HTTPProto) (http.RoundTripper, error) {
+func defaultTransportDialContext(dialer *net.Dialer) func(context.Context, string, string) (net.Conn, error) {
+	return dialer.DialContext
+}
+
+func getHTTP3Transport(logger *Logger) (*quicHTTP3.Transport, error) {
+	tr := &quicHTTP3.Transport{}
+
+	dialFunc := func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quicGo.Config) (*quicGo.Conn, error) {
+		nw := "quic"
+		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", nw, addr))
+		conn, err := quicGo.DialAddr(ctx, addr, tlsCfg, cfg)
+		if err != nil {
+			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
+		} else {
+			logger.Log(TransportEventTypeConnection, TransportEventNameDialCompleted, fmt.Sprintf("network=%s,addr=%s,remoteAddr=%+v,localAddr=%+v", nw, addr, conn.RemoteAddr(), conn.LocalAddr()))
+		}
+		return conn, err
+	}
+	tr.Dial = dialFunc
+
+	return tr, nil
+}
+
+func getTransport(httpProto HTTPProto, logger *Logger) (http.RoundTripper, error) {
 	// Clone the system's default transport
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("Could not cast http.DefaultTransport to *http.Transport")
 	}
 
+	if defaultTransport.DialContext == nil {
+		defaultTransport.DialContext = defaultTransportDialContext(&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		})
+	}
+	originDialContext := defaultTransport.DialContext
+
 	defaultTransport = defaultTransport.Clone()
 	if defaultTransport.Protocols == nil {
 		defaultTransport.Protocols = &http.Protocols{}
+	}
+
+	defaultTransport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", network, addr))
+		conn, err := originDialContext(ctx, network, addr)
+		if err != nil {
+			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
+		} else {
+			logger.Log(TransportEventTypeConnection, TransportEventNameDialCompleted, fmt.Sprintf("network=%s,addr=%s,remoteAddr=%+v,localAddr=%+v", network, addr, conn.RemoteAddr(), conn.LocalAddr()))
+		}
+		return conn, err
 	}
 
 	defaultTransport.TLSClientConfig = &tls.Config{
@@ -177,8 +229,7 @@ func getTransport(httpProto HTTPProto) (http.RoundTripper, error) {
 		defaultTransport.ForceAttemptHTTP2 = true
 		defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
 	case HTTPProtoHTTP3:
-		tr := &quicHTTP3.Transport{}
-		return tr, nil
+		return getHTTP3Transport(logger)
 	default:
 		panic("Invalid HTTP protocol")
 	}
@@ -203,16 +254,18 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 	eventChan := make(chan TransportEvent)
 	errChan := make(chan error)
 	go func(ctx context.Context) {
-		defer close(eventChan)
+
 		defer close(errChan)
 
-		defaultTransport, err := getTransport(httpProto)
+		logger := NewLogger(eventChan)
+		defer logger.Close()
+
+		defaultTransport, err := getTransport(httpProto, logger)
 		if err != nil {
 			errChan <- err
 			return
 		}
 
-		logger := NewLogger(eventChan)
 		customTransport := &loggingTransport{
 			underlyingTransport: defaultTransport,
 			errChan:             errChan,
