@@ -511,7 +511,7 @@ function RenderPingSampleToText(props: {
     if (sample.ttl !== undefined && sample.ttl !== null) {
       segs.push(`ttl=${sample.ttl}`);
     }
-    return <Fragment>{segs.join(" ")}</Fragment>;
+    return <Box>{segs.join(" ")}</Box>;
   }
   const segs: string[] = [];
   if (sample.receivedSize !== undefined && sample.receivedSize !== null) {
