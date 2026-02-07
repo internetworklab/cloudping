@@ -6,13 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	quicGo "github.com/quic-go/quic-go"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
@@ -41,6 +42,7 @@ const (
 	TransportEventNameStatus                        = "status"
 	TransportEventNameTransferEncoding              = "transfer-encoding"
 	TransportEventNameContentLength                 = "content-length"
+	TransportEventNameContentType                   = "content-type"
 	TransportEventNameRequestHeadersStart           = "request-headers-start"
 	TransportEventNameRequestHeadersEnd             = "request-headers-end"
 	TransportEventNameResponseHeadersStart          = "response-headers-start"
@@ -59,6 +61,12 @@ type TransportEvent struct {
 	Name  TransportEventName
 	Value string
 	Date  time.Time
+}
+
+type Event struct {
+	Transport     *TransportEvent `json:"transport,omitempty"`
+	Error         string          `json:"error,omitempty"`
+	CorrelationID string
 }
 
 func (e *TransportEvent) String() string {
@@ -143,6 +151,7 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	t.logger.Log(TransportEventTypeResponse, TransportEventNameTransferEncoding, strings.Join(resp.TransferEncoding, " "))
 	t.logger.Log(TransportEventTypeResponse, TransportEventNameContentLength, fmt.Sprintf("%d", resp.ContentLength))
+	t.logger.Log(TransportEventTypeResponse, TransportEventNameContentType, resp.Header.Get("Content-Type"))
 
 	return resp, nil
 }
@@ -244,6 +253,41 @@ type HTTPProbe struct {
 
 	// limit the number of response headers fields, too many header fields will be ignored
 	NumHeadersFieldsLimit *int
+
+	CorrelationID string
+}
+
+func (probe *HTTPProbe) Do(ctx context.Context) <-chan Event {
+
+	outEVChan := make(chan Event)
+
+	go func(ctx context.Context) {
+		eventChan, errChan := sendRequest(ctx, *probe)
+		defer close(outEVChan)
+
+		for {
+			select {
+			case ev, ok := <-eventChan:
+				if !ok {
+					return
+				}
+				outEVChan <- Event{
+					Transport:     &ev,
+					CorrelationID: probe.CorrelationID,
+				}
+			case err, ok := <-errChan:
+				if !ok {
+					return
+				}
+				outEVChan <- Event{
+					Error:         err.Error(),
+					CorrelationID: probe.CorrelationID,
+				}
+			}
+		}
+	}(ctx)
+
+	return outEVChan
 }
 
 func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <-chan error) {
@@ -335,10 +379,6 @@ func main() {
 	headers.Set("User-Agent", "Go-Demo-Client/1.0")
 	url := "https://www.google.com/robots.txt"
 
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
-	defer cancel()
-
 	maxHeadersFields := 100
 	responseSizeLimit := int64(4 * 1024)
 	probe := HTTPProbe{
@@ -347,24 +387,14 @@ func main() {
 		Proto:                 HTTPProtoHTTP3,
 		NumHeadersFieldsLimit: &maxHeadersFields,
 		SizeLimit:             &responseSizeLimit,
+		CorrelationID:         uuid.New().String(),
 	}
-	eventChan, errChan := sendRequest(ctx, probe)
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 3000*time.Millisecond)
+	defer cancel()
 
-	log.Println("Starting to listen for events")
-	for {
-		select {
-		case ev, ok := <-eventChan:
-			if !ok {
-				log.Println("Event channel closed")
-				return
-			}
-			log.Println("Event: ", ev.String())
-		case err, ok := <-errChan:
-			if !ok {
-				log.Println("Error channel closed")
-				return
-			}
-			log.Println("Err: ", err.Error())
-		}
+	encoder := json.NewEncoder(os.Stdout)
+	for ev := range probe.Do(ctx) {
+		encoder.Encode(ev)
 	}
 }
