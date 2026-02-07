@@ -17,7 +17,7 @@ volumes:
 services:
   web:
     container_name: globalping-web
-    image: ghcr.io/internetworklab/globalping-web:latest
+    image: ghcr.io/internetworklab/cloudping-web:latest
     pull_policy: always
     ports:
       - "45843:80"

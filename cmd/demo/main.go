@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ type TransportEvent struct {
 	Type  TransportEventType
 	Name  TransportEventName
 	Value string
+	Date  time.Time
 }
 
 func (e *TransportEvent) String() string {
@@ -61,55 +63,46 @@ func (e *TransportEvent) String() string {
 // loggingTransport wraps an existing http.RoundTripper
 type loggingTransport struct {
 	underlyingTransport http.RoundTripper
-	eventChan           chan<- TransportEvent
 	errChan             <-chan error
 	headerFieldsLimit   *int
+	logger              *Logger
 }
 
 const maxHeaderFieldSize = 4 * 1024
 
+type Logger struct {
+	evChan chan<- TransportEvent
+}
+
+func NewLogger(evChan chan<- TransportEvent) *Logger {
+	return &Logger{
+		evChan: evChan,
+	}
+}
+
+func (lg *Logger) Log(Type TransportEventType, Name TransportEventName, Value string) {
+	lg.evChan <- TransportEvent{
+		Type:  Type,
+		Name:  Name,
+		Value: Value,
+		Date:  time.Now(),
+	}
+}
+
 // RoundTrip implements the http.RoundTripper interface
 func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// 1. Log Request Line: Method, URL, and Protocol
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeRequest,
-		Name:  TransportEventNameMethod,
-		Value: req.Method,
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeRequest,
-		Name:  TransportEventNameURL,
-		Value: req.URL.String(),
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeRequest,
-		Name:  TransportEventNameProto,
-		Value: req.Proto,
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeRequest,
-		Name:  TransportEventNameRequestLine,
-		Value: fmt.Sprintf("%s %s %s", req.Method, req.URL.RequestURI(), req.Proto),
-	}
+	t.logger.Log(TransportEventTypeRequest, TransportEventNameMethod, req.Method)
+	t.logger.Log(TransportEventTypeRequest, TransportEventNameURL, req.URL.String())
+	t.logger.Log(TransportEventTypeRequest, TransportEventNameProto, req.Proto)
+	t.logger.Log(TransportEventTypeRequest, TransportEventNameRequestLine, fmt.Sprintf("%s %s %s", req.Method, req.URL.RequestURI(), req.Proto))
 
 	// 2. Log Request Headers
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeMetadata,
-		Name:  TransportEventNameRequestHeadersStart,
-		Value: "---- Start Request Headers ----",
-	}
+	t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersStart, "---- Start Request Headers ----")
 	for name, values := range req.Header {
-		t.eventChan <- TransportEvent{
-			Type:  TransportEventTypeRequestHeader,
-			Name:  TransportEventName(name),
-			Value: strings.Join(values, " "),
-		}
+		t.logger.Log(TransportEventTypeRequestHeader, TransportEventName(name), strings.Join(values, " "))
 	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeMetadata,
-		Name:  TransportEventNameRequestHeadersEnd,
-		Value: "---- End Request Headers ----",
-	}
+	t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersEnd, "---- End Request Headers ----")
 
 	// Execute the actual request using the underlying transport
 	resp, err := t.underlyingTransport.RoundTrip(req)
@@ -117,66 +110,29 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		return nil, err
 	}
 
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeResponse,
-		Name:  TransportEventNameProto,
-		Value: resp.Proto,
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeResponse,
-		Name:  TransportEventNameStatus,
-		Value: fmt.Sprintf("%d %s", resp.StatusCode, resp.Status),
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeMetadata,
-		Name:  TransportEventNameResponseHeadersStart,
-		Value: "---- Start Response Headers ----",
-	}
+	t.logger.Log(TransportEventTypeResponse, TransportEventNameProto, resp.Proto)
+	t.logger.Log(TransportEventTypeResponse, TransportEventNameStatus, fmt.Sprintf("%d %s", resp.StatusCode, resp.Status))
+	t.logger.Log(TransportEventTypeMetadata, TransportEventNameResponseHeadersStart, "---- Start Response Headers ----")
 	numHeaderFieldsRead := 0
 	if t.headerFieldsLimit == nil || (t.headerFieldsLimit != nil && *t.headerFieldsLimit > 0) {
 		for name, values := range resp.Header {
-
 			val := strings.Join(values, " ")
 			if len(name)+len(val) > maxHeaderFieldSize {
-				t.eventChan <- TransportEvent{
-					Type:  TransportEventTypeMetadata,
-					Name:  TransportEventNameSkipMalformedResponseHeader,
-					Value: fmt.Sprintf("maxHeaderFieldSize=%d", maxHeaderFieldSize),
-				}
+				t.logger.Log(TransportEventTypeMetadata, TransportEventNameSkipMalformedResponseHeader, fmt.Sprintf("maxHeaderFieldSize=%d", maxHeaderFieldSize))
 				continue
 			}
-			t.eventChan <- TransportEvent{
-				Type:  TransportEventTypeResponseHeader,
-				Name:  TransportEventName(name),
-				Value: strings.Join(values, " "),
-			}
+			t.logger.Log(TransportEventTypeResponseHeader, TransportEventName(name), strings.Join(values, " "))
 			numHeaderFieldsRead++
 			if t.headerFieldsLimit != nil && numHeaderFieldsRead >= *t.headerFieldsLimit {
-				t.eventChan <- TransportEvent{
-					Type:  TransportEventTypeMetadata,
-					Name:  TransportEventNameResponseHeaderFieldsTruncated,
-					Value: fmt.Sprintf("read=%d,limit=%d", numHeaderFieldsRead, *t.headerFieldsLimit),
-				}
+				t.logger.Log(TransportEventTypeMetadata, TransportEventNameResponseHeaderFieldsTruncated, fmt.Sprintf("read=%d,limit=%d", numHeaderFieldsRead, *t.headerFieldsLimit))
 				break
 			}
 		}
 	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeMetadata,
-		Name:  TransportEventNameResponseHeadersEnd,
-		Value: "---- End Response Headers ----",
-	}
+	t.logger.Log(TransportEventTypeMetadata, TransportEventNameResponseHeadersEnd, "---- End Response Headers ----")
 
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeResponse,
-		Name:  TransportEventNameTransferEncoding,
-		Value: strings.Join(resp.TransferEncoding, " "),
-	}
-	t.eventChan <- TransportEvent{
-		Type:  TransportEventTypeResponse,
-		Name:  TransportEventNameContentLength,
-		Value: fmt.Sprintf("%d", resp.ContentLength),
-	}
+	t.logger.Log(TransportEventTypeResponse, TransportEventNameTransferEncoding, strings.Join(resp.TransferEncoding, " "))
+	t.logger.Log(TransportEventTypeResponse, TransportEventNameContentLength, fmt.Sprintf("%d", resp.ContentLength))
 
 	return resp, nil
 }
@@ -256,11 +212,12 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 			return
 		}
 
+		logger := NewLogger(eventChan)
 		customTransport := &loggingTransport{
 			underlyingTransport: defaultTransport,
-			eventChan:           eventChan,
 			errChan:             errChan,
 			headerFieldsLimit:   probe.NumHeadersFieldsLimit,
+			logger:              logger,
 		}
 
 		// Create a client using the custom transport
@@ -281,11 +238,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 			return
 		}
 
-		eventChan <- TransportEvent{
-			Type:  TransportEventTypeMetadata,
-			Name:  TransportEventNameBodyStart,
-			Value: "---- Start Response Body ----",
-		}
+		logger.Log(TransportEventTypeMetadata, TransportEventNameBodyStart, "---- Start Response Body ----")
 		var sizeLimit int64 = 0
 		if probe.SizeLimit != nil {
 			sizeLimit = *probe.SizeLimit
@@ -308,32 +261,16 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 				break
 			}
 
-			eventChan <- TransportEvent{
-				Type:  TransportEventTypeResponse,
-				Name:  TransportEventNameBodyChunkBase64,
-				Value: base64.StdEncoding.EncodeToString(buf[:n]),
-			}
+			logger.Log(TransportEventTypeResponse, TransportEventNameBodyChunkBase64, base64.StdEncoding.EncodeToString(buf[:n]))
 
 			bodyBytesRead += int64(n)
 			if probe.SizeLimit != nil && bodyBytesRead >= sizeLimit {
-				eventChan <- TransportEvent{
-					Type:  TransportEventTypeResponse,
-					Name:  TransportEventNameBodyReadTruncated,
-					Value: fmt.Sprintf("read=%d,limit=%d", bodyBytesRead, sizeLimit),
-				}
+				logger.Log(TransportEventTypeResponse, TransportEventNameBodyReadTruncated, fmt.Sprintf("read=%d,limit=%d", bodyBytesRead, sizeLimit))
 				break
 			}
 		}
-		eventChan <- TransportEvent{
-			Type:  TransportEventTypeResponse,
-			Name:  TransportEventNameBodyEnd,
-			Value: "---- End Response Body ----",
-		}
-		eventChan <- TransportEvent{
-			Type:  TransportEventTypeResponse,
-			Name:  TransportEventNameBodyBytesRead,
-			Value: fmt.Sprintf("%d", bodyBytesRead),
-		}
+		logger.Log(TransportEventTypeResponse, TransportEventNameBodyEnd, "---- End Response Body ----")
+		logger.Log(TransportEventTypeResponse, TransportEventNameBodyBytesRead, strconv.FormatInt(bodyBytesRead, 10))
 
 	}(ctx)
 
