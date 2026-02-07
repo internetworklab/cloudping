@@ -66,7 +66,7 @@ type TransportEvent struct {
 type Event struct {
 	Transport     *TransportEvent `json:"transport,omitempty"`
 	Error         string          `json:"error,omitempty"`
-	CorrelationID string
+	CorrelationID string          `json:"correlation_id"`
 }
 
 func (e *TransportEvent) String() string {
