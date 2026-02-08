@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -20,6 +21,7 @@ import (
 
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkghandler "example.com/rbmq-demo/pkg/handler"
+	pkghttpprobe "example.com/rbmq-demo/pkg/httpprobe"
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
 	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
@@ -203,32 +205,115 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	ipPref := "ip"
+	if pingRequest.PreferV6 != nil && *pingRequest.PreferV6 {
+		ipPref = "ip6"
+	} else if pingRequest.PreferV4 != nil && *pingRequest.PreferV4 {
+		ipPref = "ip4"
+	}
+	lookupIP := func(host string, resolverEndpoint *string) ([]net.IP, error) {
+		resolver := net.DefaultResolver
+		if pingRequest.Resolver != nil && *pingRequest.Resolver != "" {
+			resolver = pkgutils.NewCustomResolver(pingRequest.Resolver, 10*time.Second)
+		}
+
+		if resolverEndpoint != nil && *resolverEndpoint != "" {
+			resolver = pkgutils.NewCustomResolver(resolverEndpoint, 10*time.Second)
+		}
+
+		return resolver.LookupIP(ctx, ipPref, host)
+	}
+
 	var pinger pkgpinger.Pinger = nil
-	if pingRequest.L7PacketType != nil && *pingRequest.L7PacketType == pkgpinger.L7ProtoDNS {
-		dnsServers := make([]string, 0)
-		dnsServerIPs := make([]net.IP, 0)
-		for _, tgt := range pingRequest.DNSTargets {
+	if pingRequest.L7PacketType != nil {
+		switch *pingRequest.L7PacketType {
+		case pkgpinger.L7ProtoDNS:
+			dnsServers := make([]string, 0)
+			for _, tgt := range pingRequest.DNSTargets {
 
-			dnsServerIP, err := getHost(tgt.AddrPort)
-			if err != nil {
-				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("failed to parse dns server ip from addrport: %s: %v", tgt.AddrPort, err)})
-				return
+				dnsServerIP, err := getHost(tgt.AddrPort)
+				if err != nil {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("failed to parse dns server ip from addrport: %s: %v", tgt.AddrPort, err)})
+					return
+				}
+
+				if len(ph.RespondRange) > 0 && !pkgutils.CheckIntersectIP(dnsServerIP, ph.RespondRange) {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("dns server ip %s is not in the respond range", dnsServerIP.String()).Error()})
+					return
+				}
+
+				dnsServers = append(dnsServers, tgt.AddrPort)
 			}
-			dnsServerIPs = append(dnsServerIPs, dnsServerIP)
-			dnsServers = append(dnsServers, tgt.AddrPort)
-		}
 
-		if len(ph.RespondRange) > 0 && !pkgutils.CheckIntersect(dnsServerIPs, ph.RespondRange) {
-			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("dns server ips are not in the respond range").Error()})
-			return
-		}
+			// when in dns mode, we are mainly sending packets to dns servers, so, set targets to dns servers
+			commonLabels[pkgmyprom.PromLabelTarget] = strings.Join(dnsServers, ",")
 
-		// when in dns mode, we are mainly sending packets to dns servers, so, set targets to dns servers
-		commonLabels[pkgmyprom.PromLabelTarget] = strings.Join(dnsServers, ",")
+			pinger = &pkgpinger.DNSPinger{
+				Requests:    pingRequest.DNSTargets,
+				RateLimiter: rateLimiterUsed,
+			}
+		case pkgpinger.L7ProtoHTTP:
+			httpUrls := make([]string, 0)
+			httpPinger := &pkgpinger.HTTPPinger{
+				Requests:    make([]pkghttpprobe.HTTPProbe, 0),
+				RateLimiter: rateLimiterUsed,
+			}
+			for _, tgt := range pingRequest.HTTPTargets {
+				urlObj, err := url.Parse(tgt.URL)
+				if err != nil {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to parse http url %s: %v", tgt.URL, err).Error()})
+					return
+				}
 
-		pinger = &pkgpinger.DNSPinger{
-			Requests:    pingRequest.DNSTargets,
-			RateLimiter: rateLimiterUsed,
+				host := urlObj.Hostname()
+				if len(ph.DomainRespondRange) > 0 && !pkgutils.CheckDomainInRange(host, ph.DomainRespondRange) {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("host %s does not match any pattern in the domain respond range", host).Error()})
+					return
+				}
+
+				resolverEndpoint := pingRequest.Resolver
+				if tgt.Resolver != nil && *tgt.Resolver != "" {
+					resolverEndpoint = tgt.Resolver
+				}
+
+				if tgt.Resolver == nil || *tgt.Resolver == "" {
+					tgt.Resolver = resolverEndpoint
+				}
+
+				if len(ph.RespondRange) > 0 {
+					if tgt.Resolver != nil {
+						resolverIP := net.ParseIP(*tgt.Resolver)
+						if resolverIP == nil {
+							json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to parse resolver ip from string: %s", *tgt.Resolver).Error()})
+							return
+						}
+						if !pkgutils.CheckIntersectIP(resolverIP, ph.RespondRange) {
+							json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("resolver ip %s is not in the respond range", resolverIP.String()).Error()})
+							return
+						}
+					}
+
+					ips, err := lookupIP(host, resolverEndpoint)
+					if err != nil {
+						json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to lookup ip for host %s: %v", host, err).Error()})
+						return
+					}
+					if !pkgutils.CheckIntersect(ips, ph.RespondRange) {
+						json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("ips %v are not in the respond range", ips).Error()})
+						return
+					}
+				}
+
+				if tgt.ExtraHeaders == nil {
+					tgt.ExtraHeaders = make(http.Header)
+				}
+				if tgt.ExtraHeaders.Get("User-Agent") == "" {
+					tgt.ExtraHeaders.Set("User-Agent", "cloudping/1.0")
+				}
+				httpPinger.Requests = append(httpPinger.Requests, tgt)
+				httpUrls = append(httpUrls, tgt.URL)
+			}
+			pinger = httpPinger
 		}
 	} else if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
 		tcpingPinger := &pkgpinger.TCPSYNPinger{

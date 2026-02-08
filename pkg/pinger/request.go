@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
+	pkghttpprobe "example.com/rbmq-demo/pkg/httpprobe"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 )
 
@@ -26,7 +27,8 @@ const (
 type L7PacketTypeOption string
 
 const (
-	L7ProtoDNS L7PacketTypeOption = "dns"
+	L7ProtoDNS  L7PacketTypeOption = "dns"
+	L7ProtoHTTP L7PacketTypeOption = "http"
 )
 
 type SimplePingRequest struct {
@@ -47,6 +49,7 @@ type SimplePingRequest struct {
 	L4PacketType *L4PacketTypeOption
 	L7PacketType *L7PacketTypeOption
 	DNSTargets   []pkgdnsprobe.LookupParameter
+	HTTPTargets  []pkghttpprobe.HTTPProbe
 
 	// Take effect only when L3PacketType is 'udp'
 	UDPDstPort *int

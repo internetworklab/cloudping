@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	pkgutils "example.com/rbmq-demo/pkg/utils"
 	quicGo "github.com/quic-go/quic-go"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
@@ -20,6 +21,7 @@ type TransportEventType string
 
 const (
 	TransportEventTypeConnection     = "connection"
+	TransportEventTypeDNSLookup      = "dns-lookup"
 	TransportEventTypeRequest        = "request"
 	TransportEventTypeRequestHeader  = "request-header"
 	TransportEventTypeResponse       = "response"
@@ -35,6 +37,9 @@ const (
 	TransportEventNameProto                         = "proto"
 	TransportEventNameDialStarted                   = "dial-started"
 	TransportEventNameDialCompleted                 = "dial-completed"
+	TransportEventNameDNSLookupStarted              = "dns-lookup-started"
+	TransportEventNameDNSLookupCompleted            = "dns-lookup-completed"
+	TransportEventNameDNSLookupError                = "dns-lookup-error"
 	TransportEventNameDialError                     = "dial-error"
 	TransportEventNameRequestLine                   = "request-line"
 	TransportEventNameStatus                        = "status"
@@ -114,11 +119,13 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	t.logger.Log(TransportEventTypeRequest, TransportEventNameRequestLine, fmt.Sprintf("%s %s %s", req.Method, req.URL.RequestURI(), req.Proto))
 
 	// 2. Log Request Headers
-	t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersStart, "---- Start Request Headers ----")
-	for name, values := range req.Header {
-		t.logger.Log(TransportEventTypeRequestHeader, TransportEventName(name), strings.Join(values, " "))
+	if req.Header != nil && len(req.Header) > 0 {
+		t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersStart, "---- Start Request Headers ----")
+		for name, values := range req.Header {
+			t.logger.Log(TransportEventTypeRequestHeader, TransportEventName(name), strings.Join(values, " "))
+		}
+		t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersEnd, "---- End Request Headers ----")
 	}
-	t.logger.Log(TransportEventTypeMetadata, TransportEventNameRequestHeadersEnd, "---- End Request Headers ----")
 
 	// Execute the actual request using the underlying transport
 	resp, err := t.underlyingTransport.RoundTrip(req)
@@ -168,13 +175,57 @@ func defaultTransportDialContext(dialer *net.Dialer) func(context.Context, strin
 	return dialer.DialContext
 }
 
-func getHTTP3Transport(logger *Logger) (*quicHTTP3.Transport, error) {
+func doDNSLookup(ctx context.Context, logger *Logger, resolver *net.Resolver, network string, addr string, pref *InetFamilyPreference) (string, error) {
+	prefUsed := "ip"
+	if pref != nil {
+		prefUsed = string(*pref)
+	}
+	logger.Log(TransportEventTypeDNSLookup, TransportEventNameDNSLookupStarted, fmt.Sprintf("network=%s,addr=%s,pref=%s", network, addr, prefUsed))
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		err := fmt.Errorf("failed to split host and port from addr: %s: %v", addr, err)
+		logger.Log(TransportEventTypeDNSLookup, TransportEventNameDNSLookupError, err.Error())
+		return "", err
+	}
+
+	ips, err := resolver.LookupIP(ctx, prefUsed, host)
+	if err != nil {
+		err := fmt.Errorf("failed to lookup ip from host %s: %v", host, err)
+		logger.Log(TransportEventTypeDNSLookup, TransportEventNameDNSLookupError, err.Error())
+		return "", err
+	}
+
+	if len(ips) == 0 {
+		err := fmt.Errorf("no ip found for host %s", host)
+		logger.Log(TransportEventTypeDNSLookup, TransportEventNameDNSLookupError, err.Error())
+		return "", err
+	}
+
+	ipStrings := make([]string, 0)
+	for _, ip := range ips {
+		ipStrings = append(ipStrings, ip.String())
+	}
+	usedIP := ips[0]
+	reJoinedAddr := net.JoinHostPort(usedIP.String(), port)
+	logger.Log(TransportEventTypeDNSLookup, TransportEventNameDNSLookupCompleted, fmt.Sprintf("network=%s,addr=%s,ips=%v,usedIP=%s,usedAddr=%s", network, addr, strings.Join(ipStrings, " "), usedIP.String(), reJoinedAddr))
+
+	return reJoinedAddr, nil
+}
+
+func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference) (*quicHTTP3.Transport, error) {
 	tr := &quicHTTP3.Transport{}
 
 	dialFunc := func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quicGo.Config) (*quicGo.Conn, error) {
 		nw := "quic"
 		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", nw, addr))
-		conn, err := quicGo.DialAddr(ctx, addr, tlsCfg, cfg)
+
+		reJoinedAddr, err := doDNSLookup(ctx, logger, resolver, nw, addr, pref)
+		if err != nil {
+			return nil, err
+		}
+
+		conn, err := quicGo.DialAddr(ctx, reJoinedAddr, tlsCfg, cfg)
 		if err != nil {
 			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
 		} else {
@@ -187,7 +238,7 @@ func getHTTP3Transport(logger *Logger) (*quicHTTP3.Transport, error) {
 	return tr, nil
 }
 
-func getTransport(httpProto HTTPProto, logger *Logger) (http.RoundTripper, error) {
+func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference) (http.RoundTripper, error) {
 	// Clone the system's default transport
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -209,7 +260,13 @@ func getTransport(httpProto HTTPProto, logger *Logger) (http.RoundTripper, error
 
 	defaultTransport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", network, addr))
-		conn, err := originDialContext(ctx, network, addr)
+
+		reJoinedAddr, err := doDNSLookup(ctx, logger, resolver, network, addr, pref)
+		if err != nil {
+			return nil, err
+		}
+
+		conn, err := originDialContext(ctx, network, reJoinedAddr)
 		if err != nil {
 			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
 		} else {
@@ -236,18 +293,30 @@ func getTransport(httpProto HTTPProto, logger *Logger) (http.RoundTripper, error
 		defaultTransport.ForceAttemptHTTP2 = true
 		defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
 	case HTTPProtoHTTP3:
-		return getHTTP3Transport(logger)
+		return getHTTP3Transport(logger, resolver, pref)
 	default:
 		panic("Invalid HTTP protocol")
 	}
 	return defaultTransport, nil
 }
 
+type InetFamilyPreference string
+
+const (
+	InetFamilyPreferenceIPv4 InetFamilyPreference = "ip4"
+	InetFamilyPreferenceIPv6 InetFamilyPreference = "ip6"
+	InetFamilyPreferenceDual InetFamilyPreference = "ip"
+)
+
 type HTTPProbe struct {
 	URL          string
 	ExtraHeaders http.Header
 	Proto        HTTPProto
 	SizeLimit    *int64
+
+	Resolver *string
+
+	InetFamilyPreference *InetFamilyPreference `json:"InetFamilyPreference,omitempty"`
 
 	// limit the number of response headers fields, too many header fields will be ignored
 	NumHeadersFieldsLimit *int
@@ -295,6 +364,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 
 	eventChan := make(chan TransportEvent)
 	errChan := make(chan error)
+
 	go func(ctx context.Context) {
 
 		defer close(errChan)
@@ -302,7 +372,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 		logger := NewLogger(eventChan)
 		defer logger.Close()
 
-		defaultTransport, err := getTransport(httpProto, logger)
+		defaultTransport, err := getTransport(httpProto, logger, pkgutils.NewCustomResolver(probe.Resolver, 10*time.Second), probe.InetFamilyPreference)
 		if err != nil {
 			errChan <- err
 			return

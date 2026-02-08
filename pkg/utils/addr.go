@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"regexp"
 )
 
 func SelectDstIP(ctx context.Context, resolver *net.Resolver, host string, preferV4 *bool, preferV6 *bool, respondRange []net.IPNet) (*net.IPAddr, error) {
@@ -50,6 +51,19 @@ func CheckIntersectIP(dstIP net.IP, rangeCIDRs []net.IPNet) bool {
 
 	for _, rangeCIDR := range rangeCIDRs {
 		if rangeCIDR.Contains(dstIP) {
+			return true
+		}
+	}
+	return false
+}
+
+func CheckDomainInRange(domain string, rangeDomains []regexp.Regexp) bool {
+	if len(rangeDomains) == 0 {
+		panic("CheckDomainInRange must be called with a non-empty rangeDomains")
+	}
+
+	for _, rangeDomain := range rangeDomains {
+		if rangeDomain.MatchString(domain) {
 			return true
 		}
 	}

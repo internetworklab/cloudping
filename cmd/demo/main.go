@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"os"
 	"time"
 
@@ -13,15 +12,12 @@ import (
 )
 
 func main() {
-	headers := http.Header{}
-	headers.Set("User-Agent", "Go-Demo-Client/1.0")
 	url := "https://www.google.com/robots.txt"
 
 	maxHeadersFields := 100
 	responseSizeLimit := int64(4 * 1024)
 	probe := pkghttpprobe.HTTPProbe{
 		URL:                   url,
-		ExtraHeaders:          headers,
 		Proto:                 pkghttpprobe.HTTPProtoHTTP3,
 		NumHeadersFieldsLimit: &maxHeadersFields,
 		SizeLimit:             &responseSizeLimit,
