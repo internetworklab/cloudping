@@ -6,6 +6,7 @@ script_dir=$(dirname $script_path)
 cd $script_dir/..
 
 bin/globalping agent \
+  --quic-server-address="globalping-hub.exploro.one:18449" \
   --node-name="lax1" \
   --exact-location-lat-lon="48.1952,16.3503" \
   --country-code="US" \

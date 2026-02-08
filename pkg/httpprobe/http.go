@@ -69,7 +69,7 @@ type TransportEvent struct {
 type Event struct {
 	Transport     *TransportEvent `json:"transport,omitempty"`
 	Error         string          `json:"error,omitempty"`
-	CorrelationID string          `json:"correlation_id"`
+	CorrelationID string          `json:"correlationId"`
 }
 
 func (e *TransportEvent) String() string {
@@ -170,6 +170,10 @@ const (
 	HTTPProtoHTTP2 HTTPProto = "http/2"
 	HTTPProtoHTTP3 HTTPProto = "http/3"
 )
+
+func GetAcceptableHTTPProtos() []HTTPProto {
+	return []HTTPProto{HTTPProtoHTTP1, HTTPProtoHTTP2, HTTPProtoHTTP3}
+}
 
 func defaultTransportDialContext(dialer *net.Dialer) func(context.Context, string, string) (net.Conn, error) {
 	return dialer.DialContext
@@ -311,19 +315,31 @@ const (
 )
 
 type HTTPProbe struct {
-	URL          string
-	ExtraHeaders http.Header
-	Proto        HTTPProto
-	SizeLimit    *int64
+	// Something like 'https://www.google.com/robots.txt' or just 'http://example.com'
+	URL string `json:"url"`
 
-	Resolver *string
+	// A dictionary of string slices, e.g. { "X-Forwarded-For": ["127.0.0.1"], "X-Real-IP": ["127.0.0.1"] }
+	ExtraHeaders http.Header `json:"extraHeaders,omitempty"`
 
-	InetFamilyPreference *InetFamilyPreference `json:"InetFamilyPreference,omitempty"`
+	// Acceptable values: 'http/1.1', 'http/2', 'http/3', default is 'http/1.1'.
+	Proto *HTTPProto `json:"proto,omitempty"`
 
-	// limit the number of response headers fields, too many header fields will be ignored
-	NumHeadersFieldsLimit *int
+	// Limit of body bytes to read, default is nil (no limit).
+	SizeLimit *int64 `json:"sizeLimit,omitempty"`
 
-	CorrelationID string
+	// A custom resolver to use, if it's nil, system's default resolver will be used,
+	// format like '1.1.1.1:53' or '8.8.8.8:53', if it's of ipv6, bracket should be surrounded, e.g. '[2001:4860:4860::8888]:53'
+	Resolver *string `json:"resolver,omitempty"`
+
+	// Acceptable values: 'ip4', 'ip6', 'ip', default is 'ip'.
+	IPPref *InetFamilyPreference `json:"inetFamilyPreference,omitempty"`
+
+	// limit the number of response headers fields, too many header fields will be ignored.
+	NumHeadersFieldsLimit *int `json:"numHeadersFieldsLimit,omitempty"`
+
+	// A correlation id is use to correlate the events with the request that generated them.
+	// When multiple requests are doing concurrently, one can use this field to determine which request the event belongs to.
+	CorrelationID string `json:"correlationId,omitempty"`
 }
 
 func (probe *HTTPProbe) Do(ctx context.Context) <-chan Event {
@@ -362,7 +378,10 @@ func (probe *HTTPProbe) Do(ctx context.Context) <-chan Event {
 func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <-chan error) {
 	url := probe.URL
 	extraHeaders := probe.ExtraHeaders
-	httpProto := probe.Proto
+	var httpProto HTTPProto = HTTPProtoHTTP1
+	if probe.Proto != nil {
+		httpProto = *probe.Proto
+	}
 
 	eventChan := make(chan TransportEvent)
 	errChan := make(chan error)
@@ -374,7 +393,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 		logger := NewLogger(eventChan)
 		defer logger.Close()
 
-		defaultTransport, err := getTransport(httpProto, logger, pkgutils.NewCustomResolver(probe.Resolver, 10*time.Second), probe.InetFamilyPreference)
+		defaultTransport, err := getTransport(httpProto, logger, pkgutils.NewCustomResolver(probe.Resolver, 10*time.Second), probe.IPPref)
 		if err != nil {
 			errChan <- err
 			return

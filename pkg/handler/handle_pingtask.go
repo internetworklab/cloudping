@@ -205,6 +205,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	form, err := pkgpinger.ParseSimplePingRequest(r)
 	if err != nil {
@@ -353,13 +354,10 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 				log.Printf("Sending http probe to remote pinger %s via http endpoint %+v", from, remotePingerEndpoint)
 				sp.Endpoint = *remotePingerEndpoint
 			}
-			pingersFlat = append(pingersFlat, remotePinger)
+			pingersFlat = append(pingersFlat, WithMetadata(remotePinger, map[string]string{
+				pkgpinger.MetadataKeyFrom: from,
+			}))
 		}
-	}
-
-	if len(pingers) == 0 {
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "no pingers to start"})
-		return
 	}
 
 	for from, submap := range pingers {
@@ -369,6 +367,11 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 				pkgpinger.MetadataKeyTarget: target,
 			}))
 		}
+	}
+
+	if len(pingersFlat) == 0 {
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "no pingers to start"})
+		return
 	}
 
 	// Start multiple pings in parallel, and stream events as line-delimited JSON

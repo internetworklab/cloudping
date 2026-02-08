@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,6 +116,17 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse http target: %v", err)
 			}
+
+			if tgtObject.Proto != nil {
+				if !slices.Contains(pkghttpprobe.GetAcceptableHTTPProtos(), *tgtObject.Proto) {
+					allowedProtos := make([]string, 0)
+					for _, proto := range pkghttpprobe.GetAcceptableHTTPProtos() {
+						allowedProtos = append(allowedProtos, string(proto))
+					}
+					return nil, fmt.Errorf("unacceptable http proto: %s, allowed values are: %s", *tgtObject.Proto, strings.Join(allowedProtos, ", "))
+				}
+			}
+
 			result.HTTPTargets = append(result.HTTPTargets, tgtObject)
 		}
 	}

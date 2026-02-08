@@ -302,12 +302,12 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 
-					if tgt.InetFamilyPreference == nil || *tgt.InetFamilyPreference == "" {
-						tgt.InetFamilyPreference = new(pkghttpprobe.InetFamilyPreference)
-						*tgt.InetFamilyPreference = pkghttpprobe.InetFamilyPreference(ipPref)
+					if tgt.IPPref == nil || *tgt.IPPref == "" {
+						tgt.IPPref = new(pkghttpprobe.InetFamilyPreference)
+						*tgt.IPPref = pkghttpprobe.InetFamilyPreference(ipPref)
 					}
 
-					ips, err := lookupIP(host, resolverEndpoint, tgt.InetFamilyPreference)
+					ips, err := lookupIP(host, resolverEndpoint, tgt.IPPref)
 					if err != nil {
 						json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to lookup ip for host %s: %v", host, err).Error()})
 						return
