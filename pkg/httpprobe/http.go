@@ -218,14 +218,15 @@ func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyP
 
 	dialFunc := func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quicGo.Config) (*quicGo.Conn, error) {
 		nw := "quic"
-		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", nw, addr))
 
-		reJoinedAddr, err := doDNSLookup(ctx, logger, resolver, nw, addr, pref)
+		resolvedAddr, err := doDNSLookup(ctx, logger, resolver, nw, addr, pref)
 		if err != nil {
 			return nil, err
 		}
 
-		conn, err := quicGo.DialAddr(ctx, reJoinedAddr, tlsCfg, cfg)
+		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s,resolvedAddr=%s", nw, addr, resolvedAddr))
+
+		conn, err := quicGo.DialAddr(ctx, resolvedAddr, tlsCfg, cfg)
 		if err != nil {
 			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
 		} else {
@@ -259,14 +260,15 @@ func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, p
 	}
 
 	defaultTransport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s", network, addr))
 
-		reJoinedAddr, err := doDNSLookup(ctx, logger, resolver, network, addr, pref)
+		resolvedAddr, err := doDNSLookup(ctx, logger, resolver, network, addr, pref)
 		if err != nil {
 			return nil, err
 		}
 
-		conn, err := originDialContext(ctx, network, reJoinedAddr)
+		logger.Log(TransportEventTypeConnection, TransportEventNameDialStarted, fmt.Sprintf("network=%s,addr=%s,resolvedAddr=%s", network, addr, resolvedAddr))
+
+		conn, err := originDialContext(ctx, network, resolvedAddr)
 		if err != nil {
 			logger.Log(TransportEventTypeConnection, TransportEventNameDialError, err.Error())
 		} else {
