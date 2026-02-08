@@ -71,6 +71,15 @@ func (pingReq *SimplePingRequest) DeriveAsDNSProbeRequest(from string, dnsTarget
 	return derivedPingRequest
 }
 
+func (pingReq *SimplePingRequest) DeriveAdHTTPProbeRequest(from string) *SimplePingRequest {
+	derivedPingRequest := new(SimplePingRequest)
+	*derivedPingRequest = *pingReq
+	derivedPingRequest.From = []string{from}
+	derivedPingRequest.HTTPTargets = make([]pkghttpprobe.HTTPProbe, len(pingReq.HTTPTargets))
+	copy(derivedPingRequest.HTTPTargets, pingReq.HTTPTargets)
+	return derivedPingRequest
+}
+
 const ParamTargets = "targets"
 const ParamFrom = "from"
 const ParamCount = "count"
@@ -87,6 +96,7 @@ const ParamsIPInfoProviderName = "ipInfoProviderName"
 const ParamL4PacketType = "l4PacketType"
 const ParamL7PacketType = "l7PacketType"
 const ParamDNSTarget = "dnsTarget"
+const ParamHTTPTarget = "httpTarget"
 
 // it was a typo to name it 'l3PacketType', it should be 'l4PacketType' instead, use it only for backward compatibility
 const ParamL3PacketType = "l3PacketType"
@@ -96,6 +106,18 @@ const defaultTTL = 64
 
 func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	result := new(SimplePingRequest)
+
+	if httpTgts := r.URL.Query()[ParamHTTPTarget]; httpTgts != nil {
+		result.HTTPTargets = make([]pkghttpprobe.HTTPProbe, 0)
+		for _, tgt := range httpTgts {
+			var tgtObject pkghttpprobe.HTTPProbe
+			err := json.Unmarshal([]byte(tgt), &tgtObject)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse http target: %v", err)
+			}
+			result.HTTPTargets = append(result.HTTPTargets, tgtObject)
+		}
+	}
 
 	if dnsTargets := r.URL.Query()[ParamDNSTarget]; dnsTargets != nil {
 		result.DNSTargets = make([]pkgdnsprobe.LookupParameter, 0)
@@ -313,6 +335,16 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 				continue
 			}
 			vals.Add(ParamDNSTarget, string(j))
+		}
+	}
+	if pr.HTTPTargets != nil {
+		for _, tgt := range pr.HTTPTargets {
+			j, err := json.Marshal(tgt)
+			if err != nil {
+				log.Printf("failed to marshal http target: %v", err)
+				continue
+			}
+			vals.Add(ParamHTTPTarget, string(j))
 		}
 	}
 

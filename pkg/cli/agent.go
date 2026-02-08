@@ -92,6 +92,7 @@ type AgentCmd struct {
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"true"`
 	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"true"`
 	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"true"`
+	SupportHTTP bool `help:"Declare supportness for HTTP probing" default:"true"`
 
 	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`
@@ -211,7 +212,12 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if pingRequest.PreferV4 != nil && *pingRequest.PreferV4 {
 		ipPref = "ip4"
 	}
-	lookupIP := func(host string, resolverEndpoint *string) ([]net.IP, error) {
+	lookupIP := func(host string, resolverEndpoint *string, inetFamilyPreference *pkghttpprobe.InetFamilyPreference) ([]net.IP, error) {
+		ipPrefUsed := ipPref
+		if inetFamilyPreference != nil && *inetFamilyPreference != "" {
+			ipPrefUsed = string(*inetFamilyPreference)
+		}
+
 		resolver := net.DefaultResolver
 		if pingRequest.Resolver != nil && *pingRequest.Resolver != "" {
 			resolver = pkgutils.NewCustomResolver(pingRequest.Resolver, 10*time.Second)
@@ -221,7 +227,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			resolver = pkgutils.NewCustomResolver(resolverEndpoint, 10*time.Second)
 		}
 
-		return resolver.LookupIP(ctx, ipPref, host)
+		return resolver.LookupIP(ctx, ipPrefUsed, host)
 	}
 
 	var pinger pkgpinger.Pinger = nil
@@ -266,9 +272,12 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 
 				host := urlObj.Hostname()
-				if len(ph.DomainRespondRange) > 0 && !pkgutils.CheckDomainInRange(host, ph.DomainRespondRange) {
-					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("host %s does not match any pattern in the domain respond range", host).Error()})
-					return
+				if len(ph.DomainRespondRange) > 0 {
+					ipObj := net.ParseIP(host)
+					if ipObj == nil && !pkgutils.CheckDomainInRange(host, ph.DomainRespondRange) {
+						json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("host %s does not match any pattern in the domain respond range", host).Error()})
+						return
+					}
 				}
 
 				resolverEndpoint := pingRequest.Resolver
@@ -293,7 +302,12 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 
-					ips, err := lookupIP(host, resolverEndpoint)
+					if tgt.InetFamilyPreference == nil || *tgt.InetFamilyPreference == "" {
+						tgt.InetFamilyPreference = new(pkghttpprobe.InetFamilyPreference)
+						*tgt.InetFamilyPreference = pkghttpprobe.InetFamilyPreference(ipPref)
+					}
+
+					ips, err := lookupIP(host, resolverEndpoint, tgt.InetFamilyPreference)
 					if err != nil {
 						json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to lookup ip for host %s: %v", host, err).Error()})
 						return
@@ -313,6 +327,8 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				httpPinger.Requests = append(httpPinger.Requests, tgt)
 				httpUrls = append(httpUrls, tgt.URL)
 			}
+
+			commonLabels[pkgmyprom.PromLabelTarget] = strings.Join(httpUrls, ",")
 			pinger = httpPinger
 		}
 	} else if pingRequest.L4PacketType != nil && *pingRequest.L4PacketType == pkgpinger.L4ProtoTCP {
@@ -692,6 +708,10 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 			if agentCmd.SupportDNS {
 				attributes[pkgnodereg.AttributeKeyDNSProbeCapability] = "true"
+			}
+
+			if agentCmd.SupportHTTP {
+				attributes[pkgnodereg.AttributeKeyHTTPProbeCapability] = "true"
 			}
 
 			if quicAddr := agentCmd.QUICServerAddress; quicAddr != "" {
