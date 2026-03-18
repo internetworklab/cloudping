@@ -339,6 +339,9 @@ type HTTPProbe struct {
 
 	// A correlation id is use to correlate the events with the request that generated them.
 	// When multiple requests are doing concurrently, one can use this field to determine which request the event belongs to.
+	// CorrelationID should be unique in the agent scope, but not necessarily unique in the global scope, since
+	// CorrelationIDs are for identifying targets.
+	// A (agent_id, correlation_id) tuple uniquely identifies a http probing event stream in the global scope.
 	CorrelationID string `json:"correlationId,omitempty"`
 }
 
