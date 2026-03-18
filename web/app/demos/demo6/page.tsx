@@ -1,12 +1,45 @@
 "use client";
 
 import { Box, Paper, Typography } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
+import { div } from "three/src/nodes/TSL.js";
 
 export interface EventObject {
   id: string;
   timestamp: number;
   message: string;
+}
+
+function useDockingMode(
+  followingMode: RefObject<boolean>,
+  containerRef: RefObject<HTMLDivElement | null>,
+) {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          if (followingMode.current) {
+            console.log("[dbg] scrolled:", container);
+            container.scrollTop = Math.max(
+              0,
+              container.scrollHeight - container.clientHeight,
+            );
+          }
+        }
+      }
+    });
+
+    observer.observe(container, { childList: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 }
 
 function EventDock(props: {
@@ -15,6 +48,9 @@ function EventDock(props: {
   const { eventsReader } = props;
   const [evs, setEVs] = useState<EventObject[]>([]);
   const tickRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const divRef = useRef<HTMLDivElement>(null);
+  const followingMode = useRef<boolean>(true);
+  useDockingMode(followingMode, divRef);
 
   useEffect(() => {
     const startTick = () => {
@@ -43,7 +79,28 @@ function EventDock(props: {
   }, [eventsReader]);
 
   return (
-    <Box sx={{ padding: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+    <Box
+      ref={divRef}
+      sx={{
+        height: "100%",
+        overflow: "auto",
+        padding: 1,
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+      }}
+      onScroll={(ev) => {
+        if (ev.target) {
+          const div = ev.target as HTMLDivElement;
+          const burringZoneHeight = 10;
+          const shouldEnableFollowingMode =
+            Math.abs(div.scrollHeight - div.clientHeight) < burringZoneHeight ||
+            Math.abs(div.scrollTop - (div.scrollHeight - div.clientHeight)) <
+              burringZoneHeight;
+          followingMode.current = shouldEnableFollowingMode;
+        }
+      }}
+    >
       {evs.map((ev) => (
         <Paper
           sx={{
@@ -152,7 +209,7 @@ export default function Page() {
     };
   }, []);
   return (
-    <Box>
+    <Box sx={{ height: "100vh", overflow: "hidden" }}>
       {readers.map((reader, i) => (
         <EventDock key={i} eventsReader={reader} />
       ))}
