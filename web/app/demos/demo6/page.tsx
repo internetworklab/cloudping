@@ -43,9 +43,18 @@ function EventDock(props: {
   }, [eventsReader]);
 
   return (
-    <Box sx={{ padding: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+    <Box sx={{ padding: 1, display: "flex", flexDirection: "column", gap: 1 }}>
       {evs.map((ev) => (
-        <Paper sx={{ padding: 1, borderRadius: 4 }} key={ev.id}>
+        <Paper
+          sx={{
+            paddingLeft: 2,
+            paddingRight: 2,
+            paddingTop: 1,
+            paddingBottom: 1,
+            borderRadius: 4,
+          }}
+          key={ev.id}
+        >
           <Typography variant="caption">{`${new Date(ev.timestamp).toISOString()}`}</Typography>
           <Box>{ev.message}</Box>
         </Paper>
@@ -91,6 +100,27 @@ const mockEVs: EventObject[] = [
   { id: "5", timestamp: Date.now() + 4000, message: "Cache cleared" },
   { id: "6", timestamp: Date.now() + 5000, message: "Backup completed" },
   { id: "7", timestamp: Date.now() + 6000, message: "System idle" },
+  {
+    id: "8",
+    timestamp: Date.now() + 7000,
+    message: "Network request received",
+  },
+  { id: "9", timestamp: Date.now() + 8000, message: "Processing payload" },
+  {
+    id: "10",
+    timestamp: Date.now() + 9000,
+    message: "Database query executed",
+  },
+  { id: "11", timestamp: Date.now() + 10000, message: "Response sent" },
+  { id: "12", timestamp: Date.now() + 11000, message: "Memory optimized" },
+  { id: "13", timestamp: Date.now() + 12000, message: "Session renewed" },
+  { id: "14", timestamp: Date.now() + 13000, message: "File uploaded" },
+  { id: "15", timestamp: Date.now() + 14000, message: "Email dispatched" },
+  { id: "16", timestamp: Date.now() + 15000, message: "Job queued" },
+  { id: "17", timestamp: Date.now() + 16000, message: "Worker spawned" },
+  { id: "18", timestamp: Date.now() + 17000, message: "Task completed" },
+  { id: "19", timestamp: Date.now() + 18000, message: "Resources freed" },
+  { id: "20", timestamp: Date.now() + 19000, message: "System shutdown" },
 ];
 
 export default function Page() {
