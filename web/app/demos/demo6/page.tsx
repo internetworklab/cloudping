@@ -1,58 +1,39 @@
 "use client";
 
-import { Box, Paper, Typography } from "@mui/material";
-import { RefObject, useEffect, useRef, useState } from "react";
-import { div } from "three/src/nodes/TSL.js";
+import { EventObject } from "@/apis/types";
+import { useDockingMode } from "@/apis/useDockingMode";
+import { Box, Chip, Paper, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
 
-export interface EventObject {
-  id: string;
-  timestamp: number;
-  message: string;
+function applyEVsLabelFilter(
+  evs: EventObject[],
+  labels: Record<string, string> | undefined,
+): EventObject[] {
+  if (!labels) {
+    return evs;
+  }
+  return evs.filter((ev) => {
+    for (const k in labels) {
+      if (labels[k] != ev.labels?.[k]) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
-function useDockingMode(
-  followingMode: RefObject<boolean>,
-  containerRef: RefObject<HTMLDivElement | null>,
+function useEVsRead(
+  eventsReader: ReadableStreamDefaultReader<EventObject> | undefined,
+  labels: Record<string, string> | undefined,
 ) {
+  const [evs, setEVs] = useState<EventObject[]>([]);
+  const tickRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
+    if (!eventsReader) {
       return;
     }
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-          if (followingMode.current) {
-            console.log("[dbg] scrolled:", container);
-            container.scrollTop = Math.max(
-              0,
-              container.scrollHeight - container.clientHeight,
-            );
-          }
-        }
-      }
-    });
-
-    observer.observe(container, { childList: true });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-}
-
-function EventDock(props: {
-  eventsReader: ReadableStreamDefaultReader<EventObject>;
-}) {
-  const { eventsReader } = props;
-  const [evs, setEVs] = useState<EventObject[]>([]);
-  const tickRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const divRef = useRef<HTMLDivElement>(null);
-  const followingMode = useRef<boolean>(true);
-  useDockingMode(followingMode, divRef);
-
-  useEffect(() => {
     const startTick = () => {
       tickRef.current = setTimeout(() =>
         eventsReader.read().then(({ value, done }) => {
@@ -77,6 +58,15 @@ function EventDock(props: {
       }
     };
   }, [eventsReader]);
+  return { evs: applyEVsLabelFilter(evs, labels) };
+}
+
+function EventDock(props: { evs: EventObject[] }) {
+  const { evs } = props;
+
+  const divRef = useRef<HTMLDivElement>(null);
+  const followingMode = useRef<boolean>(true);
+  useDockingMode(followingMode, divRef);
 
   return (
     <Box
@@ -149,8 +139,19 @@ function arrayToStream(
   return stream.getReader();
 }
 
+const FILTERKEY_FROM = "from";
+const FILTERKEY_CORR_ID = "correlationId";
+
 const mockEVs: EventObject[] = [
-  { id: "1", timestamp: Date.now(), message: "System started" },
+  {
+    id: "1",
+    timestamp: Date.now(),
+    message: "System started",
+    labels: {
+      [FILTERKEY_FROM]: "US-NYC1",
+      [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
+    },
+  },
   { id: "2", timestamp: Date.now() + 1000, message: "Connection established" },
   { id: "3", timestamp: Date.now() + 2000, message: "Data sync in progress" },
   { id: "4", timestamp: Date.now() + 3000, message: "User logged in" },
@@ -180,7 +181,11 @@ const mockEVs: EventObject[] = [
   { id: "20", timestamp: Date.now() + 19000, message: "System shutdown" },
 ];
 
-export default function Page() {
+export function EventsBrowser(props: {
+  allSources: string[];
+  allDestinations: string[];
+}) {
+  const { allSources, allDestinations } = props;
   const [readers, setReaders] = useState<
     ReadableStreamDefaultReader<EventObject>[]
   >([]);
@@ -208,11 +213,115 @@ export default function Page() {
       }
     };
   }, []);
+
+  const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
+    {},
+  );
+  const currentActiveSource = evLabelsFilter[FILTERKEY_FROM];
+  const currentActiveDest = evLabelsFilter[FILTERKEY_CORR_ID];
+
+  const { evs } = useEVsRead(
+    readers && readers.length ? readers[0] : undefined,
+    evLabelsFilter,
+  );
+
   return (
-    <Box sx={{ height: "100vh", overflow: "hidden" }}>
-      {readers.map((reader, i) => (
-        <EventDock key={i} eventsReader={reader} />
-      ))}
+    <Box
+      sx={{
+        height: "100vh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Box
+        sx={{ padding: 1, display: "flex", flexDirection: "column", gap: 1 }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <Box>From:</Box>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            {allSources.map((s, i) => (
+              <Chip
+                key={`${s}:${i}`}
+                color={s === currentActiveSource ? "primary" : "default"}
+                onClick={() =>
+                  setEVLabelsFilter((prev) => ({
+                    ...prev,
+                    [FILTERKEY_FROM]: s,
+                  }))
+                }
+                label={s}
+              />
+            ))}
+          </Box>
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <Box>Destination:</Box>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            {allDestinations.map((dest, i) => (
+              <Chip
+                key={`${dest}:${i}`}
+                color={dest === currentActiveDest ? "primary" : "default"}
+                onClick={() =>
+                  setEVLabelsFilter((prev) => ({
+                    ...prev,
+                    [FILTERKEY_CORR_ID]: dest,
+                  }))
+                }
+                label={dest}
+              />
+            ))}
+          </Box>
+        </Box>
+      </Box>
+      <Box sx={{ flex: "1", overflow: "hidden" }}>
+        <EventDock evs={evs} />
+      </Box>
     </Box>
+  );
+}
+
+const mockedSources: string[] = ["US-NYC1", "US-LAX1", "HK-HKG1", "SG-SIN1"];
+const mockedDestinations: string[] = [
+  "http://example.com",
+  "https://bing.com",
+  "https://x.com",
+  "https://www.google.com/robots.txt",
+];
+
+export default function Page() {
+  return (
+    <EventsBrowser
+      allSources={mockedSources}
+      allDestinations={mockedDestinations}
+    />
   );
 }
