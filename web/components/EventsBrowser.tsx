@@ -26,17 +26,15 @@ function applyEVsLabelFilter(
 }
 
 function useEVsRead(
-  eventsReader: ReadableStreamDefaultReader<EventObject> | undefined,
+  eventsReader: ReadableStreamDefaultReader<EventObject>,
   labels: Record<string, string> | undefined,
 ) {
+  const [allSrcs, setAllSrcs] = useState<string[]>([]);
+  const [allDsts, setAllDsts] = useState<string[]>([]);
   const [evs, setEVs] = useState<EventObject[]>([]);
   const tickRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    if (!eventsReader) {
-      return;
-    }
-
     const startTick = () => {
       tickRef.current = setTimeout(() =>
         eventsReader.read().then(({ value, done }) => {
@@ -45,6 +43,20 @@ function useEVsRead(
           }
           if (value) {
             setEVs((prev) => [...prev, value]);
+            const src = value.labels?.[FILTERKEY_FROM];
+
+            if (src) {
+              setAllSrcs((prev) => {
+                const idx = prev.indexOf(src);
+                return idx != -1 ? prev : [...prev, src].sort();
+              });
+            }
+            const dst = value.labels?.[FILTERKEY_CORR_ID];
+            if (dst) {
+              setAllDsts((prev) =>
+                prev.indexOf(dst) != -1 ? prev : [...prev, dst].sort(),
+              );
+            }
           }
           startTick();
         }),
@@ -65,6 +77,8 @@ function useEVsRead(
     evs: applyEVsLabelFilter(evs, labels).sort(
       (a, b) => a.timestamp - b.timestamp,
     ),
+    allSrcs,
+    allDsts,
   };
 }
 
@@ -137,7 +151,9 @@ export function EventDock(props: { evs: EventObject[] }) {
           key={ev.id}
         >
           <Typography variant="caption">{`${new Date(ev.timestamp).toISOString()}`}</Typography>
-          <Box>{ev.message}</Box>
+          <Box sx={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {ev.message}
+          </Box>
           {ev.labels && (
             <Box
               sx={{
@@ -181,11 +197,9 @@ function dropNilValues(dict: Record<string, string>) {
 }
 
 export function EventsBrowser(props: {
-  allSources: string[];
-  allDestinations: string[];
-  reader: ReadableStreamDefaultReader<EventObject> | undefined;
+  reader: ReadableStreamDefaultReader<EventObject>;
 }) {
-  const { allSources, allDestinations, reader } = props;
+  const { reader } = props;
 
   const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
     {},
@@ -193,7 +207,7 @@ export function EventsBrowser(props: {
   const currentActiveSource = evLabelsFilter[FILTERKEY_FROM];
   const currentActiveDest = evLabelsFilter[FILTERKEY_CORR_ID];
 
-  const { evs } = useEVsRead(reader, evLabelsFilter);
+  const { evs, allDsts, allSrcs } = useEVsRead(reader, evLabelsFilter);
 
   return (
     <Box
@@ -224,7 +238,7 @@ export function EventsBrowser(props: {
               gap: 1,
             }}
           >
-            {allSources.map((s, i) => (
+            {allSrcs.map((s, i) => (
               <Chip
                 key={`${s}:${i}`}
                 color={s === currentActiveSource ? "primary" : "default"}
@@ -258,7 +272,7 @@ export function EventsBrowser(props: {
               gap: 1,
             }}
           >
-            {allDestinations.map((dest, i) => (
+            {allDsts.map((dest, i) => (
               <Chip
                 key={`${dest}:${i}`}
                 color={dest === currentActiveDest ? "primary" : "default"}
