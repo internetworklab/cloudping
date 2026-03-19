@@ -1,6 +1,6 @@
 import { ISO8601Timestamp } from "./common";
 
-export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns";
+export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns" | "http";
 
 export type DNSTransport = "udp" | "tcp";
 
@@ -94,21 +94,139 @@ export type ExactLocation = {
 };
 
 export type BasicIPInfo = {
-  ASN?:      string
-	Location?: string
-	ISP?:      string
+  ASN?: string;
+  Location?: string;
+  ISP?: string;
 
-	// country is optional,
-	// note, this 'Country' field always means the country name, not the code
-	Country?: string
+  // country is optional,
+  // note, this 'Country' field always means the country name, not the code
+  Country?: string;
 
-	// region is optional
-	Region?: string
-	// city is optional
-	City?: string
-	// exact location is optional
-	Exact?: ExactLocation
+  // region is optional
+  Region?: string;
+  // city is optional
+  City?: string;
+  // exact location is optional
+  Exact?: ExactLocation;
 
-	// iso3166 alpha2 country code is optional
-	ISO3166Alpha2?: string
+  // iso3166 alpha2 country code is optional
+  ISO3166Alpha2?: string;
+};
+
+export enum HTTPProbeTransportEventType {
+  TransportEventTypeConnection = "connection",
+  TransportEventTypeDNSLookup = "dns-lookup",
+  TransportEventTypeRequest = "request",
+  TransportEventTypeRequestHeader = "request-header",
+  TransportEventTypeResponse = "response",
+  TransportEventTypeResponseHeader = "response-header",
+  TransportEventTypeMetadata = "metadata",
+}
+
+export enum HTTPProbeTransportEventName {
+  TransportEventNameMethod = "method",
+  TransportEventNameURL = "url",
+  TransportEventNameProto = "proto",
+  TransportEventNameDialStarted = "dial-started",
+  TransportEventNameDialCompleted = "dial-completed",
+  TransportEventNameDNSLookupStarted = "dns-lookup-started",
+  TransportEventNameDNSLookupCompleted = "dns-lookup-completed",
+  TransportEventNameDNSLookupError = "dns-lookup-error",
+  TransportEventNameDialError = "dial-error",
+  TransportEventNameRequestLine = "request-line",
+  TransportEventNameStatus = "status",
+  TransportEventNameTransferEncoding = "transfer-encoding",
+  TransportEventNameContentLength = "content-length",
+  TransportEventNameContentType = "content-type",
+  TransportEventNameRequestHeadersStart = "request-headers-start",
+  TransportEventNameRequestHeadersEnd = "request-headers-end",
+  TransportEventNameResponseHeadersStart = "response-headers-start",
+  TransportEventNameResponseHeadersEnd = "response-headers-end",
+  TransportEventNameSkipMalformedResponseHeader = "skip-malformed-response-header",
+  TransportEventNameResponseHeaderFieldsTruncated = "response-header-fields-truncated",
+  TransportEventNameBodyStart = "body-start",
+  TransportEventNameBodyEnd = "body-end",
+  TransportEventNameBodyBytesRead = "body-bytes-read",
+  TransportEventNameBodyChunkBase64 = "body-chunk-base64",
+  TransportEventNameBodyReadTruncated = "body-read-truncated",
+}
+
+export type HTTPProbeTransportEvent = {
+  Type: HTTPProbeTransportEventType;
+  Name: HTTPProbeTransportEventName;
+  Value: string;
+  Date: ISO8601Timestamp;
+};
+
+export type HTTPProbeEvent = {
+  transport?: HTTPProbeTransportEvent | null;
+  error?: string | null;
+  correlationId?: string | null;
+};
+
+// Raw event returned by the API
+export type RawPingEvent<T = RawPingEventData> = {
+  data?: T;
+  metadata?: RawPingEventMetadata;
+};
+
+export type RawPingEventICMPReply = {
+  ICMPTypeV4?: number;
+  ICMPTypeV6?: number;
+  ID?: number;
+  Peer?: string;
+  PeerRDNS?: string[];
+  PeerASN?: string;
+  PeerLocation?: string;
+  PeerISP?: string;
+  PeerExactLocation?: ExactLocation;
+
+  ReceivedAt?: ISO8601Timestamp;
+
+  // Seq of the reply packet
+  Seq?: number;
+  // size of icmp, without the ip(v4/v6) header
+  Size?: number;
+  // TTl of the reply packet
+  TTL?: number;
+
+  LastHop?: boolean;
+
+  SetMTUTo?: number;
+
+  PeerIPInfo?: BasicIPInfo;
+};
+
+export type RawPingEventData = {
+  RTTMilliSecs?: number[];
+  RTTNanoSecs?: number[];
+  Raw?: RawPingEventICMPReply[];
+  ReceivedAt?: ISO8601Timestamp[];
+  SentAt?: ISO8601Timestamp;
+
+  // Seq of the sent packet
+  Seq?: number;
+
+  // TTL of the sent packet
+  TTL?: number;
+};
+
+export type RawPingEventMetadata = {
+  from?: string;
+  target?: string;
+};
+
+export interface EventObject {
+  id: string;
+  timestamp: number;
+  message: string;
+
+  // labels are for filtering,
+  // e.g. you can select events both satisfy these labels:
+  // from=us-lax1,correlationId=http://example.com/
+  labels?: Record<string, string>;
+
+  // annotations are domain-oriented key-value pairs for displaying
+  // bussiness informations in a structural way
+  annotations?: Record<string, string>;
 }
