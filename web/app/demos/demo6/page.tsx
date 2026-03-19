@@ -61,6 +61,30 @@ function useEVsRead(
   return { evs: applyEVsLabelFilter(evs, labels) };
 }
 
+function RenderChipsRow(props: { chips: Record<string, string> }) {
+  const chips = dropNilValues(props.chips);
+  const chipEntries: { key: string; value: string }[] = Object.entries(chips)
+    .map(([k, v]) => ({ key: k, value: v }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+  return (
+    <Box
+      sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}
+    >
+      {chipEntries.map((ent, i) => (
+        <Chip
+          key={`${ent.key}:${i}`}
+          size="small"
+          label={
+            <Typography variant="caption">
+              {ent.key}: {ent.value}
+            </Typography>
+          }
+        />
+      ))}
+    </Box>
+  );
+}
+
 function EventDock(props: { evs: EventObject[] }) {
   const { evs } = props;
 
@@ -99,11 +123,40 @@ function EventDock(props: { evs: EventObject[] }) {
             paddingTop: 1,
             paddingBottom: 1,
             borderRadius: 4,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
           }}
           key={ev.id}
         >
           <Typography variant="caption">{`${new Date(ev.timestamp).toISOString()}`}</Typography>
           <Box>{ev.message}</Box>
+          {ev.labels && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 1,
+              }}
+            >
+              <Typography variant="caption">Labels:</Typography>
+              <RenderChipsRow chips={ev.labels} />
+            </Box>
+          )}
+          {ev.annotations && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 1,
+              }}
+            >
+              <Typography variant="caption">Annotations:</Typography>
+              <RenderChipsRow chips={ev.annotations} />
+            </Box>
+          )}
         </Paper>
       ))}
     </Box>
@@ -142,6 +195,14 @@ function arrayToStream(
 const FILTERKEY_FROM = "from";
 const FILTERKEY_CORR_ID = "correlationId";
 
+const mockedSources: string[] = ["US-NYC1", "US-LAX1", "HK-HKG1", "SG-SIN1"];
+const mockedDestinations: string[] = [
+  "http://example.com",
+  "https://bing.com",
+  "https://x.com",
+  "https://www.google.com/robots.txt",
+];
+
 const mockEVs: EventObject[] = [
   {
     id: "1",
@@ -152,34 +213,188 @@ const mockEVs: EventObject[] = [
       [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
     },
   },
-  { id: "2", timestamp: Date.now() + 1000, message: "Connection established" },
-  { id: "3", timestamp: Date.now() + 2000, message: "Data sync in progress" },
-  { id: "4", timestamp: Date.now() + 3000, message: "User logged in" },
-  { id: "5", timestamp: Date.now() + 4000, message: "Cache cleared" },
-  { id: "6", timestamp: Date.now() + 5000, message: "Backup completed" },
-  { id: "7", timestamp: Date.now() + 6000, message: "System idle" },
+  {
+    id: "2",
+    timestamp: Date.now() + 1000,
+    message: "Connection established",
+    labels: {
+      [FILTERKEY_FROM]: "US-LAX1",
+      [FILTERKEY_CORR_ID]: "http://example.com",
+    },
+  },
+  {
+    id: "3",
+    timestamp: Date.now() + 2000,
+    message: "Data sync in progress",
+    labels: {
+      [FILTERKEY_FROM]: "HK-HKG1",
+      [FILTERKEY_CORR_ID]: "https://bing.com",
+    },
+  },
+  {
+    id: "4",
+    timestamp: Date.now() + 3000,
+    message: "User logged in",
+    labels: {
+      [FILTERKEY_FROM]: "SG-SIN1",
+      [FILTERKEY_CORR_ID]: "https://x.com",
+    },
+  },
+  {
+    id: "5",
+    timestamp: Date.now() + 4000,
+    message: "Cache cleared",
+    labels: {
+      [FILTERKEY_FROM]: "US-NYC1",
+      [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
+    },
+  },
+  {
+    id: "6",
+    timestamp: Date.now() + 5000,
+    message: "Backup completed",
+    labels: {
+      [FILTERKEY_FROM]: "US-LAX1",
+      [FILTERKEY_CORR_ID]: "http://example.com",
+    },
+  },
+  {
+    id: "7",
+    timestamp: Date.now() + 6000,
+    message: "System idle",
+    labels: {
+      [FILTERKEY_FROM]: "HK-HKG1",
+      [FILTERKEY_CORR_ID]: "https://bing.com",
+    },
+  },
   {
     id: "8",
     timestamp: Date.now() + 7000,
     message: "Network request received",
+    labels: {
+      [FILTERKEY_FROM]: "SG-SIN1",
+      [FILTERKEY_CORR_ID]: "https://x.com",
+    },
   },
-  { id: "9", timestamp: Date.now() + 8000, message: "Processing payload" },
+  {
+    id: "9",
+    timestamp: Date.now() + 8000,
+    message: "Processing payload",
+    labels: {
+      [FILTERKEY_FROM]: "US-NYC1",
+      [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
+    },
+  },
   {
     id: "10",
     timestamp: Date.now() + 9000,
     message: "Database query executed",
+    labels: {
+      [FILTERKEY_FROM]: "US-LAX1",
+      [FILTERKEY_CORR_ID]: "http://example.com",
+    },
   },
-  { id: "11", timestamp: Date.now() + 10000, message: "Response sent" },
-  { id: "12", timestamp: Date.now() + 11000, message: "Memory optimized" },
-  { id: "13", timestamp: Date.now() + 12000, message: "Session renewed" },
-  { id: "14", timestamp: Date.now() + 13000, message: "File uploaded" },
-  { id: "15", timestamp: Date.now() + 14000, message: "Email dispatched" },
-  { id: "16", timestamp: Date.now() + 15000, message: "Job queued" },
-  { id: "17", timestamp: Date.now() + 16000, message: "Worker spawned" },
-  { id: "18", timestamp: Date.now() + 17000, message: "Task completed" },
-  { id: "19", timestamp: Date.now() + 18000, message: "Resources freed" },
-  { id: "20", timestamp: Date.now() + 19000, message: "System shutdown" },
+  {
+    id: "11",
+    timestamp: Date.now() + 10000,
+    message: "Response sent",
+    labels: {
+      [FILTERKEY_FROM]: "HK-HKG1",
+      [FILTERKEY_CORR_ID]: "https://bing.com",
+    },
+  },
+  {
+    id: "12",
+    timestamp: Date.now() + 11000,
+    message: "Memory optimized",
+    labels: {
+      [FILTERKEY_FROM]: "SG-SIN1",
+      [FILTERKEY_CORR_ID]: "https://x.com",
+    },
+  },
+  {
+    id: "13",
+    timestamp: Date.now() + 12000,
+    message: "Session renewed",
+    labels: {
+      [FILTERKEY_FROM]: "US-NYC1",
+      [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
+    },
+  },
+  {
+    id: "14",
+    timestamp: Date.now() + 13000,
+    message: "File uploaded",
+    labels: {
+      [FILTERKEY_FROM]: "US-LAX1",
+      [FILTERKEY_CORR_ID]: "http://example.com",
+    },
+  },
+  {
+    id: "15",
+    timestamp: Date.now() + 14000,
+    message: "Email dispatched",
+    labels: {
+      [FILTERKEY_FROM]: "HK-HKG1",
+      [FILTERKEY_CORR_ID]: "https://bing.com",
+    },
+  },
+  {
+    id: "16",
+    timestamp: Date.now() + 15000,
+    message: "Job queued",
+    labels: {
+      [FILTERKEY_FROM]: "SG-SIN1",
+      [FILTERKEY_CORR_ID]: "https://x.com",
+    },
+  },
+  {
+    id: "17",
+    timestamp: Date.now() + 16000,
+    message: "Worker spawned",
+    labels: {
+      [FILTERKEY_FROM]: "US-NYC1",
+      [FILTERKEY_CORR_ID]: "https://www.google.com/robots.txt",
+    },
+  },
+  {
+    id: "18",
+    timestamp: Date.now() + 17000,
+    message: "Task completed",
+    labels: {
+      [FILTERKEY_FROM]: "US-LAX1",
+      [FILTERKEY_CORR_ID]: "http://example.com",
+    },
+  },
+  {
+    id: "19",
+    timestamp: Date.now() + 18000,
+    message: "Resources freed",
+    labels: {
+      [FILTERKEY_FROM]: "HK-HKG1",
+      [FILTERKEY_CORR_ID]: "https://bing.com",
+    },
+  },
+  {
+    id: "20",
+    timestamp: Date.now() + 19000,
+    message: "System shutdown",
+    labels: {
+      [FILTERKEY_FROM]: "SG-SIN1",
+      [FILTERKEY_CORR_ID]: "https://x.com",
+    },
+  },
 ];
+
+function dropNilValues(dict: Record<string, string>) {
+  const newMap: Record<string, string> = {};
+  for (const k in dict) {
+    if (dict[k]) {
+      newMap[k] = dict[k];
+    }
+  }
+  return newMap;
+}
 
 export function EventsBrowser(props: {
   allSources: string[];
@@ -259,10 +474,12 @@ export function EventsBrowser(props: {
                 key={`${s}:${i}`}
                 color={s === currentActiveSource ? "primary" : "default"}
                 onClick={() =>
-                  setEVLabelsFilter((prev) => ({
-                    ...prev,
-                    [FILTERKEY_FROM]: s,
-                  }))
+                  setEVLabelsFilter((prev) =>
+                    dropNilValues({
+                      ...prev,
+                      [FILTERKEY_FROM]: s === currentActiveSource ? "" : s,
+                    }),
+                  )
                 }
                 label={s}
               />
@@ -291,10 +508,13 @@ export function EventsBrowser(props: {
                 key={`${dest}:${i}`}
                 color={dest === currentActiveDest ? "primary" : "default"}
                 onClick={() =>
-                  setEVLabelsFilter((prev) => ({
-                    ...prev,
-                    [FILTERKEY_CORR_ID]: dest,
-                  }))
+                  setEVLabelsFilter((prev) =>
+                    dropNilValues({
+                      ...prev,
+                      [FILTERKEY_CORR_ID]:
+                        dest === currentActiveDest ? "" : dest,
+                    }),
+                  )
                 }
                 label={dest}
               />
@@ -308,14 +528,6 @@ export function EventsBrowser(props: {
     </Box>
   );
 }
-
-const mockedSources: string[] = ["US-NYC1", "US-LAX1", "HK-HKG1", "SG-SIN1"];
-const mockedDestinations: string[] = [
-  "http://example.com",
-  "https://bing.com",
-  "https://x.com",
-  "https://www.google.com/robots.txt",
-];
 
 export default function Page() {
   return (
