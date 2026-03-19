@@ -198,10 +198,10 @@ export function EventsBrowser(props: {
   return (
     <Box
       sx={{
-        height: "100vh",
-        overflow: "hidden",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       <Box

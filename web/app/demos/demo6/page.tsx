@@ -7,6 +7,7 @@ import {
   FILTERKEY_FROM,
   EventsBrowser,
 } from "@/components/EventsBrowser";
+import { Box } from "@mui/material";
 
 function arrayToStream(
   evs: EventObject[],
@@ -259,10 +260,17 @@ export default function Page() {
   }, []);
 
   return (
-    <EventsBrowser
-      allSources={mockedSources}
-      allDestinations={mockedDestinations}
-      reader={readers && readers.length > 0 ? readers[0] : undefined}
-    />
+    <Box
+      sx={{
+        height: "100vh",
+        overflow: "hidden",
+      }}
+    >
+      <EventsBrowser
+        allSources={mockedSources}
+        allDestinations={mockedDestinations}
+        reader={readers && readers.length > 0 ? readers[0] : undefined}
+      />
+    </Box>
   );
 }
