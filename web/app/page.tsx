@@ -193,20 +193,6 @@ export default function Home() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
-          {!!dn42GeoIPRepo && (
-            <Tooltip title="Go visit DN42 GeoIP Project">
-              <Link
-                underline="hover"
-                href={dn42GeoIPRepo}
-                target="_blank"
-                variant="caption"
-                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-              >
-                <GitHubIcon />
-                DN42GeoIP
-              </Link>
-            </Tooltip>
-          )}
           {repoAddr !== "" && (
             <Tooltip title="Go to Project's Github Page">
               <Link
