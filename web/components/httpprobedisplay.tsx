@@ -1,17 +1,22 @@
 "use client";
 
-import { EventsBrowser } from "@/components/EventsBrowser";
-import { Box } from "@mui/material";
+import { Box, Card, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { JSONLineDecoder, LineTokenizer } from "@/apis/globalping";
 import { EventAdapter } from "@/apis/httpprobe";
-import { PendingTask } from "@/apis/types";
+import { PendingTask, EventObject } from "@/apis/types";
+import { firstLetterCap } from "./strings";
+import { useState } from "react";
+import { EventDock, EventsFilterDisplay, useEVsRead } from "./EventsBrowser";
 
 export function HTTPProbeDisplay(props: {
   task: PendingTask;
   onDeleted: () => void;
 }) {
   const { task, onDelete } = props;
+  const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
+    {},
+  );
   const { data: reader, isLoading } = useQuery({
     queryKey: ["/example_http_probe_1.json"],
     queryFn: () =>
@@ -26,21 +31,43 @@ export function HTTPProbeDisplay(props: {
             .getReader();
         }),
   });
+  const { evs, allDsts, allSrcs } = useEVsRead(reader, evLabelsFilter);
 
   return (
     <Box
       sx={{
-        height: "100vh",
+        display: "flex",
         overflow: "hidden",
+        flexDirection: "column",
+        borderRadius: 8,
       }}
     >
-      {isLoading ? (
-        <Box>Loading</Box>
-      ) : reader ? (
-        <EventsBrowser reader={reader} />
-      ) : (
-        <Box>No Data</Box>
-      )}
+      <Card sx={{ padding: 2, borderRadius: 0 }}>
+        <Typography variant="h6">
+          {firstLetterCap(task.type)} Task #{task.taskId}
+        </Typography>
+        <EventsFilterDisplay
+          allDsts={allDsts}
+          allSrcs={allSrcs}
+          evLabelsFilter={evLabelsFilter}
+          setEVLabelsFilter={setEVLabelsFilter}
+        />
+      </Card>
+
+      <Box
+        sx={{
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
+        {isLoading ? (
+          <Box>Loading</Box>
+        ) : reader ? (
+          <EventDock evs={evs} />
+        ) : (
+          <Box>No Data</Box>
+        )}
+      </Box>
     </Box>
   );
 }

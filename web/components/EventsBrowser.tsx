@@ -3,7 +3,14 @@
 import { EventObject, FILTERKEY_FROM, FILTERKEY_CORR_ID } from "@/apis/types";
 import { useDockingMode } from "@/apis/useDockingMode";
 import { Box, Chip, Paper, Typography } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import {
+  Dispatch,
+  Fragment,
+  SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 function applyEVsLabelFilter(
   evs: EventObject[],
@@ -22,8 +29,8 @@ function applyEVsLabelFilter(
   });
 }
 
-function useEVsRead(
-  eventsReader: ReadableStreamDefaultReader<EventObject>,
+export function useEVsRead(
+  eventsReader: ReadableStreamDefaultReader<EventObject> | undefined,
   labels: Record<string, string> | undefined,
 ) {
   const [allSrcs, setAllSrcs] = useState<string[]>([]);
@@ -32,6 +39,10 @@ function useEVsRead(
   const tickRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    if (!eventsReader) {
+      return;
+    }
+
     const startTick = () => {
       tickRef.current = setTimeout(() =>
         eventsReader.read().then(({ value, done }) => {
@@ -193,31 +204,26 @@ function dropNilValues(dict: Record<string, string>) {
   return newMap;
 }
 
-export function EventsBrowser(props: {
-  reader: ReadableStreamDefaultReader<EventObject>;
+export function EventsFilterDisplay(props: {
+  evLabelsFilter: Record<string, string>;
+  setEVLabelsFilter: Dispatch<SetStateAction<Record<string, string>>>;
+  allSrcs: string[];
+  allDsts: string[];
 }) {
-  const { reader } = props;
-
-  const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
-    {},
-  );
+  const { evLabelsFilter, setEVLabelsFilter, allSrcs, allDsts } = props;
   const currentActiveSource = evLabelsFilter[FILTERKEY_FROM];
   const currentActiveDest = evLabelsFilter[FILTERKEY_CORR_ID];
-
-  const { evs, allDsts, allSrcs } = useEVsRead(reader, evLabelsFilter);
-
   return (
-    <Box
-      sx={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <Fragment>
       <Box
-        sx={{ padding: 1, display: "flex", flexDirection: "column", gap: 1 }}
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 1,
+        }}
       >
+        <Box>From:</Box>
         <Box
           sx={{
             display: "flex",
@@ -226,32 +232,32 @@ export function EventsBrowser(props: {
             gap: 1,
           }}
         >
-          <Box>From:</Box>
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 1,
-            }}
-          >
-            {allSrcs.map((s, i) => (
-              <Chip
-                key={`${s}:${i}`}
-                color={s === currentActiveSource ? "primary" : "default"}
-                onClick={() =>
-                  setEVLabelsFilter((prev) =>
-                    dropNilValues({
-                      ...prev,
-                      [FILTERKEY_FROM]: s === currentActiveSource ? "" : s,
-                    }),
-                  )
-                }
-                label={s}
-              />
-            ))}
-          </Box>
+          {allSrcs.map((s, i) => (
+            <Chip
+              key={`${s}:${i}`}
+              color={s === currentActiveSource ? "primary" : "default"}
+              onClick={() =>
+                setEVLabelsFilter((prev) =>
+                  dropNilValues({
+                    ...prev,
+                    [FILTERKEY_FROM]: s === currentActiveSource ? "" : s,
+                  }),
+                )
+              }
+              label={s}
+            />
+          ))}
         </Box>
+      </Box>
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 1,
+        }}
+      >
+        <Box>Destination:</Box>
         <Box
           sx={{
             display: "flex",
@@ -260,37 +266,23 @@ export function EventsBrowser(props: {
             gap: 1,
           }}
         >
-          <Box>Destination:</Box>
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 1,
-            }}
-          >
-            {allDsts.map((dest, i) => (
-              <Chip
-                key={`${dest}:${i}`}
-                color={dest === currentActiveDest ? "primary" : "default"}
-                onClick={() =>
-                  setEVLabelsFilter((prev) =>
-                    dropNilValues({
-                      ...prev,
-                      [FILTERKEY_CORR_ID]:
-                        dest === currentActiveDest ? "" : dest,
-                    }),
-                  )
-                }
-                label={dest}
-              />
-            ))}
-          </Box>
+          {allDsts.map((dest, i) => (
+            <Chip
+              key={`${dest}:${i}`}
+              color={dest === currentActiveDest ? "primary" : "default"}
+              onClick={() =>
+                setEVLabelsFilter((prev) =>
+                  dropNilValues({
+                    ...prev,
+                    [FILTERKEY_CORR_ID]: dest === currentActiveDest ? "" : dest,
+                  }),
+                )
+              }
+              label={dest}
+            />
+          ))}
         </Box>
       </Box>
-      <Box sx={{ flex: "1", overflow: "hidden" }}>
-        <EventDock evs={evs} />
-      </Box>
-    </Box>
+    </Fragment>
   );
 }
