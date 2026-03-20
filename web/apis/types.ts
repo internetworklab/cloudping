@@ -87,7 +87,7 @@ export interface HTTPTarget {
 export type PendingTask = {
   sources: string[];
   targets: string[];
-  taskId: number;
+  taskId: string;
   type: PingTaskType;
   preferV4?: boolean;
   preferV6?: boolean;

@@ -31,6 +31,7 @@ import {
   expandDNSProbePlan,
   PendingTask,
 } from "@/apis/types";
+import { generateRandomTaskId } from "@/apis/random";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
 import { TracerouteResultDisplay } from "@/components/traceroutedisplay";
@@ -99,7 +100,7 @@ export default function Home() {
     return {
       sources: [],
       targets: [],
-      taskId: 0,
+      taskId: "",
       type: "ping",
       dnsProbePlan: {
         transport: "udp",
@@ -129,7 +130,7 @@ export default function Home() {
     {
       sources: [],
       targets: [],
-      taskId: 0,
+      taskId: "11451",
       type: "http",
       dnsProbePlan: {
         transport: "udp",
@@ -308,7 +309,7 @@ export default function Home() {
                         ...prev,
                         sources: srcs,
                         targets: tgts,
-                        taskId: getNextId(onGoingTasks),
+                        taskId: generateRandomTaskId(),
                         dnsProbePlan: newDnsProbePlan,
                         dnsProbeTargets: dnsTgts,
                       };
