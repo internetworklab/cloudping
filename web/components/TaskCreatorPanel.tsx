@@ -172,9 +172,9 @@ function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {
     .filter((u) => u.length > 0);
 
   // Create HTTP targets
-  const httpTgts: HTTPTarget[] = httpUrls.map((url, index) => ({
+  const httpTgts: HTTPTarget[] = httpUrls.map((url) => ({
     url,
-    correlationId: index.toString(),
+    correlationId: url,
     extraHeaders: Object.keys(httpHeaders).length > 0 ? httpHeaders : undefined,
     proto: prev.selectingHttpTransport,
   }));
