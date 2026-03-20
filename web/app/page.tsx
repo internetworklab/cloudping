@@ -10,12 +10,8 @@ import {
   FormControlLabel,
   RadioGroup,
   Radio,
-  Tooltip,
-  IconButton,
-  Link,
   FormControl,
   FormLabel,
-  Paper,
 } from "@mui/material";
 import { CSSProperties, Fragment, useState } from "react";
 import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
@@ -23,25 +19,18 @@ import { generateRandomTaskId } from "@/apis/random";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
 import { TracerouteResultDisplay } from "@/components/traceroutedisplay";
-import GitHubIcon from "@mui/icons-material/GitHub";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import { About } from "@/components/about";
 import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
-import TelegramIcon from "@mui/icons-material/Telegram";
 import { testIP } from "@/components/testip";
 import { SiteName } from "@/components/sitename";
 import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
-import { ModeSelector } from "@/components/ModeSelector";
 import {
   DNSProbeTaskPanel,
   DNSProbeTransportSelect,
 } from "@/components/DNSProbeOptions";
 import { PingTaskSourceSelector } from "@/components/PingTaskSourceSelector";
 import { PingTaskDefaultTransportOptionsPanel } from "@/components/PingTaskTransportOptions";
-
-function dedup(arr: string[]): string[] {
-  return Array.from(new Set(arr));
-}
+import { HeaderBar } from "@/components/HeaderBar";
+import { dedup } from "@/apis/utils";
 
 export default function Home() {
   const [pendingTask, setPendingTask] = useState<PendingTask>(() => {
@@ -87,108 +76,37 @@ export default function Home() {
     },
   ]);
 
-  let containerStyles: CSSProperties[] = [
-    {
-      position: "relative",
-      left: 0,
-      top: 0,
-      height: "100vh",
-      width: "100vw",
-      overflow: "auto",
-    },
-  ];
-
-  const headerCardStyles: CSSProperties[] = [
-    {
-      padding: 2,
-      display: "flex",
-      flexDirection: "column",
-      gap: 2,
-      position: "relative",
-      marginTop: 8,
-      minWidth: "68vw",
-    },
-  ];
-
-  if (onGoingTasks.length === 0) {
-    containerStyles = [
-      ...containerStyles,
-      { display: "flex", justifyContent: "center", alignItems: "center" },
-    ];
-  }
-
-  const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
-  const tgInviteLink = process.env["NEXT_PUBLIC_TG_INVITE_LINK"];
-  const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
-
   return (
     <Box>
-      <Paper
+      <HeaderBar />
+      <Box
         sx={{
-          position: "fixed",
-          top: 0,
+          position: "relative",
           left: 0,
-          width: "100%",
-          paddingLeft: 2,
-          paddingRight: 2,
-          paddingTop: 1,
-          paddingBottom: 1,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 1,
-          zIndex: 1,
+          top: 0,
+          height: "100vh",
+          width: "100vw",
+          overflow: "auto",
+          ...(onGoingTasks.length === 0
+            ? {
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }
+            : {}),
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
-          {repoAddr !== "" && (
-            <Tooltip title="Go to Project's Github Page">
-              <Link
-                underline="hover"
-                href={repoAddr}
-                target="_blank"
-                variant="caption"
-                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-              >
-                <GitHubIcon />
-                Project
-              </Link>
-            </Tooltip>
-          )}
-          {tgInviteLink!! && (
-            <Tooltip title={"Join our Telegram group"}>
-              <Link
-                underline="hover"
-                href={tgInviteLink}
-                target={"_blank"}
-                variant="caption"
-                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-              >
-                <TelegramIcon />
-                Chat
-              </Link>
-            </Tooltip>
-          )}
-          <Tooltip title="More">
-            <IconButton size="small" onClick={() => setShowAboutDialog(true)}>
-              <MoreHorizIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
         <Box
           sx={{
+            padding: 2,
             display: "flex",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 1,
+            flexDirection: "column",
+            gap: 2,
+            position: "relative",
+            marginTop: 8,
+            minWidth: "68vw",
           }}
         >
-          <ModeSelector />
-        </Box>
-      </Paper>
-      <Box sx={containerStyles}>
-        <Box sx={headerCardStyles}>
           <Card>
             <CardContent>
               <Box
@@ -370,6 +288,7 @@ export default function Home() {
               </Box>
             </CardContent>
           </Card>
+
           {onGoingTasks.map((task) => (
             <Fragment key={task.taskId}>
               {task.type === "traceroute" ? (
@@ -423,10 +342,6 @@ export default function Home() {
             setOnGoingTasks([pendingTask, ...onGoingTasks]);
             setOpenTaskConfirmDialog(false);
           }}
-        />
-        <About
-          open={showAboutDialog}
-          onClose={() => setShowAboutDialog(false)}
         />
       </Box>
     </Box>

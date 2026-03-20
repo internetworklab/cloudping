@@ -1,7 +1,11 @@
 import { ConnEntry, Conns, PingSample } from "./globalping";
 
+export function dedup(arr: string[]): string[] {
+  return Array.from(new Set(arr));
+}
+
 export function streamFromSamples(
-  samples: PingSample[]
+  samples: PingSample[],
 ): ReadableStream<PingSample> {
   const baseDelayMs = 300;
   const jitterMs = 125;
@@ -88,7 +92,7 @@ export function getGridKey(latLon: [number, number]): string {
 
 export function getNodeGroups(
   conns: Conns,
-  sourceSet: Set<string>
+  sourceSet: Set<string>,
 ): NodeGroup[] {
   const groups: Record<string, NodeGroup> = {};
   for (const connKey in conns) {
