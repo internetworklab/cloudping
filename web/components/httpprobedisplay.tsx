@@ -2,9 +2,9 @@
 
 import { Box, Card, Paper, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import { JSONLineDecoder, LineTokenizer } from "@/apis/globalping";
-import { EventAdapter, generateEventStream } from "@/apis/httpprobe";
-import { PendingTask, EventObject, HTTPTarget } from "@/apis/types";
+import { generateEventStream } from "@/apis/httpprobe";
+import { TaskCloseIconButton } from "./taskclose";
+import { PendingTask, HTTPTarget } from "@/apis/types";
 import { firstLetterCap } from "./strings";
 import { useState } from "react";
 import { EventDock, EventsFilterDisplay, useEVsRead } from "./EventsBrowser";
@@ -13,7 +13,7 @@ export function HTTPProbeDisplay(props: {
   task: PendingTask;
   onDeleted: () => void;
 }) {
-  const { task, onDelete } = props;
+  const { task, onDeleted } = props;
   const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
     {},
   );
@@ -61,9 +61,23 @@ export function HTTPProbeDisplay(props: {
           gap: 1,
         }}
       >
-        <Typography variant="h6">
-          {firstLetterCap(task.type)} Task #{task.taskId}
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Typography variant="h6">
+            {firstLetterCap(task.type)} Task #{task.taskId}
+          </Typography>
+          <TaskCloseIconButton
+            taskId={0}
+            onConfirmedClosed={() => {
+              onDeleted();
+            }}
+          />
+        </Box>
       </Card>
 
       {isLoading ? (
