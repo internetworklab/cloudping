@@ -13,12 +13,7 @@ import {
   FormControl,
   FormLabel,
 } from "@mui/material";
-import {
-  DNSProbePlan,
-  expandDNSProbePlan,
-  PendingTask,
-  PingTaskType,
-} from "@/apis/types";
+import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { SiteName } from "@/components/sitename";
 import {
@@ -28,7 +23,13 @@ import {
 import { PingTaskSourceSelector } from "@/components/PingTaskSourceSelector";
 import { PingTaskDefaultTransportOptionsPanel } from "@/components/PingTaskTransportOptions";
 import { dedup } from "@/apis/utils";
-import { Fragment, useState, Dispatch, SetStateAction } from "react";
+import {
+  Fragment,
+  useState,
+  Dispatch,
+  SetStateAction,
+  useTransition,
+} from "react";
 import { testIP } from "@/components/testip";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import {
@@ -78,11 +79,15 @@ function TaskTypeSelector(props: {
 }
 
 function DefaultTaskTargetInput(props: {
-  targetsInput: string;
-  setTargetsInput: (s: string) => void;
-  taskType: PingTaskType;
+  pendingTask: PendingTask;
+  setPendingTask: Dispatch<SetStateAction<PendingTask>>;
 }) {
-  const { targetsInput, setTargetsInput, taskType } = props;
+  const { pendingTask, setPendingTask } = props;
+  const targetsInput = pendingTask.targetsInput ?? "";
+  const setTargetsInput = (v: string) => {
+    setPendingTask((prev) => ({ ...prev, targetsInput: v }));
+  };
+  const taskType = pendingTask.type;
   const targetAttributes = testIP(targetsInput);
   const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
   const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
@@ -113,6 +118,34 @@ function DefaultTaskTargetInput(props: {
   );
 }
 
+async function justSleep(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(() => res(), ms));
+}
+
+async function expandTask(prev: PendingTask): Promise<PendingTask> {
+  const newDnsProbePlan: DNSProbePlan = {
+    ...prev.dnsProbePlan,
+    domains: dedup(prev.dnsProbePlan.domainsInput?.split(",") || [])
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0),
+    resolvers: dedup(prev.dnsProbePlan.resolversInput?.split(",") || [])
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0),
+  };
+
+  const dnsTgts = expandDNSProbePlan(newDnsProbePlan).targets;
+
+  return {
+    ...prev,
+    targets: dedup(prev.targetsInput?.split(",") ?? [])
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0),
+    taskId: generateRandomTaskId(),
+    dnsProbePlan: newDnsProbePlan,
+    dnsProbeTargets: dnsTgts,
+  };
+}
+
 export function TaskCreatorPanel(props: {
   onNewTaskConfirm: (task: PendingTask) => void;
 }) {
@@ -133,8 +166,7 @@ export function TaskCreatorPanel(props: {
   const [openTaskConfirmDialog, setOpenTaskConfirmDialog] =
     useState<boolean>(false);
   const { onNewTaskConfirm } = props;
-
-  const [targetsInput, setTargetsInput] = useState<string>("");
+  const [isPending, startTransition] = useTransition();
 
   return (
     <Fragment>
@@ -164,41 +196,18 @@ export function TaskCreatorPanel(props: {
             <Button
               variant="contained"
               color="primary"
+              loading={isPending}
               onClick={() => {
-                const tgts = dedup(targetsInput.split(","))
-                  .map((t) => t.trim())
-                  .filter((t) => t.length > 0);
-
-                const domains = dedup(
-                  pendingTask.dnsProbePlan.domainsInput?.split(",") || [],
-                )
-                  .map((d) => d.trim())
-                  .filter((d) => d.length > 0);
-
-                const resolvers = dedup(
-                  pendingTask.dnsProbePlan.resolversInput?.split(",") || [],
-                )
-                  .map((r) => r.trim())
-                  .filter((r) => r.length > 0);
-
-                setPendingTask((prev) => {
-                  const newDnsProbePlan: DNSProbePlan = {
-                    ...pendingTask.dnsProbePlan,
-                    domains: domains,
-                    resolvers: resolvers,
-                  };
-
-                  const dnsTgts = expandDNSProbePlan(newDnsProbePlan).targets;
-
-                  return {
-                    ...prev,
-                    targets: tgts,
-                    taskId: generateRandomTaskId(),
-                    dnsProbePlan: newDnsProbePlan,
-                    dnsProbeTargets: dnsTgts,
-                  };
+                startTransition(async function () {
+                  await justSleep(1000); // leave some room for improvement ;)
+                  const expandedTask = await expandTask(pendingTask);
+                  startTransition(() => {
+                    setPendingTask(expandedTask);
+                  });
+                  startTransition(() => {
+                    setOpenTaskConfirmDialog(true);
+                  });
                 });
-                setOpenTaskConfirmDialog(true);
               }}
             >
               Add Task
@@ -265,9 +274,8 @@ export function TaskCreatorPanel(props: {
               />
             ) : (
               <DefaultTaskTargetInput
-                targetsInput={targetsInput}
-                setTargetsInput={setTargetsInput}
-                taskType={pendingTask.type}
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
               />
             )}
           </Box>
