@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@mui/material";
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { PendingTask } from "@/apis/types";
 
 import { PingResultDisplay } from "@/components/pingdisplay";
@@ -26,6 +26,10 @@ export default function Home() {
       },
     },
   ]);
+
+  const handleTaskDelete = useCallback((taskId: string) => {
+    setOnGoingTasks((prev) => prev.filter((t) => t.taskId !== taskId));
+  }, []);
 
   return (
     <Box>
@@ -60,7 +64,7 @@ export default function Home() {
         >
           <TaskCreatorPanel
             onNewTaskConfirm={(task) => {
-              setOnGoingTasks([task, ...onGoingTasks]);
+              setOnGoingTasks((onGoingTasks) => [task, ...onGoingTasks]);
             }}
           />
 
@@ -69,38 +73,22 @@ export default function Home() {
               {task.type === "traceroute" ? (
                 <TracerouteResultDisplay
                   task={task}
-                  onDeleted={() => {
-                    setOnGoingTasks(
-                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                    );
-                  }}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
                 />
               ) : task.type === "dns" ? (
                 <DNSProbeDisplay
                   task={task}
-                  onDeleted={() => {
-                    setOnGoingTasks(
-                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                    );
-                  }}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
                 />
               ) : task.type === "http" ? (
                 <HTTPProbeDisplay
                   task={task}
-                  onDeleted={() => {
-                    setOnGoingTasks(
-                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                    );
-                  }}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
                 />
               ) : (
                 <PingResultDisplay
                   pendingTask={task}
-                  onDeleted={() => {
-                    setOnGoingTasks(
-                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                    );
-                  }}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
                 />
               )}
             </Fragment>
