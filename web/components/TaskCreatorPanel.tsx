@@ -13,7 +13,12 @@ import {
   FormControl,
   FormLabel,
 } from "@mui/material";
-import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
+import {
+  DNSProbePlan,
+  expandDNSProbePlan,
+  PendingTask,
+  HTTPTarget,
+} from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { SiteName } from "@/components/sitename";
 import {
@@ -144,7 +149,41 @@ function expandDNSProbeTask(prev: PendingTask): Promise<PendingTask> {
   });
 }
 
-function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {}
+function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {
+  // Parse headers input into Record<string, string>
+  // Only parse headers if the addHeaderSW switch is enabled
+  const httpHeaders: Record<string, string> = {};
+  if (prev.addHeaderSW && prev.headersInput) {
+    prev.headersInput.split("\n").forEach((line) => {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex > 0) {
+        const key = line.substring(0, colonIndex).trim();
+        const value = line.substring(colonIndex + 1).trim();
+        if (key && value) {
+          httpHeaders[key] = value;
+        }
+      }
+    });
+  }
+
+  // Parse URLs from targetsInput
+  const httpUrls = dedup(prev.targetsInput?.split(",") ?? [])
+    .map((u) => u.trim())
+    .filter((u) => u.length > 0);
+
+  // Create HTTP targets
+  const httpTgts: HTTPTarget[] = httpUrls.map((url, index) => ({
+    url,
+    correlationId: index.toString(),
+    extraHeaders: Object.keys(httpHeaders).length > 0 ? httpHeaders : undefined,
+    proto: prev.selectingHttpTransport,
+  }));
+
+  return Promise.resolve({
+    ...prev,
+    httpProbeTargets: httpTgts.length > 0 ? httpTgts : undefined,
+  });
+}
 
 async function expandTask(prev: PendingTask): Promise<PendingTask> {
   let expandedTask: PendingTask = {
