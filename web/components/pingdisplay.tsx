@@ -58,6 +58,7 @@ import {
   TracerouteReportMode,
 } from "./traceroutereport";
 import ShareIcon from "@mui/icons-material/Share";
+import { firstLetterCap } from "./strings";
 
 type RowObject = {
   target: string;
@@ -77,7 +78,7 @@ type TableCellDataMap = Record<string, Record<string, TableCellData>>;
 function updateMarkers(
   pingSample: PingSample,
   markers: Marker[] | undefined | null,
-  ratio: number
+  ratio: number,
 ): Marker[] {
   let newMarkers: Marker[] = [...(markers ?? [])];
 
@@ -136,7 +137,7 @@ function updateMarkers(
 
 function updateTableCellDataMap(
   prev: TableCellDataMap,
-  sample: PingSample
+  sample: PingSample,
 ): TableCellDataMap {
   const newMap = { ...prev };
   if (!newMap[sample.target]) {
@@ -171,7 +172,7 @@ function updateTableCellDataMap(
 function getLatestDataFromMap(
   map: TableCellDataMap,
   target: string,
-  source: string
+  source: string,
 ): {
   datum: PingSample | undefined | null;
   latency: number | undefined | null;
@@ -190,15 +191,15 @@ function getLatestDataFromMap(
 
 function buildPingReport(
   samples: TableCellDataMap,
-  task: PendingTask
+  task: PendingTask,
 ): PingReport {
   const sources = task.sources;
   const targets = task.targets;
   const mode: TracerouteReportMode = !!task?.useUDP
     ? "udp"
     : task?.type === "tcpping"
-    ? "tcp"
-    : "icmp";
+      ? "tcp"
+      : "icmp";
 
   const now = new Date();
 
@@ -235,14 +236,14 @@ export function PingResultDisplay(props: {
   const { sources, targets, preferV4, preferV6, useUDP } = pendingTask;
 
   const [tableCellDataMap, setTableCellDataMap] = useState<TableCellDataMap>(
-    {}
+    {},
   );
 
   const [running, setRunning] = useState<boolean>(true);
 
   function launchStream(): [
     ReadableStream<PingSample>,
-    ReadableStreamDefaultReader<PingSample>
+    ReadableStreamDefaultReader<PingSample>,
   ] {
     // const resultStream = generateFakePingSampleStream(sources, targets);
     const resultStream = generatePingSampleStream({
@@ -256,8 +257,8 @@ export function PingResultDisplay(props: {
       l4PacketType: !!useUDP
         ? "udp"
         : pendingTask.type === "tcpping"
-        ? "tcp"
-        : "icmp",
+          ? "tcp"
+          : "icmp",
       ipInfoProviderName: "auto",
     });
     const reader = resultStream.getReader();
@@ -282,7 +283,7 @@ export function PingResultDisplay(props: {
   }
 
   const readerRef = useRef<ReadableStreamDefaultReader<PingSample> | null>(
-    null
+    null,
   );
 
   function cancelStream() {
@@ -329,7 +330,9 @@ export function PingResultDisplay(props: {
           padding: 2,
         }}
       >
-        <Typography variant="h6">Task #{pendingTask.taskId}</Typography>
+        <Typography variant="h6">
+          {firstLetterCap(pendingTask.type)} Task #{pendingTask.taskId}
+        </Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <Tooltip title="Share Report">
             <IconButton
@@ -341,7 +344,7 @@ export function PingResultDisplay(props: {
                     new Promise<PingReport>((resolve) => {
                       const report = buildPingReport(
                         tableCellDataMap,
-                        pendingTask
+                        pendingTask,
                       );
                       resolve(report);
                     })
@@ -538,7 +541,7 @@ function RenderPingSampleToText(props: {
       `time=${sample.latencyMs
         .toFixed(3)
         .replace(/0+$/, "")
-        .replace(/\.$/, "")}ms`
+        .replace(/\.$/, "")}ms`,
     );
   }
 
@@ -573,7 +576,7 @@ function RowMap(props: {
     canvasX,
     canvasY,
     expanded,
-    zoomEnabled
+    zoomEnabled,
   );
 
   const { data: conns } = useQuery({
@@ -605,7 +608,7 @@ function RowMap(props: {
       const { latency } = getLatestDataFromMap(
         tableCellDataMap,
         target,
-        node.node_name
+        node.node_name,
       );
       if (
         latency !== undefined &&
@@ -650,7 +653,7 @@ function RowMap(props: {
     const { historySamples } = getLatestDataFromMap(
       tableCellDataMap,
       target,
-      source
+      source,
     );
     for (const sample of historySamples) {
       extraMarkers = updateMarkers(sample, extraMarkers, ratio);

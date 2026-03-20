@@ -16,10 +16,17 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { TaskCloseIconButton } from "./taskclose";
-import { AnswersMap, DNSResponse, DNSTarget, PendingTask } from "@/apis/types";
+import {
+  AnswersMap,
+  DNSResponse,
+  DNSTarget,
+  PendingTask,
+  RawPingEvent,
+} from "@/apis/types";
 import { Fragment, useEffect, useState } from "react";
-import { makeRealDNSResponseStream, RawPingEvent } from "@/apis/globalping";
+import { makeRealDNSResponseStream } from "@/apis/globalping";
 import { getLatencyColor } from "./colorfunc";
+import { firstLetterCap } from "./strings";
 
 function RenderError(props: { dnsResponse: DNSResponse }) {
   const { dnsResponse } = props;
@@ -75,7 +82,7 @@ function RenderResponse(props: { dnsResponse: DNSResponse }) {
 
 function updateAnswersMap(
   answersMap: AnswersMap,
-  event: RawPingEvent<DNSResponse>
+  event: RawPingEvent<DNSResponse>,
 ): AnswersMap {
   const dnsResponse = event.data as any as DNSResponse;
   if (!dnsResponse?.corrId) {
@@ -102,7 +109,7 @@ function updateAnswersMap(
 
 function makeFakeDNSResponseStream(
   targets: DNSTarget[],
-  sources: string[]
+  sources: string[],
 ): Promise<ReadableStream<RawPingEvent<DNSResponse>>> {
   const timerWrapper: {
     intervalId: ReturnType<typeof setInterval> | null;
@@ -148,7 +155,7 @@ function makeFakeDNSResponseStream(
 
 function getDNSResponseStream(
   targets: DNSTarget[],
-  sources: string[]
+  sources: string[],
 ): Promise<ReadableStream<RawPingEvent<DNSResponse>>> {
   return makeRealDNSResponseStream(targets, sources);
   return makeFakeDNSResponseStream(targets, sources);
@@ -208,9 +215,9 @@ export function DNSProbeDisplay(props: {
               }
               timerRef.timer = setTimeout(() => setLoading(false), 1000);
             }
-            reader.read().then(doRead);
+            reader.read().then(doRead as any);
           }
-          reader.read().then(doRead);
+          reader.read().then(doRead as any);
         })
         .catch((e) => console.error("failed to then stream", e));
     });
@@ -236,7 +243,9 @@ export function DNSProbeDisplay(props: {
           padding: 2,
         }}
       >
-        <Typography variant="h6">Task #{task.taskId}</Typography>
+        <Typography variant="h6">
+          {firstLetterCap(task.type)} Task #{task.taskId}
+        </Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           {loading && <CircularProgress size={20} />}
           <Tooltip title={"Refresh"}>

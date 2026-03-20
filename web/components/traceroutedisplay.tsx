@@ -62,6 +62,7 @@ import {
   TracerouteReportPreviewDialog,
 } from "@/components/traceroutereport";
 import ShareIcon from "@mui/icons-material/Share";
+import { firstLetterCap } from "./strings";
 
 type TracerouteIPEntry = {
   ip: string;
@@ -109,7 +110,7 @@ type TabState = {
 type PageState = Record<string, TabState>;
 
 function sortAndDedupPeers(
-  peers: TraceroutePeerEntry[]
+  peers: TraceroutePeerEntry[],
 ): TraceroutePeerEntry[] {
   const sorted = [...peers].sort((a, b) => b.seq - a.seq);
   const m = new Map<string, TraceroutePeerEntry>();
@@ -137,7 +138,7 @@ function getMedian(history: number[]): number {
 
 function updateHopEntryState(
   hopEntryState: HopEntryState | undefined | null,
-  pingSample: PingSample
+  pingSample: PingSample,
 ): HopEntryState {
   const newEntry = {
     ...(hopEntryState ?? {
@@ -205,7 +206,7 @@ function updateHopEntryState(
 
 function updateTabState(
   tabState: TabState | undefined | null,
-  pingSample: PingSample
+  pingSample: PingSample,
 ): TabState {
   const newTabState: TabState = {
     ...(tabState ?? {
@@ -219,13 +220,13 @@ function updateTabState(
   newTabState.hopEntries = updateHopEntries(
     newTabState,
     pingSample,
-    newTabState.hopEntries
+    newTabState.hopEntries,
   );
 
   newTabState.markers = updateMarkers(
     newTabState,
     pingSample,
-    newTabState.markers
+    newTabState.markers,
   );
 
   if (pingSample.lastHop) {
@@ -244,14 +245,14 @@ function updateTabState(
 function updateHopEntries(
   tabState: TabState,
   pingSample: PingSample,
-  hopEntries: Record<number, HopEntryState>
+  hopEntries: Record<number, HopEntryState>,
 ): Record<number, HopEntryState> {
   const newHopEntries: Record<number, HopEntryState> = { ...hopEntries };
 
   if (pingSample.ttl !== undefined && pingSample.ttl !== null) {
     newHopEntries[pingSample.ttl] = updateHopEntryState(
       newHopEntries[pingSample.ttl],
-      pingSample
+      pingSample,
     );
   }
 
@@ -260,7 +261,7 @@ function updateHopEntries(
 
 function updatePageState(
   pageState: PageState,
-  pingSample: PingSample
+  pingSample: PingSample,
 ): PageState {
   return {
     ...pageState,
@@ -275,7 +276,7 @@ type DisplayEntry = {
 
 function getDispEntries(
   hopEntries: PageState,
-  tabValue: string
+  tabValue: string,
 ): DisplayEntry[] {
   const dispEntries: DisplayEntry[] = [];
   const currentTabEntries = hopEntries[tabValue];
@@ -314,7 +315,7 @@ function getDispEntries(
 function updateMarkers(
   tabState: TabState,
   pingSample: PingSample,
-  markers: Marker[] | undefined | null
+  markers: Marker[] | undefined | null,
 ): Marker[] {
   let newMarkers: Marker[] = [...(markers ?? [])];
 
@@ -394,7 +395,7 @@ function swapIJ<T>(arr: T[], i: number, j: number): T[] {
 
 function updateReportPeer(
   peer: TracerouteReportPeer | undefined,
-  sample: PingSample
+  sample: PingSample,
 ): TracerouteReportPeer {
   const loc = sample.peerIPInfo
     ? {
@@ -480,7 +481,7 @@ function updateReportPeer(
 
 function updateReportHop(
   hop: TracerouteReportHop,
-  sample: PingSample
+  sample: PingSample,
 ): TracerouteReportHop {
   hop = { ...hop };
 
@@ -633,7 +634,7 @@ function buildTracerouteReport(
   samples: PingSample[],
   from: ConnEntry,
   target: string,
-  mode: TracerouteReportMode
+  mode: TracerouteReportMode,
 ): TracerouteReport {
   const now = new Date();
   const targetAttributes = testIP(target);
@@ -695,7 +696,7 @@ export function TracerouteResultDisplay(props: {
   const [tabValue, setTabValue] = useState(task.sources[0]);
 
   const readerRef = useRef<ReadableStreamDefaultReader<PingSample> | null>(
-    null
+    null,
   );
   const streamRef = useRef<ReadableStream<PingSample> | null>(null);
 
@@ -785,7 +786,7 @@ export function TracerouteResultDisplay(props: {
     canvasW,
     canvasH,
     showMap,
-    zoomEnabled
+    zoomEnabled,
   );
 
   const { data: conns } = useQuery({
@@ -810,7 +811,7 @@ export function TracerouteResultDisplay(props: {
   }
 
   const currentNode: ConnEntry | undefined = Array.from(
-    Object.entries(conns || {})
+    Object.entries(conns || {}),
   ).find(([_, connent]) => connent.node_name === tabValue)?.[1];
 
   // console.log("[dbg] currentNode:", currentNode);
@@ -835,7 +836,7 @@ export function TracerouteResultDisplay(props: {
           const paths = toGeodesicPaths(
             [fromMarker.lonLat[1], fromMarker.lonLat[0]],
             [toMarker.lonLat[1], toMarker.lonLat[0]],
-            200
+            200,
           );
           for (const path of paths) {
             extraPaths.push({
@@ -864,7 +865,9 @@ export function TracerouteResultDisplay(props: {
         }}
       >
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <Typography variant="h6">Task #{task.taskId}</Typography>
+          <Typography variant="h6">
+            {firstLetterCap(task.type)} Task #{task.taskId}
+          </Typography>
           {task.sources.length > 0 && (
             <Tabs
               value={tabValue}
@@ -906,7 +909,7 @@ export function TracerouteResultDisplay(props: {
                       samples,
                       from,
                       target,
-                      !!task?.useUDP ? "udp" : "icmp"
+                      !!task?.useUDP ? "udp" : "icmp",
                     );
                     resolve(report);
                   })
