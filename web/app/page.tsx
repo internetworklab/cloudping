@@ -235,6 +235,11 @@ export default function Home() {
               </Link>
             </Tooltip>
           )}
+          <Tooltip title="More">
+            <IconButton size="small" onClick={() => setShowAboutDialog(true)}>
+              <MoreHorizIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
         <Box
           sx={{
@@ -385,14 +390,6 @@ export default function Home() {
                     </RadioGroup>
                   </FormControl>
                 </Box>
-                <Tooltip title="more">
-                  <IconButton
-                    size="small"
-                    onClick={() => setShowAboutDialog(true)}
-                  >
-                    <MoreHorizIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
               </Box>
               <Box sx={{ marginTop: 2 }}>
                 {pendingTask.type === "dns" ? (
