@@ -13,7 +13,12 @@ import {
   FormControl,
   FormLabel,
 } from "@mui/material";
-import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
+import {
+  DNSProbePlan,
+  expandDNSProbePlan,
+  PendingTask,
+  PingTaskType,
+} from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { SiteName } from "@/components/sitename";
 import {
@@ -23,9 +28,86 @@ import {
 import { PingTaskSourceSelector } from "@/components/PingTaskSourceSelector";
 import { PingTaskDefaultTransportOptionsPanel } from "@/components/PingTaskTransportOptions";
 import { dedup } from "@/apis/utils";
-import { Fragment, useState } from "react";
+import { Fragment, useState, Dispatch, SetStateAction } from "react";
 import { testIP } from "@/components/testip";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
+
+function TaskTypeSelector(props: {
+  pendingTask: PendingTask;
+  setPendingTask: Dispatch<SetStateAction<PendingTask>>;
+}) {
+  const { pendingTask, setPendingTask } = props;
+  return (
+    <FormControl>
+      <FormLabel>Task Type</FormLabel>
+      <RadioGroup
+        value={pendingTask.type}
+        onChange={(e) =>
+          setPendingTask((prev) => ({
+            ...prev,
+            type: e.target.value as "ping" | "traceroute",
+            pmtu:
+              e.target.value === "ping" || e.target.value === "tcpping"
+                ? false
+                : prev.pmtu,
+            useUDP: e.target.value === "tcpping" ? false : prev.useUDP,
+          }))
+        }
+        row
+      >
+        <FormControlLabel value="ping" control={<Radio />} label="Ping" />
+        <FormControlLabel
+          value="traceroute"
+          control={<Radio />}
+          label="Traceroute"
+        />
+        <FormControlLabel
+          value="tcpping"
+          control={<Radio />}
+          label="TCP Ping"
+        />
+        <FormControlLabel value="dns" control={<Radio />} label="DNS" />
+        <FormControlLabel value="http" control={<Radio />} label="HTTP" />
+      </RadioGroup>
+    </FormControl>
+  );
+}
+
+function DefaultTaskTargetInput(props: {
+  targetsInput: string;
+  setTargetsInput: (s: string) => void;
+  taskType: PingTaskType;
+}) {
+  const { targetsInput, setTargetsInput, taskType } = props;
+  const targetAttributes = testIP(targetsInput);
+  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
+  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
+
+  return (
+    <TextField
+      variant="standard"
+      placeholder={
+        taskType === "ping"
+          ? "Targets, separated by comma"
+          : taskType === "tcpping"
+            ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
+            : "Specify a single target"
+      }
+      fullWidth
+      label={
+        taskType === "ping"
+          ? "Targets"
+          : isDN42
+            ? "DN42 Target"
+            : isNeo
+              ? "NeoNetwork Target"
+              : "Target"
+      }
+      value={targetsInput}
+      onChange={(e) => setTargetsInput(e.target.value)}
+    />
+  );
+}
 
 export function TaskCreatorPanel(props: {
   onNewTaskConfirm: (task: PendingTask) => void;
@@ -49,16 +131,6 @@ export function TaskCreatorPanel(props: {
   const { onNewTaskConfirm } = props;
 
   const [targetsInput, setTargetsInput] = useState<string>("");
-  const targetAttributes = testIP(targetsInput);
-
-  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
-  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
-
-  const targetLabelOverrides = isDN42
-    ? "DN42 Target"
-    : isNeo
-      ? "NeoNetwork Target"
-      : "Target";
 
   return (
     <Fragment>
@@ -146,52 +218,10 @@ export function TaskCreatorPanel(props: {
                 alignItems: "center",
               }}
             >
-              <FormControl>
-                <FormLabel>Task Type</FormLabel>
-                <RadioGroup
-                  value={pendingTask.type}
-                  onChange={(e) =>
-                    setPendingTask((prev) => ({
-                      ...prev,
-                      type: e.target.value as "ping" | "traceroute",
-                      pmtu:
-                        e.target.value === "ping" ||
-                        e.target.value === "tcpping"
-                          ? false
-                          : prev.pmtu,
-                      useUDP:
-                        e.target.value === "tcpping" ? false : prev.useUDP,
-                    }))
-                  }
-                  row
-                >
-                  <FormControlLabel
-                    value="ping"
-                    control={<Radio />}
-                    label="Ping"
-                  />
-                  <FormControlLabel
-                    value="traceroute"
-                    control={<Radio />}
-                    label="Traceroute"
-                  />
-                  <FormControlLabel
-                    value="tcpping"
-                    control={<Radio />}
-                    label="TCP Ping"
-                  />
-                  <FormControlLabel
-                    value="dns"
-                    control={<Radio />}
-                    label="DNS"
-                  />
-                  <FormControlLabel
-                    value="http"
-                    control={<Radio />}
-                    label="HTTP"
-                  />
-                </RadioGroup>
-              </FormControl>
+              <TaskTypeSelector
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
+              />
             </Box>
           </Box>
           <Box sx={{ marginTop: 2 }}>
@@ -220,21 +250,10 @@ export function TaskCreatorPanel(props: {
                 setPendingTask={setPendingTask}
               />
             ) : (
-              <TextField
-                variant="standard"
-                placeholder={
-                  pendingTask.type === "ping"
-                    ? "Targets, separated by comma"
-                    : pendingTask.type === "tcpping"
-                      ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
-                      : "Specify a single target"
-                }
-                fullWidth
-                label={
-                  pendingTask.type === "ping" ? "Targets" : targetLabelOverrides
-                }
-                value={targetsInput}
-                onChange={(e) => setTargetsInput(e.target.value)}
+              <DefaultTaskTargetInput
+                targetsInput={targetsInput}
+                setTargetsInput={setTargetsInput}
+                taskType={pendingTask.type}
               />
             )}
           </Box>

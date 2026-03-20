@@ -43,7 +43,11 @@ export function testIP(v: string): TestResult {
     isDN42IP = isDN42IPv4 || isDN42IPv6;
     isNeoIP = isNeoV4 || isNeoV6;
   } else {
-    isNeoDomain = v.endsWith(".neo") || v.endsWith(".neo.");
+    isNeoDomain =
+      v.endsWith(".neo") ||
+      v.endsWith(".neo.") ||
+      v.endsWith(".neonetwork") ||
+      v.endsWith(".neonetwork.");
     isDN42Domain = v.endsWith(".dn42") || v.endsWith(".dn42.");
   }
 
