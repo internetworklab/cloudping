@@ -178,7 +178,10 @@ export default function Home() {
     <Box>
       <Paper
         sx={{
-          padding: 1,
+          paddingLeft: 2,
+          paddingRight: 2,
+          paddingTop: 1,
+          paddingBottom: 1,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
