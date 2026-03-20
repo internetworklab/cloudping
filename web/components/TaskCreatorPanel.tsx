@@ -31,6 +31,10 @@ import { dedup } from "@/apis/utils";
 import { Fragment, useState, Dispatch, SetStateAction } from "react";
 import { testIP } from "@/components/testip";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
+import {
+  HTTPProbeTaskPanel,
+  HTTPProbeTransportSelect,
+} from "./HTTPProbeTransportSelect";
 
 function TaskTypeSelector(props: {
   pendingTask: PendingTask;
@@ -202,7 +206,7 @@ export function TaskCreatorPanel(props: {
           </Box>
           <Box
             sx={{
-              marginTop: 2,
+              marginTop: 1,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
@@ -224,9 +228,14 @@ export function TaskCreatorPanel(props: {
               />
             </Box>
           </Box>
-          <Box sx={{ marginTop: 2 }}>
+          <Box sx={{ marginTop: 1 }}>
             {pendingTask.type === "dns" ? (
               <DNSProbeTransportSelect
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
+              />
+            ) : pendingTask.type === "http" ? (
+              <HTTPProbeTransportSelect
                 pendingTask={pendingTask}
                 setPendingTask={setPendingTask}
               />
@@ -237,15 +246,20 @@ export function TaskCreatorPanel(props: {
               />
             )}
           </Box>
-          <Box sx={{ marginTop: 2 }}>
+          <Box sx={{ marginTop: 1 }}>
             <PingTaskSourceSelector
               pendingTask={pendingTask}
               setPendingTask={setPendingTask}
             />
           </Box>
-          <Box sx={{ marginTop: 2 }}>
+          <Box sx={{ marginTop: 1 }}>
             {pendingTask.type === "dns" ? (
               <DNSProbeTaskPanel
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
+              />
+            ) : pendingTask.type === "http" ? (
+              <HTTPProbeTaskPanel
                 pendingTask={pendingTask}
                 setPendingTask={setPendingTask}
               />

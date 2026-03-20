@@ -96,6 +96,10 @@ export type PendingTask = {
   dnsProbePlan: DNSProbePlan;
   dnsProbeTargets?: DNSTarget[];
   httpProbeTargets?: HTTPTarget[];
+  targetsInput?: string;
+  headersInput?: string;
+  selectingHttpTransport?: "http/1.1" | "http/2" | "http/3";
+  addHeaderSW?: boolean;
 };
 
 export type ExactLocation = {
