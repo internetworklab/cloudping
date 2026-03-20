@@ -20,6 +20,7 @@ import {
   InputLabel,
   FormControl,
   FormLabel,
+  Paper,
 } from "@mui/material";
 import { CSSProperties, Fragment, useState } from "react";
 import { SourceOption, SourcesSelector } from "@/components/sourceselector";
@@ -41,6 +42,7 @@ import TelegramIcon from "@mui/icons-material/Telegram";
 import { testIP } from "@/components/testip";
 import { SiteName } from "@/components/sitename";
 import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
+import { ModeSelector } from "@/components/ModeSelector";
 
 const fakeSources: SourceOption[] = [
   {
@@ -156,7 +158,6 @@ export default function Home() {
       flexDirection: "column",
       gap: 2,
       position: "relative",
-      zIndex: 1,
     },
   ];
 
@@ -174,73 +175,99 @@ export default function Home() {
   const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
   return (
-    <Box sx={containerStyles}>
-      <Box sx={headerCardStyles}>
-        <Card>
-          <CardContent>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 2,
-              }}
-            >
+    <Box>
+      <Paper
+        sx={{
+          padding: 1,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 1,
+          zIndex: 1,
+          position: "relative",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+          {!!dn42GeoIPRepo && (
+            <Tooltip title="Go visit DN42 GeoIP Project">
+              <Link
+                underline="hover"
+                href={dn42GeoIPRepo}
+                target="_blank"
+                variant="caption"
+                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+              >
+                <GitHubIcon />
+                DN42GeoIP
+              </Link>
+            </Tooltip>
+          )}
+          {repoAddr !== "" && (
+            <Tooltip title="Go to Project's Github Page">
+              <Link
+                underline="hover"
+                href={repoAddr}
+                target="_blank"
+                variant="caption"
+                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+              >
+                <GitHubIcon />
+                Project
+              </Link>
+            </Tooltip>
+          )}
+          {tgInviteLink!! && (
+            <Tooltip title={"Join our Telegram group"}>
+              <Link
+                underline="hover"
+                href={tgInviteLink}
+                target={"_blank"}
+                variant="caption"
+                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+              >
+                <TelegramIcon />
+                Chat
+              </Link>
+            </Tooltip>
+          )}
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 1,
+          }}
+        >
+          <ModeSelector />
+        </Box>
+      </Paper>
+      <Box sx={containerStyles}>
+        <Box sx={headerCardStyles}>
+          <Card>
+            <CardContent>
               <Box
                 sx={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 2,
+                  justifyContent: "space-between",
                   flexWrap: "wrap",
+                  gap: 2,
                 }}
               >
-                <Typography variant="h6">
-                  <SiteName />
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
-                {!!dn42GeoIPRepo && (
-                  <Tooltip title="Go visit DN42 GeoIP Project">
-                    <Link
-                      underline="hover"
-                      href={dn42GeoIPRepo}
-                      target="_blank"
-                      variant="caption"
-                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                    >
-                      <GitHubIcon />
-                      DN42GeoIP
-                    </Link>
-                  </Tooltip>
-                )}
-                {repoAddr !== "" && (
-                  <Tooltip title="Go to Project's Github Page">
-                    <Link
-                      underline="hover"
-                      href={repoAddr}
-                      target="_blank"
-                      variant="caption"
-                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                    >
-                      <GitHubIcon />
-                      Project
-                    </Link>
-                  </Tooltip>
-                )}
-                {tgInviteLink!! && (
-                  <Tooltip title={"Join our Telegram group"}>
-                    <Link
-                      underline="hover"
-                      href={tgInviteLink}
-                      target={"_blank"}
-                      variant="caption"
-                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                    >
-                      <TelegramIcon />
-                      Chat
-                    </Link>
-                  </Tooltip>
-                )}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Typography variant="h6">
+                    <SiteName />
+                  </Typography>
+                </Box>
+
                 <Button
                   variant="contained"
                   color="primary"
@@ -289,358 +316,364 @@ export default function Home() {
                   Add Task
                 </Button>
               </Box>
-            </Box>
-            <Box
-              sx={{
-                marginTop: 2,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 2,
-              }}
-            >
               <Box
                 sx={{
+                  marginTop: 2,
                   display: "flex",
-                  gap: 2,
-                  flexWrap: "wrap",
+                  justifyContent: "space-between",
                   alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 2,
                 }}
               >
-                <FormControl>
-                  <FormLabel>Task Type</FormLabel>
-                  <RadioGroup
-                    value={pendingTask.type}
-                    onChange={(e) =>
-                      setPendingTask((prev) => ({
-                        ...prev,
-                        type: e.target.value as "ping" | "traceroute",
-                        pmtu:
-                          e.target.value === "ping" ||
-                          e.target.value === "tcpping"
-                            ? false
-                            : prev.pmtu,
-                        useUDP:
-                          e.target.value === "tcpping" ? false : prev.useUDP,
-                      }))
-                    }
-                    row
-                  >
-                    <FormControlLabel
-                      value="ping"
-                      control={<Radio />}
-                      label="Ping"
-                    />
-                    <FormControlLabel
-                      value="traceroute"
-                      control={<Radio />}
-                      label="Traceroute"
-                    />
-                    <FormControlLabel
-                      value="tcpping"
-                      control={<Radio />}
-                      label="TCP Ping"
-                    />
-                    <FormControlLabel
-                      value="dns"
-                      control={<Radio />}
-                      label="DNS"
-                    />
-                    <FormControlLabel
-                      value="http"
-                      control={<Radio />}
-                      label="HTTP"
-                    />
-                  </RadioGroup>
-                </FormControl>
-              </Box>
-              <Tooltip title="more">
-                <IconButton
-                  size="small"
-                  onClick={() => setShowAboutDialog(true)}
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 2,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
                 >
-                  <MoreHorizIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Box sx={{ marginTop: 2 }}>
-              {pendingTask.type === "dns" ? (
-                <FormControl>
-                  <FormLabel>Options</FormLabel>
-                  <RadioGroup
-                    row
-                    value={pendingTask.dnsProbePlan.transport}
-                    onChange={(e) =>
-                      setPendingTask((prev) => ({
-                        ...prev,
-                        dnsProbePlan: {
-                          ...prev.dnsProbePlan,
-                          transport: e.target.value as "udp" | "tcp",
-                        },
-                      }))
-                    }
+                  <FormControl>
+                    <FormLabel>Task Type</FormLabel>
+                    <RadioGroup
+                      value={pendingTask.type}
+                      onChange={(e) =>
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          type: e.target.value as "ping" | "traceroute",
+                          pmtu:
+                            e.target.value === "ping" ||
+                            e.target.value === "tcpping"
+                              ? false
+                              : prev.pmtu,
+                          useUDP:
+                            e.target.value === "tcpping" ? false : prev.useUDP,
+                        }))
+                      }
+                      row
+                    >
+                      <FormControlLabel
+                        value="ping"
+                        control={<Radio />}
+                        label="Ping"
+                      />
+                      <FormControlLabel
+                        value="traceroute"
+                        control={<Radio />}
+                        label="Traceroute"
+                      />
+                      <FormControlLabel
+                        value="tcpping"
+                        control={<Radio />}
+                        label="TCP Ping"
+                      />
+                      <FormControlLabel
+                        value="dns"
+                        control={<Radio />}
+                        label="DNS"
+                      />
+                      <FormControlLabel
+                        value="http"
+                        control={<Radio />}
+                        label="HTTP"
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+                <Tooltip title="more">
+                  <IconButton
+                    size="small"
+                    onClick={() => setShowAboutDialog(true)}
                   >
-                    <FormControlLabel
-                      control={<Radio />}
-                      value="udp"
-                      label="Use UDP"
-                    />
-                    <FormControlLabel
-                      control={<Radio />}
-                      value="tcp"
-                      label="Use TCP"
-                    />
-                  </RadioGroup>
-                </FormControl>
-              ) : (
-                <FormControl>
-                  <FormLabel>Options</FormLabel>
-                  <FormGroup row>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={!!pendingTask.preferV4}
-                          onChange={(_, ckd) => {
-                            setPendingTask((prev) => ({
-                              ...prev,
-                              preferV4: !!ckd,
-                              preferV6: ckd ? false : prev.preferV6,
-                            }));
-                          }}
-                        />
-                      }
-                      label="Prefer V4"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={!!pendingTask.preferV6}
-                          onChange={(_, ckd) => {
-                            setPendingTask((prev) => ({
-                              ...prev,
-                              preferV4: ckd ? false : prev.preferV4,
-                              preferV6: !!ckd,
-                            }));
-                          }}
-                        />
-                      }
-                      label="Prefer V6"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          disabled={pendingTask.type === "tcpping"}
-                          checked={!!pendingTask.useUDP}
-                          onChange={(_, ckd) => {
-                            setPendingTask((prev) => ({
-                              ...prev,
-                              useUDP: !!ckd,
-                            }));
-                          }}
-                        />
-                      }
-                      label="Use UDP"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          disabled={pendingTask.type !== "traceroute"}
-                          checked={
-                            pendingTask.type === "traceroute" &&
-                            !!pendingTask.pmtu
-                          }
-                          onChange={(_, ckd) => {
-                            setPendingTask((prev) => ({
-                              ...prev,
-                              pmtu: !!ckd,
-                            }));
-                          }}
-                        />
-                      }
-                      label="PMTU"
-                    />
-                  </FormGroup>
-                </FormControl>
-              )}
-            </Box>
-            <Box sx={{ marginTop: 2 }}>
-              <SourcesSelector
-                value={sourcesSelected
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0)}
-                onChange={(value) => setSourcesSelected(value)}
-                getOptions={() => {
-                  // return Promise.resolve(fakeSources);
-
-                  let filter: Record<string, string> | undefined = undefined;
-                  if (!!pendingTask.useUDP) {
-                    filter = { ...(filter || {}), SupportUDP: "true" };
-                  }
-                  if (!!pendingTask.pmtu) {
-                    filter = { ...(filter || {}), SupportPMTU: "true" };
-                  }
-                  if (pendingTask.type === "tcpping") {
-                    filter = { ...(filter || {}), SupportTCP: "true" };
-                  }
-                  if (pendingTask.type === "dns") {
-                    filter = { ...(filter || {}), CapabilityDNSProbe: "true" };
-                  }
-
-                  return getCurrentPingerOptions(filter).then((nodes) => {
-                    return nodes.map((node) => ({
-                      key: node.node_name ?? "",
-                      label: node.node_name ?? "",
-                      iso3166alpha2: node.attributes?.CountryCode,
-                      cityName: node.attributes?.CityName,
-                    }));
-                  });
-                  // return new Promise((res) => {
-                  //   window.setTimeout(() => res(fakeSources), 2000);
-                  // });
-                }}
-              />
-            </Box>
-            <Box sx={{ marginTop: 2 }}>
-              {pendingTask.type === "dns" ? (
-                <Box>
-                  <FormControl fullWidth variant="standard">
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                      label="Type"
-                      value={pendingTask.dnsProbePlan.type}
+                    <MoreHorizIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              <Box sx={{ marginTop: 2 }}>
+                {pendingTask.type === "dns" ? (
+                  <FormControl>
+                    <FormLabel>Options</FormLabel>
+                    <RadioGroup
+                      row
+                      value={pendingTask.dnsProbePlan.transport}
                       onChange={(e) =>
                         setPendingTask((prev) => ({
                           ...prev,
                           dnsProbePlan: {
                             ...prev.dnsProbePlan,
-                            type: e.target.value as DNSQueryType,
+                            transport: e.target.value as "udp" | "tcp",
                           },
                         }))
                       }
                     >
-                      <MenuItem value={"a"}>A</MenuItem>
-                      <MenuItem value={"aaaa"}>AAAA</MenuItem>
-                      <MenuItem value={"cname"}>CNAME</MenuItem>
-                      <MenuItem value={"mx"}>MX</MenuItem>
-                      <MenuItem value={"ns"}>NS</MenuItem>
-                      <MenuItem value={"ptr"}>PTR</MenuItem>
-                      <MenuItem value={"txt"}>TXT</MenuItem>
-                    </Select>
+                      <FormControlLabel
+                        control={<Radio />}
+                        value="udp"
+                        label="Use UDP"
+                      />
+                      <FormControlLabel
+                        control={<Radio />}
+                        value="tcp"
+                        label="Use TCP"
+                      />
+                    </RadioGroup>
                   </FormControl>
-                  <TextField
-                    sx={{ marginTop: 2 }}
-                    variant="standard"
-                    placeholder="Querying Domains, separated by comma"
-                    fullWidth
-                    label="Domains"
-                    value={pendingTask.dnsProbePlan.domainsInput || ""}
-                    onChange={(e) =>
-                      setPendingTask((prev) => ({
-                        ...prev,
-                        dnsProbePlan: {
-                          ...prev.dnsProbePlan,
-                          domainsInput: e.target.value,
-                        },
-                      }))
+                ) : (
+                  <FormControl>
+                    <FormLabel>Options</FormLabel>
+                    <FormGroup row>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={!!pendingTask.preferV4}
+                            onChange={(_, ckd) => {
+                              setPendingTask((prev) => ({
+                                ...prev,
+                                preferV4: !!ckd,
+                                preferV6: ckd ? false : prev.preferV6,
+                              }));
+                            }}
+                          />
+                        }
+                        label="Prefer V4"
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={!!pendingTask.preferV6}
+                            onChange={(_, ckd) => {
+                              setPendingTask((prev) => ({
+                                ...prev,
+                                preferV4: ckd ? false : prev.preferV4,
+                                preferV6: !!ckd,
+                              }));
+                            }}
+                          />
+                        }
+                        label="Prefer V6"
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            disabled={pendingTask.type === "tcpping"}
+                            checked={!!pendingTask.useUDP}
+                            onChange={(_, ckd) => {
+                              setPendingTask((prev) => ({
+                                ...prev,
+                                useUDP: !!ckd,
+                              }));
+                            }}
+                          />
+                        }
+                        label="Use UDP"
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            disabled={pendingTask.type !== "traceroute"}
+                            checked={
+                              pendingTask.type === "traceroute" &&
+                              !!pendingTask.pmtu
+                            }
+                            onChange={(_, ckd) => {
+                              setPendingTask((prev) => ({
+                                ...prev,
+                                pmtu: !!ckd,
+                              }));
+                            }}
+                          />
+                        }
+                        label="PMTU"
+                      />
+                    </FormGroup>
+                  </FormControl>
+                )}
+              </Box>
+              <Box sx={{ marginTop: 2 }}>
+                <SourcesSelector
+                  value={sourcesSelected
+                    .map((s) => s.trim())
+                    .filter((s) => s.length > 0)}
+                  onChange={(value) => setSourcesSelected(value)}
+                  getOptions={() => {
+                    // return Promise.resolve(fakeSources);
+
+                    let filter: Record<string, string> | undefined = undefined;
+                    if (!!pendingTask.useUDP) {
+                      filter = { ...(filter || {}), SupportUDP: "true" };
                     }
-                  />
-                  <TextField
-                    sx={{ marginTop: 2 }}
-                    variant="standard"
-                    placeholder="Servers where to send queries, separated by comma, e.g. 8.8.8.8, or [2001:4860:4860::8888]:53"
-                    fullWidth
-                    label="Resolvers"
-                    value={pendingTask.dnsProbePlan.resolversInput || ""}
-                    onChange={(e) =>
-                      setPendingTask((prev) => ({
-                        ...prev,
-                        dnsProbePlan: {
-                          ...prev.dnsProbePlan,
-                          resolversInput: e.target.value,
-                        },
-                      }))
+                    if (!!pendingTask.pmtu) {
+                      filter = { ...(filter || {}), SupportPMTU: "true" };
                     }
+                    if (pendingTask.type === "tcpping") {
+                      filter = { ...(filter || {}), SupportTCP: "true" };
+                    }
+                    if (pendingTask.type === "dns") {
+                      filter = {
+                        ...(filter || {}),
+                        CapabilityDNSProbe: "true",
+                      };
+                    }
+
+                    return getCurrentPingerOptions(filter).then((nodes) => {
+                      return nodes.map((node) => ({
+                        key: node.node_name ?? "",
+                        label: node.node_name ?? "",
+                        iso3166alpha2: node.attributes?.CountryCode,
+                        cityName: node.attributes?.CityName,
+                      }));
+                    });
+                    // return new Promise((res) => {
+                    //   window.setTimeout(() => res(fakeSources), 2000);
+                    // });
+                  }}
+                />
+              </Box>
+              <Box sx={{ marginTop: 2 }}>
+                {pendingTask.type === "dns" ? (
+                  <Box>
+                    <FormControl fullWidth variant="standard">
+                      <InputLabel>Type</InputLabel>
+                      <Select
+                        label="Type"
+                        value={pendingTask.dnsProbePlan.type}
+                        onChange={(e) =>
+                          setPendingTask((prev) => ({
+                            ...prev,
+                            dnsProbePlan: {
+                              ...prev.dnsProbePlan,
+                              type: e.target.value as DNSQueryType,
+                            },
+                          }))
+                        }
+                      >
+                        <MenuItem value={"a"}>A</MenuItem>
+                        <MenuItem value={"aaaa"}>AAAA</MenuItem>
+                        <MenuItem value={"cname"}>CNAME</MenuItem>
+                        <MenuItem value={"mx"}>MX</MenuItem>
+                        <MenuItem value={"ns"}>NS</MenuItem>
+                        <MenuItem value={"ptr"}>PTR</MenuItem>
+                        <MenuItem value={"txt"}>TXT</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      sx={{ marginTop: 2 }}
+                      variant="standard"
+                      placeholder="Querying Domains, separated by comma"
+                      fullWidth
+                      label="Domains"
+                      value={pendingTask.dnsProbePlan.domainsInput || ""}
+                      onChange={(e) =>
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          dnsProbePlan: {
+                            ...prev.dnsProbePlan,
+                            domainsInput: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                    <TextField
+                      sx={{ marginTop: 2 }}
+                      variant="standard"
+                      placeholder="Servers where to send queries, separated by comma, e.g. 8.8.8.8, or [2001:4860:4860::8888]:53"
+                      fullWidth
+                      label="Resolvers"
+                      value={pendingTask.dnsProbePlan.resolversInput || ""}
+                      onChange={(e) =>
+                        setPendingTask((prev) => ({
+                          ...prev,
+                          dnsProbePlan: {
+                            ...prev.dnsProbePlan,
+                            resolversInput: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </Box>
+                ) : (
+                  <TextField
+                    variant="standard"
+                    placeholder={
+                      pendingTask.type === "ping"
+                        ? "Targets, separated by comma"
+                        : pendingTask.type === "tcpping"
+                          ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
+                          : "Specify a single target"
+                    }
+                    fullWidth
+                    label={
+                      pendingTask.type === "ping"
+                        ? "Targets"
+                        : targetLabelOverrides
+                    }
+                    value={targetsInput}
+                    onChange={(e) => setTargetsInput(e.target.value)}
                   />
-                </Box>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+          {getSortedOnGoingTasks(onGoingTasks).map((task) => (
+            <Fragment key={task.taskId}>
+              {task.type === "traceroute" ? (
+                <TracerouteResultDisplay
+                  task={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
+                    );
+                  }}
+                />
+              ) : task.type === "dns" ? (
+                <DNSProbeDisplay
+                  task={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
+                    );
+                  }}
+                />
+              ) : task.type === "http" ? (
+                <HTTPProbeDisplay
+                  task={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
+                    );
+                  }}
+                />
               ) : (
-                <TextField
-                  variant="standard"
-                  placeholder={
-                    pendingTask.type === "ping"
-                      ? "Targets, separated by comma"
-                      : pendingTask.type === "tcpping"
-                        ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
-                        : "Specify a single target"
-                  }
-                  fullWidth
-                  label={
-                    pendingTask.type === "ping"
-                      ? "Targets"
-                      : targetLabelOverrides
-                  }
-                  value={targetsInput}
-                  onChange={(e) => setTargetsInput(e.target.value)}
+                <PingResultDisplay
+                  pendingTask={task}
+                  onDeleted={() => {
+                    setOnGoingTasks(
+                      onGoingTasks.filter((t) => t.taskId !== task.taskId),
+                    );
+                  }}
                 />
               )}
-            </Box>
-          </CardContent>
-        </Card>
-        {getSortedOnGoingTasks(onGoingTasks).map((task) => (
-          <Fragment key={task.taskId}>
-            {task.type === "traceroute" ? (
-              <TracerouteResultDisplay
-                task={task}
-                onDeleted={() => {
-                  setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                  );
-                }}
-              />
-            ) : task.type === "dns" ? (
-              <DNSProbeDisplay
-                task={task}
-                onDeleted={() => {
-                  setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                  );
-                }}
-              />
-            ) : task.type === "http" ? (
-              <HTTPProbeDisplay
-                task={task}
-                onDeleted={() => {
-                  setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                  );
-                }}
-              />
-            ) : (
-              <PingResultDisplay
-                pendingTask={task}
-                onDeleted={() => {
-                  setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
-                  );
-                }}
-              />
-            )}
-          </Fragment>
-        ))}
+            </Fragment>
+          ))}
+        </Box>
+        <Box sx={{ height: "100vh" }}></Box>
+        <TaskConfirmDialog
+          pendingTask={pendingTask}
+          open={openTaskConfirmDialog}
+          onCancel={() => {
+            setOpenTaskConfirmDialog(false);
+          }}
+          onConfirm={() => {
+            setOnGoingTasks([...onGoingTasks, pendingTask]);
+            setOpenTaskConfirmDialog(false);
+          }}
+        />
+        <About
+          open={showAboutDialog}
+          onClose={() => setShowAboutDialog(false)}
+        />
       </Box>
-      <Box sx={{ height: "100vh" }}></Box>
-      <TaskConfirmDialog
-        pendingTask={pendingTask}
-        open={openTaskConfirmDialog}
-        onCancel={() => {
-          setOpenTaskConfirmDialog(false);
-        }}
-        onConfirm={() => {
-          setOnGoingTasks([...onGoingTasks, pendingTask]);
-          setOpenTaskConfirmDialog(false);
-        }}
-      />
-      <About open={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
     </Box>
   );
 }
