@@ -12,25 +12,13 @@ import {
   Radio,
   Tooltip,
   IconButton,
-  Checkbox,
-  FormGroup,
   Link,
-  Select,
-  MenuItem,
-  InputLabel,
   FormControl,
   FormLabel,
   Paper,
 } from "@mui/material";
 import { CSSProperties, Fragment, useState } from "react";
-import { SourceOption, SourcesSelector } from "@/components/sourceselector";
-import { getCurrentPingerOptions } from "@/apis/globalping";
-import {
-  DNSProbePlan,
-  DNSQueryType,
-  expandDNSProbePlan,
-  PendingTask,
-} from "@/apis/types";
+import { DNSProbePlan, expandDNSProbePlan, PendingTask } from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import { PingResultDisplay } from "@/components/pingdisplay";
@@ -44,52 +32,12 @@ import { testIP } from "@/components/testip";
 import { SiteName } from "@/components/sitename";
 import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 import { ModeSelector } from "@/components/ModeSelector";
-
-const fakeSources: SourceOption[] = [
-  {
-    key: "us-nyc-01",
-    label: "us-nyc1",
-    iso3166alpha2: "US",
-    cityName: "New York",
-  },
-  {
-    key: "us-dal-01",
-    label: "us-dal1",
-  },
-  {
-    key: "somewhere",
-    label: "Somewhere",
-    iso3166alpha2: "",
-    cityName: "",
-  },
-  {
-    key: "cn-pek-01",
-    label: "cn-pek1",
-    iso3166alpha2: "CN",
-    cityName: "Beijing",
-  },
-];
-
-function getNextId(onGoingTasks: PendingTask[]): number {
-  let maxId = 0;
-  if (onGoingTasks.length > 0) {
-    for (const task of onGoingTasks) {
-      if (task.taskId > maxId) {
-        maxId = task.taskId;
-      }
-    }
-    maxId = maxId + 1;
-  }
-  return maxId;
-}
-
-function getSortedOnGoingTasks(onGoingTasks: PendingTask[]): PendingTask[] {
-  const sortedTasks = [...onGoingTasks];
-  sortedTasks.sort((a, b) => {
-    return b.taskId - a.taskId;
-  });
-  return sortedTasks;
-}
+import {
+  DNSProbeTaskPanel,
+  DNSProbeTransportSelect,
+} from "@/components/DNSProbeOptions";
+import { PingTaskSourceSelector } from "@/components/PingTaskSourceSelector";
+import { PingTaskDefaultTransportOptionsPanel } from "@/components/PingTaskTransportOptions";
 
 function dedup(arr: string[]): string[] {
   return Array.from(new Set(arr));
@@ -113,8 +61,6 @@ export default function Home() {
 
   const [openTaskConfirmDialog, setOpenTaskConfirmDialog] =
     useState<boolean>(false);
-
-  const [sourcesSelected, setSourcesSelected] = useState<string[]>([]);
 
   const [targetsInput, setTargetsInput] = useState<string>("");
   const targetAttributes = testIP(targetsInput);
@@ -160,7 +106,7 @@ export default function Home() {
       gap: 2,
       position: "relative",
       marginTop: 8,
-      minWidth: "80vw",
+      minWidth: "68vw",
     },
   ];
 
@@ -173,7 +119,6 @@ export default function Home() {
 
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
   const tgInviteLink = process.env["NEXT_PUBLIC_TG_INVITE_LINK"];
-  const dn42GeoIPRepo = process.env["NEXT_PUBLIC_DN42_GEOIP_REPO"];
   const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
   return (
@@ -271,9 +216,6 @@ export default function Home() {
                   variant="contained"
                   color="primary"
                   onClick={() => {
-                    const srcs = dedup(sourcesSelected)
-                      .map((s) => s.trim())
-                      .filter((s) => s.length > 0);
                     const tgts = dedup(targetsInput.split(","))
                       .map((t) => t.trim())
                       .filter((t) => t.length > 0);
@@ -302,7 +244,6 @@ export default function Home() {
 
                       return {
                         ...prev,
-                        sources: srcs,
                         targets: tgts,
                         taskId: generateRandomTaskId(),
                         dnsProbePlan: newDnsProbePlan,
@@ -383,206 +324,29 @@ export default function Home() {
               </Box>
               <Box sx={{ marginTop: 2 }}>
                 {pendingTask.type === "dns" ? (
-                  <FormControl>
-                    <FormLabel>Options</FormLabel>
-                    <RadioGroup
-                      row
-                      value={pendingTask.dnsProbePlan.transport}
-                      onChange={(e) =>
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          dnsProbePlan: {
-                            ...prev.dnsProbePlan,
-                            transport: e.target.value as "udp" | "tcp",
-                          },
-                        }))
-                      }
-                    >
-                      <FormControlLabel
-                        control={<Radio />}
-                        value="udp"
-                        label="Use UDP"
-                      />
-                      <FormControlLabel
-                        control={<Radio />}
-                        value="tcp"
-                        label="Use TCP"
-                      />
-                    </RadioGroup>
-                  </FormControl>
+                  <DNSProbeTransportSelect
+                    pendingTask={pendingTask}
+                    setPendingTask={setPendingTask}
+                  />
                 ) : (
-                  <FormControl>
-                    <FormLabel>Options</FormLabel>
-                    <FormGroup row>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={!!pendingTask.preferV4}
-                            onChange={(_, ckd) => {
-                              setPendingTask((prev) => ({
-                                ...prev,
-                                preferV4: !!ckd,
-                                preferV6: ckd ? false : prev.preferV6,
-                              }));
-                            }}
-                          />
-                        }
-                        label="Prefer V4"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={!!pendingTask.preferV6}
-                            onChange={(_, ckd) => {
-                              setPendingTask((prev) => ({
-                                ...prev,
-                                preferV4: ckd ? false : prev.preferV4,
-                                preferV6: !!ckd,
-                              }));
-                            }}
-                          />
-                        }
-                        label="Prefer V6"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            disabled={pendingTask.type === "tcpping"}
-                            checked={!!pendingTask.useUDP}
-                            onChange={(_, ckd) => {
-                              setPendingTask((prev) => ({
-                                ...prev,
-                                useUDP: !!ckd,
-                              }));
-                            }}
-                          />
-                        }
-                        label="Use UDP"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            disabled={pendingTask.type !== "traceroute"}
-                            checked={
-                              pendingTask.type === "traceroute" &&
-                              !!pendingTask.pmtu
-                            }
-                            onChange={(_, ckd) => {
-                              setPendingTask((prev) => ({
-                                ...prev,
-                                pmtu: !!ckd,
-                              }));
-                            }}
-                          />
-                        }
-                        label="PMTU"
-                      />
-                    </FormGroup>
-                  </FormControl>
+                  <PingTaskDefaultTransportOptionsPanel
+                    pendingTask={pendingTask}
+                    setPendingTask={setPendingTask}
+                  />
                 )}
               </Box>
               <Box sx={{ marginTop: 2 }}>
-                <SourcesSelector
-                  value={sourcesSelected
-                    .map((s) => s.trim())
-                    .filter((s) => s.length > 0)}
-                  onChange={(value) => setSourcesSelected(value)}
-                  getOptions={() => {
-                    // return Promise.resolve(fakeSources);
-
-                    let filter: Record<string, string> | undefined = undefined;
-                    if (!!pendingTask.useUDP) {
-                      filter = { ...(filter || {}), SupportUDP: "true" };
-                    }
-                    if (!!pendingTask.pmtu) {
-                      filter = { ...(filter || {}), SupportPMTU: "true" };
-                    }
-                    if (pendingTask.type === "tcpping") {
-                      filter = { ...(filter || {}), SupportTCP: "true" };
-                    }
-                    if (pendingTask.type === "dns") {
-                      filter = {
-                        ...(filter || {}),
-                        CapabilityDNSProbe: "true",
-                      };
-                    }
-
-                    return getCurrentPingerOptions(filter).then((nodes) => {
-                      return nodes.map((node) => ({
-                        key: node.node_name ?? "",
-                        label: node.node_name ?? "",
-                        iso3166alpha2: node.attributes?.CountryCode,
-                        cityName: node.attributes?.CityName,
-                      }));
-                    });
-                    // return new Promise((res) => {
-                    //   window.setTimeout(() => res(fakeSources), 2000);
-                    // });
-                  }}
+                <PingTaskSourceSelector
+                  pendingTask={pendingTask}
+                  setPendingTask={setPendingTask}
                 />
               </Box>
               <Box sx={{ marginTop: 2 }}>
                 {pendingTask.type === "dns" ? (
-                  <Box>
-                    <FormControl fullWidth variant="standard">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        label="Type"
-                        value={pendingTask.dnsProbePlan.type}
-                        onChange={(e) =>
-                          setPendingTask((prev) => ({
-                            ...prev,
-                            dnsProbePlan: {
-                              ...prev.dnsProbePlan,
-                              type: e.target.value as DNSQueryType,
-                            },
-                          }))
-                        }
-                      >
-                        <MenuItem value={"a"}>A</MenuItem>
-                        <MenuItem value={"aaaa"}>AAAA</MenuItem>
-                        <MenuItem value={"cname"}>CNAME</MenuItem>
-                        <MenuItem value={"mx"}>MX</MenuItem>
-                        <MenuItem value={"ns"}>NS</MenuItem>
-                        <MenuItem value={"ptr"}>PTR</MenuItem>
-                        <MenuItem value={"txt"}>TXT</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <TextField
-                      sx={{ marginTop: 2 }}
-                      variant="standard"
-                      placeholder="Querying Domains, separated by comma"
-                      fullWidth
-                      label="Domains"
-                      value={pendingTask.dnsProbePlan.domainsInput || ""}
-                      onChange={(e) =>
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          dnsProbePlan: {
-                            ...prev.dnsProbePlan,
-                            domainsInput: e.target.value,
-                          },
-                        }))
-                      }
-                    />
-                    <TextField
-                      sx={{ marginTop: 2 }}
-                      variant="standard"
-                      placeholder="Servers where to send queries, separated by comma, e.g. 8.8.8.8, or [2001:4860:4860::8888]:53"
-                      fullWidth
-                      label="Resolvers"
-                      value={pendingTask.dnsProbePlan.resolversInput || ""}
-                      onChange={(e) =>
-                        setPendingTask((prev) => ({
-                          ...prev,
-                          dnsProbePlan: {
-                            ...prev.dnsProbePlan,
-                            resolversInput: e.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </Box>
+                  <DNSProbeTaskPanel
+                    pendingTask={pendingTask}
+                    setPendingTask={setPendingTask}
+                  />
                 ) : (
                   <TextField
                     variant="standard"
@@ -606,7 +370,7 @@ export default function Home() {
               </Box>
             </CardContent>
           </Card>
-          {getSortedOnGoingTasks(onGoingTasks).map((task) => (
+          {onGoingTasks.map((task) => (
             <Fragment key={task.taskId}>
               {task.type === "traceroute" ? (
                 <TracerouteResultDisplay
@@ -656,7 +420,7 @@ export default function Home() {
             setOpenTaskConfirmDialog(false);
           }}
           onConfirm={() => {
-            setOnGoingTasks([...onGoingTasks, pendingTask]);
+            setOnGoingTasks([pendingTask, ...onGoingTasks]);
             setOpenTaskConfirmDialog(false);
           }}
         />
