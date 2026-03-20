@@ -9,8 +9,9 @@ import {
   DialogActions,
 } from "@mui/material";
 import { Fragment } from "react";
-import { DNSProbePlan, PendingTask } from "@/apis/types";
+import { PendingTask } from "@/apis/types";
 
+// Also validating task here, not just for comfirmation and previewing.
 export function TaskConfirmDialog(props: {
   pendingTask: PendingTask;
   open: boolean;
@@ -33,21 +34,21 @@ export function TaskConfirmDialog(props: {
     );
   }
 
-  let validTargets = 0;
-  if (pendingTask.type === "dns") {
-    if (pendingTask.dnsProbeTargets) {
-      validTargets = pendingTask.dnsProbeTargets.length;
-    }
+  let numValidTargets = 0;
+  if (pendingTask.type === "dns" && !!pendingTask.dnsProbeTargets) {
+    numValidTargets = pendingTask.dnsProbeTargets.length;
+  } else if (pendingTask.type === "http" && !!pendingTask.httpProbeTargets) {
+    numValidTargets = pendingTask.httpProbeTargets.length;
   } else {
-    validTargets = pendingTask.targets.length;
+    numValidTargets = pendingTask.targets.length;
   }
 
-  if (pendingTask.sources.length === 0 || validTargets === 0) {
+  if (pendingTask.sources.length === 0 || numValidTargets === 0) {
     return (
       <Dialog maxWidth="sm" fullWidth open={open} onClose={onCancel}>
         <DialogTitle>Note</DialogTitle>
         <DialogContent>
-          At least one source and one target are required.
+          At least one source and one effective target are required.
         </DialogContent>
         <DialogActions>
           <Button onClick={onCancel}>Good</Button>
@@ -83,6 +84,25 @@ export function TaskConfirmDialog(props: {
                 {"Query Type: "}
                 {pendingTask.dnsProbePlan?.type.toUpperCase() ?? "-"}
               </Typography>
+            </Fragment>
+          ) : pendingTask.type === "http" ? (
+            <Fragment>
+              <Typography gutterBottom>
+                {"URLs: "}
+                {pendingTask.httpProbeTargets?.map((t) => t.url).join(", ") ??
+                  "-"}
+              </Typography>
+              <Typography gutterBottom>
+                {"Transport: "}
+                {pendingTask.selectingHttpTransport?.toUpperCase() ??
+                  "(Default)"}
+              </Typography>
+              {pendingTask.addHeaderSW && pendingTask.headersInput && (
+                <Typography gutterBottom>
+                  {"Headers: "}
+                  {pendingTask.headersInput.split("\n").join("; ")}
+                </Typography>
+              )}
             </Fragment>
           ) : (
             <Typography>
