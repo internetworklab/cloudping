@@ -1,10 +1,10 @@
 "use client";
 
-import { Box, Card, Typography } from "@mui/material";
+import { Box, Card, Paper, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { JSONLineDecoder, LineTokenizer } from "@/apis/globalping";
-import { EventAdapter } from "@/apis/httpprobe";
-import { PendingTask, EventObject } from "@/apis/types";
+import { EventAdapter, generateEventStream } from "@/apis/httpprobe";
+import { PendingTask, EventObject, HTTPTarget } from "@/apis/types";
 import { firstLetterCap } from "./strings";
 import { useState } from "react";
 import { EventDock, EventsFilterDisplay, useEVsRead } from "./EventsBrowser";
@@ -18,18 +18,25 @@ export function HTTPProbeDisplay(props: {
     {},
   );
   const { data: reader, isLoading } = useQuery({
-    queryKey: ["/example_http_probe_1.json"],
-    queryFn: () =>
-      fetch("/example_http_probe_1.json")
-        .then((r) => r.body)
-        .then((r) => {
-          return r
-            ?.pipeThrough(new TextDecoderStream())
-            .pipeThrough(new LineTokenizer())
-            .pipeThrough(new JSONLineDecoder())
-            .pipeThrough(new EventAdapter())
-            .getReader();
-        }),
+    queryKey: [
+      "/example_http_probe_1.json",
+      "task",
+      task.taskId,
+      "taskType",
+      task.type,
+      "sources",
+      task.sources,
+      "destinations",
+      task.httpProbeTargets,
+    ],
+    queryFn: () => {
+      const sources: string[] = [];
+      const dests: HTTPTarget[] = [];
+
+      // todo: fill in `sources` and `dests` based on `task`
+
+      return generateEventStream(sources, dests);
+    },
   });
   const { evs, allDsts, allSrcs } = useEVsRead(reader, evLabelsFilter);
 
@@ -41,7 +48,7 @@ export function HTTPProbeDisplay(props: {
         flexDirection: "column",
         borderRadius: 8,
         maxHeight: "90vh",
-        gap: 1,
+        paddingTop: 1,
       }}
     >
       <Card
@@ -57,30 +64,50 @@ export function HTTPProbeDisplay(props: {
         <Typography variant="h6">
           {firstLetterCap(task.type)} Task #{task.taskId}
         </Typography>
-        <EventsFilterDisplay
-          allDsts={allDsts}
-          allSrcs={allSrcs}
-          evLabelsFilter={evLabelsFilter}
-          setEVLabelsFilter={setEVLabelsFilter}
-        />
       </Card>
 
-      <Box
-        sx={{
-          flex: 1,
-          overflow: "hidden",
-          flexDirection: "column",
-          display: "flex",
-        }}
-      >
-        {isLoading ? (
-          <Box>Loading</Box>
-        ) : reader ? (
+      {isLoading ? (
+        <Paper
+          sx={{
+            paddingTop: 5,
+            paddingBottom: 10,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          Loading
+        </Paper>
+      ) : reader ? (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            flex: "1",
+            overflow: "hidden",
+          }}
+        >
+          <EventsFilterDisplay
+            allDsts={allDsts}
+            allSrcs={allSrcs}
+            evLabelsFilter={evLabelsFilter}
+            setEVLabelsFilter={setEVLabelsFilter}
+          />
           <EventDock evs={evs} />
-        ) : (
-          <Box>No Data</Box>
-        )}
-      </Box>
+        </Box>
+      ) : (
+        <Paper
+          sx={{
+            paddingTop: 5,
+            paddingBottom: 10,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          No Data
+        </Paper>
+      )}
     </Box>
   );
 }

@@ -75,6 +75,15 @@ export function expandDNSProbePlan(plan: DNSProbePlan): {
   return { targets, targetsMap };
 }
 
+export interface HTTPTarget {
+  url: string;
+  correlationId: string;
+  extraHeaders?: Record<string, string>;
+  proto?: "http/1.1" | "http/2" | "http/3";
+  resolver?: string;
+  inetFamilyPreference?: "ip4" | "ip6" | "ip";
+}
+
 export type PendingTask = {
   sources: string[];
   targets: string[];
@@ -86,6 +95,7 @@ export type PendingTask = {
   pmtu?: boolean;
   dnsProbePlan: DNSProbePlan;
   dnsProbeTargets?: DNSTarget[];
+  httpProbeTargets?: HTTPTarget[];
 };
 
 export type ExactLocation = {

@@ -1,9 +1,11 @@
+import { getApiEndpoint, JSONLineDecoder, LineTokenizer } from "./globalping";
 import {
   RawPingEvent,
   HTTPProbeEvent,
   EventObject,
   FILTERKEY_CORR_ID,
   FILTERKEY_FROM,
+  HTTPTarget,
 } from "./types";
 
 function convertRawPingEventToEventObj(
@@ -84,4 +86,53 @@ export class EventAdapter extends TransformStream<unknown, EventObject> {
       },
     });
   }
+}
+
+export function generateFakeEventStream() {
+  return fetch("/example_http_probe_1.json")
+    .then((r) => r.body)
+    .then((r) => {
+      return r
+        ?.pipeThrough(new TextDecoderStream())
+        .pipeThrough(new LineTokenizer())
+        .pipeThrough(new JSONLineDecoder())
+        .pipeThrough(new EventAdapter())
+        .getReader();
+    });
+}
+
+export function generateEventStream(
+  sources: string[],
+  probeTgts: HTTPTarget[],
+): Promise<ReadableStreamDefaultReader<EventObject> | undefined> {
+  if (sources.length === 0 || probeTgts.length === 0) {
+    return Promise.resolve(undefined);
+  }
+
+  const searchParams = new URLSearchParams();
+
+  // Set 'from' parameter with comma-separated sources
+  if (sources.length > 0) {
+    searchParams.set("from", sources.join(","));
+  }
+
+  // Set 'l7PacketType' to 'http' for HTTP probing
+  searchParams.set("l7PacketType", "http");
+
+  // Add each HTTP target as a JSON-encoded 'httpTarget' parameter
+  for (const tgt of probeTgts) {
+    searchParams.append("httpTarget", JSON.stringify(tgt));
+  }
+
+  const url = `${getApiEndpoint()}/ping?${searchParams}`;
+  return fetch(url)
+    .then((r) => r.body)
+    .then((r) => {
+      return r
+        ?.pipeThrough(new TextDecoderStream())
+        .pipeThrough(new LineTokenizer())
+        .pipeThrough(new JSONLineDecoder())
+        .pipeThrough(new EventAdapter())
+        .getReader();
+    });
 }
