@@ -19,7 +19,8 @@ export function HTTPProbeDisplay(props: {
   );
   const { data: reader, isLoading } = useQuery({
     queryKey: [
-      "/example_http_probe_1.json",
+      "taskType",
+      task.type,
       "task",
       task.taskId,
       "taskType",
@@ -30,12 +31,14 @@ export function HTTPProbeDisplay(props: {
       task.httpProbeTargets,
     ],
     queryFn: () => {
-      const sources: string[] = [];
-      const dests: HTTPTarget[] = [];
+      // return generateFakeEventStream();
+      const srcs: string[] = task.sources ?? [];
+      const dsts: HTTPTarget[] = task.httpProbeTargets ?? [];
+      if (srcs.length + dsts.length === 0) {
+        return undefined;
+      }
 
-      // todo: fill in `sources` and `dests` based on `task`
-
-      return generateEventStream(sources, dests);
+      return generateEventStream(srcs, dsts);
     },
   });
   const { evs, allDsts, allSrcs } = useEVsRead(reader, evLabelsFilter);
@@ -48,14 +51,12 @@ export function HTTPProbeDisplay(props: {
         flexDirection: "column",
         borderRadius: 8,
         maxHeight: "90vh",
-        paddingTop: 1,
       }}
     >
       <Card
         sx={{
-          flexShrink: 0,
           padding: 2,
-          borderRadius: 0,
+          flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           gap: 1,
@@ -72,12 +73,20 @@ export function HTTPProbeDisplay(props: {
             {firstLetterCap(task.type)} Task #{task.taskId}
           </Typography>
           <TaskCloseIconButton
-            taskId={0}
+            taskId={task.taskId}
             onConfirmedClosed={() => {
               onDeleted();
             }}
           />
         </Box>
+        {!isLoading && (
+          <EventsFilterDisplay
+            allDsts={allDsts}
+            allSrcs={allSrcs}
+            evLabelsFilter={evLabelsFilter}
+            setEVLabelsFilter={setEVLabelsFilter}
+          />
+        )}
       </Card>
 
       {isLoading ? (
@@ -101,12 +110,6 @@ export function HTTPProbeDisplay(props: {
             overflow: "hidden",
           }}
         >
-          <EventsFilterDisplay
-            allDsts={allDsts}
-            allSrcs={allSrcs}
-            evLabelsFilter={evLabelsFilter}
-            setEVLabelsFilter={setEVLabelsFilter}
-          />
           <EventDock evs={evs} />
         </Box>
       ) : (
