@@ -216,6 +216,9 @@ export type RawPingEventMetadata = {
   target?: string;
 };
 
+export const FILTERKEY_FROM = "from";
+export const FILTERKEY_CORR_ID = "correlationId";
+
 export interface EventObject {
   id: string;
   timestamp: number;
@@ -224,6 +227,7 @@ export interface EventObject {
   // labels are for filtering,
   // e.g. you can select events both satisfy these labels:
   // from=us-lax1,correlationId=http://example.com/
+  // Some pre-defined keys as these `FILTERKEY_*` constonts listed above.
   labels?: Record<string, string>;
 
   // annotations are domain-oriented key-value pairs for displaying

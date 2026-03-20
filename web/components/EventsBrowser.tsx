@@ -1,12 +1,9 @@
 "use client";
 
-import { EventObject } from "@/apis/types";
+import { EventObject, FILTERKEY_FROM, FILTERKEY_CORR_ID } from "@/apis/types";
 import { useDockingMode } from "@/apis/useDockingMode";
 import { Box, Chip, Paper, Typography } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
-
-export const FILTERKEY_FROM = "from";
-export const FILTERKEY_CORR_ID = "correlationId";
 
 function applyEVsLabelFilter(
   evs: EventObject[],

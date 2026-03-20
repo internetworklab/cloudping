@@ -1,5 +1,12 @@
 import { ISO8601Timestamp } from "./common";
-import { BasicIPInfo, DNSResponse, DNSTarget, ExactLocation } from "./types";
+import {
+  BasicIPInfo,
+  DNSResponse,
+  DNSTarget,
+  ExactLocation,
+  RawPingEvent,
+  RawPingEventMetadata,
+} from "./types";
 
 export function getApiEndpoint(): string {
   return (
@@ -178,33 +185,6 @@ export function generateFakePingSampleStream(
   });
 }
 
-type RawPingEventICMPReply = {
-  ICMPTypeV4?: number;
-  ICMPTypeV6?: number;
-  ID?: number;
-  Peer?: string;
-  PeerRDNS?: string[];
-  PeerASN?: string;
-  PeerLocation?: string;
-  PeerISP?: string;
-  PeerExactLocation?: ExactLocation;
-
-  ReceivedAt?: ISO8601Timestamp;
-
-  // Seq of the reply packet
-  Seq?: number;
-  // size of icmp, without the ip(v4/v6) header
-  Size?: number;
-  // TTl of the reply packet
-  TTL?: number;
-
-  LastHop?: boolean;
-
-  SetMTUTo?: number;
-
-  PeerIPInfo?: BasicIPInfo;
-};
-
 type RawTCPPingEventDataDetails = {
   Seq?: number;
   SrcIP?: string;
@@ -280,33 +260,8 @@ type RawTCPPingEventData = {
   Details: RawTCPPingEventDataDetails;
 };
 
-type RawPingEventData = {
-  RTTMilliSecs?: number[];
-  RTTNanoSecs?: number[];
-  Raw?: RawPingEventICMPReply[];
-  ReceivedAt?: ISO8601Timestamp[];
-  SentAt?: ISO8601Timestamp;
-
-  // Seq of the sent packet
-  Seq?: number;
-
-  // TTL of the sent packet
-  TTL?: number;
-};
-
-type RawPingEventMetadata = {
-  from?: string;
-  target?: string;
-};
-
 type RawTCPPingEvent = {
   data?: RawTCPPingEventData;
-  metadata?: RawPingEventMetadata;
-};
-
-// Raw event returned by the API
-export type RawPingEvent<T = RawPingEventData> = {
-  data?: T;
   metadata?: RawPingEventMetadata;
 };
 
@@ -650,7 +605,7 @@ export function generatePingSampleStream(
       })
         .then((res) => res.body)
         .then((rawStream) => {
-          controlscope.rawStream = rawStream;
+          controlscope.rawStream = rawStream as any;
           return rawStream
             ?.pipeThrough(new TextDecoderStream())
             .pipeThrough(new LineTokenizer())

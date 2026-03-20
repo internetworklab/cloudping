@@ -40,6 +40,7 @@ import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 import TelegramIcon from "@mui/icons-material/Telegram";
 import { testIP } from "@/components/testip";
 import { SiteName } from "@/components/sitename";
+import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 
 const fakeSources: SourceOption[] = [
   {
@@ -90,12 +91,7 @@ function getSortedOnGoingTasks(onGoingTasks: PendingTask[]): PendingTask[] {
 function dedup(arr: string[]): string[] {
   return Array.from(new Set(arr));
 }
-const examplePlan: DNSProbePlan = {
-  transport: "udp",
-  type: "a",
-  domains: ["www1.map.dn42", "www2.map.dn42", "map.dn42"],
-  resolvers: ["172.20.0.53", "172.21.0.53", "172.22.0.53", "172.23.0.53"],
-};
+
 export default function Home() {
   const [pendingTask, setPendingTask] = useState<PendingTask>(() => {
     return {
@@ -124,10 +120,23 @@ export default function Home() {
   const targetLabelOverrides = isDN42
     ? "DN42 Target"
     : isNeo
-    ? "NeoNetwork Target"
-    : "Target";
+      ? "NeoNetwork Target"
+      : "Target";
 
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
+    {
+      sources: [],
+      targets: [],
+      taskId: 0,
+      type: "http",
+      dnsProbePlan: {
+        transport: "udp",
+        type: "a",
+        domains: [],
+        resolvers: [],
+      },
+    },
+  ]);
 
   let containerStyles: CSSProperties[] = [
     {
@@ -244,13 +253,13 @@ export default function Home() {
                       .filter((t) => t.length > 0);
 
                     const domains = dedup(
-                      pendingTask.dnsProbePlan.domainsInput?.split(",") || []
+                      pendingTask.dnsProbePlan.domainsInput?.split(",") || [],
                     )
                       .map((d) => d.trim())
                       .filter((d) => d.length > 0);
 
                     const resolvers = dedup(
-                      pendingTask.dnsProbePlan.resolversInput?.split(",") || []
+                      pendingTask.dnsProbePlan.resolversInput?.split(",") || [],
                     )
                       .map((r) => r.trim())
                       .filter((r) => r.length > 0);
@@ -337,6 +346,11 @@ export default function Home() {
                       value="dns"
                       control={<Radio />}
                       label="DNS"
+                    />
+                    <FormControlLabel
+                      value="http"
+                      control={<Radio />}
+                      label="HTTP"
                     />
                   </RadioGroup>
                 </FormControl>
@@ -556,8 +570,8 @@ export default function Home() {
                     pendingTask.type === "ping"
                       ? "Targets, separated by comma"
                       : pendingTask.type === "tcpping"
-                      ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
-                      : "Specify a single target"
+                        ? 'Specify a single target, in the format of <host>:<port>", e.g. 192.168.1.1:80, or cloudflare.com:443'
+                        : "Specify a single target"
                   }
                   fullWidth
                   label={
@@ -579,7 +593,7 @@ export default function Home() {
                 task={task}
                 onDeleted={() => {
                   setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
                   );
                 }}
               />
@@ -588,7 +602,16 @@ export default function Home() {
                 task={task}
                 onDeleted={() => {
                   setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
+                  );
+                }}
+              />
+            ) : task.type === "http" ? (
+              <HTTPProbeDisplay
+                task={task}
+                onDeleted={() => {
+                  setOnGoingTasks(
+                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
                   );
                 }}
               />
@@ -597,7 +620,7 @@ export default function Home() {
                 pendingTask={task}
                 onDeleted={() => {
                   setOnGoingTasks(
-                    onGoingTasks.filter((t) => t.taskId !== task.taskId)
+                    onGoingTasks.filter((t) => t.taskId !== task.taskId),
                   );
                 }}
               />
