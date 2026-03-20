@@ -10,10 +10,10 @@ import {
   RadioGroup,
   FormLabel,
   FormControlLabel,
+  Radio,
 } from "@mui/material";
 import { DNSQueryType, PendingTask } from "@/apis/types";
 import { Dispatch, SetStateAction } from "react";
-import RadioIcon from "@mui/icons-material/Radio";
 
 export function DNSProbeTransportSelect(props: {
   pendingTask: PendingTask;
@@ -36,8 +36,8 @@ export function DNSProbeTransportSelect(props: {
           }))
         }
       >
-        <FormControlLabel control={<RadioIcon />} value="udp" label="UDP" />
-        <FormControlLabel control={<RadioIcon />} value="tcp" label="TCP" />
+        <FormControlLabel control={<Radio />} value="udp" label="UDP" />
+        <FormControlLabel control={<Radio />} value="tcp" label="TCP" />
       </RadioGroup>
     </FormControl>
   );
