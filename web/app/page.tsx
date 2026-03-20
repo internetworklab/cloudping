@@ -12,20 +12,7 @@ import { HeaderBar } from "@/components/HeaderBar";
 import { TaskCreatorPanel } from "@/components/TaskCreatorPanel";
 
 export default function Home() {
-  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([
-    {
-      sources: [],
-      targets: [],
-      taskId: "11451",
-      type: "http",
-      dnsProbePlan: {
-        transport: "udp",
-        type: "a",
-        domains: [],
-        resolvers: [],
-      },
-    },
-  ]);
+  const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
 
   const handleTaskDelete = useCallback((taskId: string) => {
     setOnGoingTasks((prev) => prev.filter((t) => t.taskId !== taskId));
