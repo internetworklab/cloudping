@@ -122,7 +122,11 @@ async function justSleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(() => res(), ms));
 }
 
-async function expandTask(prev: PendingTask): Promise<PendingTask> {
+function expandDNSProbeTask(prev: PendingTask): Promise<PendingTask> {
+  // it's safe to expand dnsProbePlan EVEN the user is not initiating a dns probe task,
+  // because there's a 'type' field in the PendingTask struct type.
+  // same, it's also safe to expand other probe plans, for example, to also expand HTTP probe plans.
+
   const newDnsProbePlan: DNSProbePlan = {
     ...prev.dnsProbePlan,
     domains: dedup(prev.dnsProbePlan.domainsInput?.split(",") || [])
@@ -132,18 +136,30 @@ async function expandTask(prev: PendingTask): Promise<PendingTask> {
       .map((r) => r.trim())
       .filter((r) => r.length > 0),
   };
-
   const dnsTgts = expandDNSProbePlan(newDnsProbePlan).targets;
+  return Promise.resolve({
+    ...prev,
+    dnsProbePlan: newDnsProbePlan,
+    dnsProbeTargets: dnsTgts,
+  });
+}
 
-  return {
+function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {}
+
+async function expandTask(prev: PendingTask): Promise<PendingTask> {
+  let expandedTask: PendingTask = {
     ...prev,
     targets: dedup(prev.targetsInput?.split(",") ?? [])
       .map((t) => t.trim())
       .filter((t) => t.length > 0),
     taskId: generateRandomTaskId(),
-    dnsProbePlan: newDnsProbePlan,
-    dnsProbeTargets: dnsTgts,
   };
+
+  expandedTask = await expandDNSProbeTask(expandedTask);
+
+  expandedTask = await expandHTTPProbes(expandedTask);
+
+  return Promise.resolve(expandedTask);
 }
 
 export function TaskCreatorPanel(props: {
