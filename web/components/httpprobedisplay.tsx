@@ -40,9 +40,20 @@ export function HTTPProbeDisplay(props: {
         overflow: "hidden",
         flexDirection: "column",
         borderRadius: 8,
+        maxHeight: "90vh",
+        gap: 1,
       }}
     >
-      <Card sx={{ padding: 2, borderRadius: 0 }}>
+      <Card
+        sx={{
+          flexShrink: 0,
+          padding: 2,
+          borderRadius: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
         <Typography variant="h6">
           {firstLetterCap(task.type)} Task #{task.taskId}
         </Typography>
@@ -58,6 +69,8 @@ export function HTTPProbeDisplay(props: {
         sx={{
           flex: 1,
           overflow: "hidden",
+          flexDirection: "column",
+          display: "flex",
         }}
       >
         {isLoading ? (

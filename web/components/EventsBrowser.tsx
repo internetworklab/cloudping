@@ -127,7 +127,6 @@ export function EventDock(props: { evs: EventObject[] }) {
       sx={{
         height: "100%",
         overflow: "auto",
-        padding: 1,
         display: "flex",
         flexDirection: "column",
         gap: 1,
@@ -214,7 +213,7 @@ export function EventsFilterDisplay(props: {
   const currentActiveSource = evLabelsFilter[FILTERKEY_FROM];
   const currentActiveDest = evLabelsFilter[FILTERKEY_CORR_ID];
   return (
-    <Fragment>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <Box
         sx={{
           display: "flex",
@@ -283,6 +282,6 @@ export function EventsFilterDisplay(props: {
           ))}
         </Box>
       </Box>
-    </Fragment>
+    </Box>
   );
 }
