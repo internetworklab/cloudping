@@ -152,13 +152,15 @@ export default function Home() {
     },
   ];
 
-  let headerCardStyles: CSSProperties[] = [
+  const headerCardStyles: CSSProperties[] = [
     {
       padding: 2,
       display: "flex",
       flexDirection: "column",
       gap: 2,
       position: "relative",
+      marginTop: 8,
+      minWidth: "80vw",
     },
   ];
 
@@ -167,7 +169,6 @@ export default function Home() {
       ...containerStyles,
       { display: "flex", justifyContent: "center", alignItems: "center" },
     ];
-    headerCardStyles = [...headerCardStyles, { width: "80%" }];
   }
 
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
@@ -179,6 +180,10 @@ export default function Home() {
     <Box>
       <Paper
         sx={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
           paddingLeft: 2,
           paddingRight: 2,
           paddingTop: 1,
@@ -189,7 +194,6 @@ export default function Home() {
           flexWrap: "wrap",
           gap: 1,
           zIndex: 1,
-          position: "relative",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
