@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"codeberg.org/miekg/dns"
 	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
@@ -113,25 +112,38 @@ func doh3Demo(addCA []string) error {
 
 func dnsProbeDemo() {
 
-	tr := new(pkgdnsprobe.Transport)
-	*tr = pkgdnsprobe.TransportHTTP3
-	lookupParameter := pkgdnsprobe.LookupParameter{
-		CorrelationID: "1",
-		AddrPort:      urlStr,
-		Target:        "142.251.127.139",
-		Transport:     tr,
-		QueryType:     pkgdnsprobe.DNSQueryTypePTR,
-		DoTServerName: serverName,
-	}
-
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	res, err := pkgdnsprobe.LookupDNS(ctx, lookupParameter, nil)
-	if err != nil {
-		log.Fatal(err)
+
+	transportsToTry := []pkgdnsprobe.Transport{
+		pkgdnsprobe.TransportUDP,
+		pkgdnsprobe.TransportTCP,
+		pkgdnsprobe.TransportTLS,
+		pkgdnsprobe.TransportHTTP2,
+		pkgdnsprobe.TransportHTTP3,
 	}
-	json.NewEncoder(os.Stdout).Encode(res)
+	dnsServerMap := make(map[pkgdnsprobe.Transport]string)
+	dnsServerMap[pkgdnsprobe.TransportUDP] = "8.8.8.8"
+	dnsServerMap[pkgdnsprobe.TransportTCP] = "8.8.8.8"
+	dnsServerMap[pkgdnsprobe.TransportTLS] = "8.8.8.8"
+	dnsServerMap[pkgdnsprobe.TransportHTTP2] = urlStr
+	dnsServerMap[pkgdnsprobe.TransportHTTP3] = urlStr
+	for _, tr := range transportsToTry {
+		lookupParameter := pkgdnsprobe.LookupParameter{
+			CorrelationID: "1",
+			AddrPort:      dnsServerMap[tr],
+			Target:        "142.251.127.139",
+			QueryType:     pkgdnsprobe.DNSQueryTypePTR,
+			DoTServerName: serverName,
+		}
+		lookupParameter.Transport = &tr
+
+		log.Printf("Trying transport %s, server %s", tr, lookupParameter.AddrPort)
+		res, err := pkgdnsprobe.LookupDNS(ctx, lookupParameter, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		json.NewEncoder(os.Stdout).Encode(res)
+	}
 }
 
 func main() {
