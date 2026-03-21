@@ -1,6 +1,13 @@
 "use client";
 
-import { Box, Card, Paper, Typography } from "@mui/material";
+import {
+  Box,
+  Card,
+  IconButton,
+  Paper,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { generateEventStream } from "@/apis/httpprobe";
 import { TaskCloseIconButton } from "./taskclose";
@@ -8,6 +15,7 @@ import { PendingTask, HTTPTarget } from "@/apis/types";
 import { firstLetterCap } from "./strings";
 import { useState } from "react";
 import { EventDock, EventsFilterDisplay, useEVsRead } from "./EventsBrowser";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 export function HTTPProbeDisplay(props: {
   task: PendingTask;
@@ -17,6 +25,8 @@ export function HTTPProbeDisplay(props: {
   const [evLabelsFilter, setEVLabelsFilter] = useState<Record<string, string>>(
     {},
   );
+  // for re-fresh purpose
+  const [gen, setGen] = useState(0);
   const { data: reader, isLoading } = useQuery({
     queryKey: [
       "taskType",
@@ -29,6 +39,8 @@ export function HTTPProbeDisplay(props: {
       task.sources,
       "destinations",
       task.httpProbeTargets,
+      "gen",
+      gen,
     ],
     queryFn: () => {
       // return generateFakeEventStream();
@@ -72,12 +84,24 @@ export function HTTPProbeDisplay(props: {
           <Typography variant="h6">
             {firstLetterCap(task.type)} Task #{task.taskId}
           </Typography>
-          <TaskCloseIconButton
-            taskId={task.taskId}
-            onConfirmedClosed={() => {
-              onDeleted();
-            }}
-          />
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <Tooltip title={"Refresh"}>
+              <IconButton
+                loading={isLoading}
+                onClick={() => {
+                  setGen((prev) => prev + 1);
+                }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+            <TaskCloseIconButton
+              taskId={task.taskId}
+              onConfirmedClosed={() => {
+                onDeleted();
+              }}
+            />
+          </Box>
         </Box>
         {!isLoading && allDsts.length + allSrcs.length > 0 && (
           <EventsFilterDisplay

@@ -77,6 +77,8 @@ export function expandDNSProbePlan(plan: DNSProbePlan): {
 
 export type HTTPProto = "http/1.1" | "http/2" | "http/3";
 export const defaultHTTPProto: HTTPProto = "http/1.1";
+export type IPPref = "ip4" | "ip6" | "ip";
+export const defaultIPPref: IPPref = "ip6";
 
 export interface HTTPTarget {
   url: string;
@@ -84,7 +86,7 @@ export interface HTTPTarget {
   extraHeaders?: Record<string, string>;
   proto?: HTTPProto;
   resolver?: string;
-  inetFamilyPreference?: "ip4" | "ip6" | "ip";
+  inetFamilyPreference?: IPPref;
 }
 
 export type PendingTask = {
@@ -102,6 +104,7 @@ export type PendingTask = {
   targetsInput?: string;
   headersInput?: string;
   selectingHttpTransport?: HTTPProto;
+  selectingIPPref?: IPPref;
   addHeaderSW?: boolean;
 };
 

@@ -19,6 +19,7 @@ import {
   PendingTask,
   HTTPTarget,
   defaultHTTPProto,
+  defaultIPPref,
 } from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { SiteName } from "@/components/sitename";
@@ -179,6 +180,7 @@ function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {
     correlationId: url,
     extraHeaders: Object.keys(httpHeaders).length > 0 ? httpHeaders : undefined,
     proto: prev.selectingHttpTransport || defaultHTTPProto,
+    inetFamilyPreference: prev.selectingIPPref || defaultIPPref,
     resolver: defaultResolver,
   }));
 

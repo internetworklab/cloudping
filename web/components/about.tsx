@@ -11,7 +11,6 @@ import {
   Box,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import { Fragment } from "react";
 
 export function About(props: { open: boolean; onClose: () => void }) {
   const { open, onClose } = props;
@@ -35,7 +34,7 @@ export function About(props: { open: boolean; onClose: () => void }) {
     queryKey: ["nodes"],
     queryFn: () => getNodes(),
   });
-  let nodeVersions: string[][] = [];
+  const nodeVersions: string[][] = [];
   if (conns) {
     const repeatSet = new Set<string>();
     for (const key in conns) {
@@ -91,7 +90,9 @@ export function About(props: { open: boolean; onClose: () => void }) {
         ))}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Good</Button>
+        <Button variant="contained" onClick={onClose}>
+          Good
+        </Button>
       </DialogActions>
     </Dialog>
   );

@@ -10,7 +10,13 @@ import {
   Radio,
   Switch,
 } from "@mui/material";
-import { defaultHTTPProto, PendingTask } from "@/apis/types";
+import {
+  defaultHTTPProto,
+  defaultIPPref,
+  HTTPProto,
+  IPPref,
+  PendingTask,
+} from "@/apis/types";
 import { Dispatch, SetStateAction } from "react";
 
 export function HTTPProbeTransportSelect(props: {
@@ -19,30 +25,53 @@ export function HTTPProbeTransportSelect(props: {
 }) {
   const { pendingTask, setPendingTask } = props;
   return (
-    <FormControl>
-      <FormLabel>Transport</FormLabel>
-      <RadioGroup
-        row
-        value={pendingTask.selectingHttpTransport || defaultHTTPProto}
-        onChange={(e) =>
-          setPendingTask((prev) => ({
-            ...prev,
-            selectingHttpTransport: e.target.value as
-              | "http/1.1"
-              | "http/2"
-              | "http/3",
-          }))
-        }
-      >
-        <FormControlLabel
-          control={<Radio />}
-          value="http/1.1"
-          label="HTTP/1.1"
-        />
-        <FormControlLabel control={<Radio />} value="http/2" label="HTTP/2" />
-        <FormControlLabel control={<Radio />} value="http/3" label="HTTP/3" />
-      </RadioGroup>
-    </FormControl>
+    <Box sx={{ display: "flex", flexWrap: "wrap", columnGap: 2, rowGap: 1 }}>
+      <FormControl>
+        <FormLabel>Transport</FormLabel>
+        <RadioGroup
+          row
+          value={pendingTask.selectingHttpTransport || defaultHTTPProto}
+          onChange={(e) =>
+            setPendingTask((prev) => ({
+              ...prev,
+              selectingHttpTransport: e.target.value as HTTPProto,
+            }))
+          }
+        >
+          <FormControlLabel
+            control={<Radio />}
+            value="http/1.1"
+            label="HTTP/1.1"
+          />
+          <FormControlLabel control={<Radio />} value="http/2" label="HTTP/2" />
+          <FormControlLabel control={<Radio />} value="http/3" label="HTTP/3" />
+        </RadioGroup>
+      </FormControl>
+      <FormControl>
+        <FormLabel>IP Preference</FormLabel>
+        <RadioGroup
+          row
+          value={pendingTask.selectingIPPref || defaultIPPref}
+          onChange={(e) =>
+            setPendingTask((prev) => ({
+              ...prev,
+              selectingIPPref: e.target.value as IPPref,
+            }))
+          }
+        >
+          <FormControlLabel
+            control={<Radio />}
+            value="ip4"
+            label="Prefer IPv4"
+          />
+          <FormControlLabel
+            control={<Radio />}
+            value="ip6"
+            label="Prefer IPv6"
+          />
+        </RadioGroup>
+      </FormControl>
+    </Box>
   );
 }
 

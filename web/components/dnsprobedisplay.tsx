@@ -84,7 +84,7 @@ function updateAnswersMap(
   answersMap: AnswersMap,
   event: RawPingEvent<DNSResponse>,
 ): AnswersMap {
-  const dnsResponse = event.data as any as DNSResponse;
+  const dnsResponse = event.data as DNSResponse;
   if (!dnsResponse?.corrId) {
     return answersMap;
   }
@@ -141,7 +141,7 @@ function makeFakeDNSResponseStream(
         controller.enqueue(event);
       }, 500);
     },
-    cancel(readon?: any): Promise<void> {
+    cancel(): Promise<void> {
       if (timerWrapper.intervalId) {
         clearInterval(timerWrapper.intervalId);
         timerWrapper.intervalId = null;
@@ -215,9 +215,9 @@ export function DNSProbeDisplay(props: {
               }
               timerRef.timer = setTimeout(() => setLoading(false), 1000);
             }
-            reader.read().then(doRead as any);
+            reader.read().then(doRead);
           }
-          reader.read().then(doRead as any);
+          reader.read().then(doRead);
         })
         .catch((e) => console.error("failed to then stream", e));
     });
@@ -251,7 +251,7 @@ export function DNSProbeDisplay(props: {
           <Tooltip title={"Refresh"}>
             <IconButton
               onClick={() => {
-                setGeneration(generation + 1);
+                setGeneration((gen) => gen + 1);
               }}
             >
               <RefreshIcon />
