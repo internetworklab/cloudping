@@ -3,7 +3,7 @@ module example.com/rbmq-demo
 go 1.25.0
 
 require (
-	codeberg.org/miekg/dns v0.0.0-00010101000000-000000000000
+	codeberg.org/miekg/dns v0.6.70
 	github.com/alecthomas/kong v1.13.0
 	github.com/go-telegram/bot v1.17.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -35,5 +35,3 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace codeberg.org/miekg/dns => ./miekg
