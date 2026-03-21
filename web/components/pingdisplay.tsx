@@ -59,6 +59,7 @@ import {
 } from "./traceroutereport";
 import ShareIcon from "@mui/icons-material/Share";
 import { firstLetterCap } from "./strings";
+import { defaultResolver } from "@/apis/resolver";
 
 type RowObject = {
   target: string;
@@ -251,7 +252,7 @@ export function PingResultDisplay(props: {
       targets: targets,
       intervalMs: pendingTask.type === "tcpping" ? 1000 : 300,
       pktTimeoutMs: 3000,
-      resolver: "172.20.0.53:53",
+      resolver: defaultResolver,
       preferV4: preferV4,
       preferV6: preferV6,
       l4PacketType: !!useUDP

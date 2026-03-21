@@ -42,6 +42,7 @@ import {
   HTTPProbeTaskPanel,
   HTTPProbeTransportSelect,
 } from "./HTTPProbeTransportSelect";
+import { defaultResolver } from "@/apis/resolver";
 
 function TaskTypeSelector(props: {
   pendingTask: PendingTask;
@@ -178,6 +179,7 @@ function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {
     correlationId: url,
     extraHeaders: Object.keys(httpHeaders).length > 0 ? httpHeaders : undefined,
     proto: prev.selectingHttpTransport || defaultHTTPProto,
+    resolver: defaultResolver,
   }));
 
   return Promise.resolve({

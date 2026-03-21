@@ -63,6 +63,7 @@ import {
 } from "@/components/traceroutereport";
 import ShareIcon from "@mui/icons-material/Share";
 import { firstLetterCap } from "./strings";
+import { defaultResolver } from "@/apis/resolver";
 
 type TracerouteIPEntry = {
   ip: string;
@@ -713,7 +714,7 @@ export function TracerouteResultDisplay(props: {
           intervalMs: 300,
           pktTimeoutMs: 3000,
           ttl: "auto",
-          resolver: "172.20.0.53:53",
+          resolver: defaultResolver,
           ipInfoProviderName: "auto",
           preferV4: task.preferV4,
           preferV6: task.preferV6,
