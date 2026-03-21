@@ -130,10 +130,36 @@ async function justSleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(() => res(), ms));
 }
 
+function parseNameMap(csvInput: string): Record<string, string> {
+  const serverNameMap: Record<string, string> = {};
+  if (typeof csvInput === "string" && csvInput.length > 0) {
+    const words = csvInput
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+    for (const word of words) {
+      const idx = word.indexOf("=");
+      if (idx > 0 && idx < word.length - 1) {
+        const key = word.slice(0, idx).trim();
+        const value = word.slice(idx + 1).trim();
+        if (key.length > 0 && value.length > 0) {
+          serverNameMap[key] = value;
+        }
+      }
+    }
+  }
+  return serverNameMap;
+}
+
 function expandDNSProbeTask(prev: PendingTask): Promise<PendingTask> {
   // it's safe to expand dnsProbePlan EVEN the user is not initiating a dns probe task,
   // because there's a 'type' field in the PendingTask struct type.
   // same, it's also safe to expand other probe plans, for example, to also expand HTTP probe plans.
+
+  let serverNameMap: Record<string, string> = {};
+  if (prev.dnsProbePlan.serverNameMapInput) {
+    serverNameMap = parseNameMap(prev.dnsProbePlan.serverNameMapInput ?? "");
+  }
 
   const newDnsProbePlan: DNSProbePlan = {
     ...prev.dnsProbePlan,
@@ -144,7 +170,7 @@ function expandDNSProbeTask(prev: PendingTask): Promise<PendingTask> {
       .map((r) => r.trim())
       .filter((r) => r.length > 0),
   };
-  const dnsTgts = expandDNSProbePlan(newDnsProbePlan).targets;
+  const dnsTgts = expandDNSProbePlan(newDnsProbePlan, serverNameMap).targets;
   return Promise.resolve({
     ...prev,
     dnsProbePlan: newDnsProbePlan,

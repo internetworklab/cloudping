@@ -12,7 +12,7 @@ import {
   FormControlLabel,
   Radio,
 } from "@mui/material";
-import { DNSQueryType, PendingTask } from "@/apis/types";
+import { DNSQueryType, DNSTransport, PendingTask } from "@/apis/types";
 import { Dispatch, SetStateAction } from "react";
 
 export function DNSProbeTransportSelect(props: {
@@ -31,13 +31,14 @@ export function DNSProbeTransportSelect(props: {
             ...prev,
             dnsProbePlan: {
               ...prev.dnsProbePlan,
-              transport: e.target.value as "udp" | "tcp",
+              transport: e.target.value as DNSTransport,
             },
           }))
         }
       >
         <FormControlLabel control={<Radio />} value="udp" label="UDP" />
         <FormControlLabel control={<Radio />} value="tcp" label="TCP" />
+        <FormControlLabel control={<Radio />} value="tls" label="TLS" />
       </RadioGroup>
     </FormControl>
   );
@@ -91,10 +92,29 @@ export function DNSProbeTaskPanel(props: {
           }))
         }
       />
+      {pendingTask.dnsProbePlan?.transport === "tls" && (
+        <TextField
+          sx={{ marginTop: 2 }}
+          variant="standard"
+          placeholder="e.g. 1.1.1.1=one.one.one.one, 2001:4860:4860::8888=dns.google"
+          fullWidth
+          label="ServerName Map"
+          value={pendingTask.dnsProbePlan.serverNameMapInput || ""}
+          onChange={(e) =>
+            setPendingTask((prev) => ({
+              ...prev,
+              dnsProbePlan: {
+                ...prev.dnsProbePlan,
+                serverNameMapInput: e.target.value,
+              },
+            }))
+          }
+        />
+      )}
       <TextField
         sx={{ marginTop: 2 }}
         variant="standard"
-        placeholder="Servers where to send queries, separated by comma, e.g. 8.8.8.8, or [2001:4860:4860::8888]:53"
+        placeholder="e.g. 8.8.8.8, or [2001:4860:4860::8888]:53, no hostname here."
         fullWidth
         label="Resolvers"
         value={pendingTask.dnsProbePlan.resolversInput || ""}

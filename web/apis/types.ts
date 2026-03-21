@@ -2,7 +2,7 @@ import { ISO8601Timestamp } from "./common";
 
 export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns" | "http";
 
-export type DNSTransport = "udp" | "tcp";
+export type DNSTransport = "udp" | "tcp" | "tls";
 
 export type DNSQueryType = "a" | "aaaa" | "cname" | "mx" | "ns" | "ptr" | "txt";
 
@@ -13,6 +13,7 @@ export type DNSTarget = {
   timeoutMs?: number;
   transport?: DNSTransport;
   queryType: DNSQueryType;
+  dotServerName?: string;
 };
 
 export type DNSResponse = {
@@ -44,9 +45,41 @@ export type DNSProbePlan = {
   resolvers: string[];
   domainsInput?: string;
   resolversInput?: string;
+  serverNameMapInput?: string;
 };
 
-export function expandDNSProbePlan(plan: DNSProbePlan): {
+function stripResolver(resolver: string): string {
+  let striped = resolver.trim();
+  if (striped.length === 0) {
+    return striped;
+  }
+
+  striped = striped.replace(/^tls:\/\//i, "");
+  striped = striped.replace(/:\d+$/, "");
+  striped = striped.replace(/\]$/, "");
+  striped = striped.replace(/^\[/, "");
+  return striped;
+}
+
+function getServerName(
+  resolver: string,
+  nameMap: Record<string, string>,
+): string | undefined {
+  const addr = stripResolver(resolver);
+  let serverName = nameMap[addr];
+  if (typeof serverName === "string" && serverName.length > 0) {
+    serverName = serverName.trim();
+    if (serverName.length > 0) {
+      return serverName;
+    }
+  }
+  return undefined;
+}
+
+export function expandDNSProbePlan(
+  plan: DNSProbePlan,
+  nameMap: Record<string, string>,
+): {
   targets: DNSTarget[];
   targetsMap: Record<string, DNSTarget>;
 } {
@@ -60,6 +93,10 @@ export function expandDNSProbePlan(plan: DNSProbePlan): {
         target: domain,
         transport: plan.transport,
         queryType: plan.type,
+        dotServerName:
+          plan.transport === "tls"
+            ? getServerName(resolver, nameMap)
+            : undefined,
       };
       targets.push(target);
       targetsMap[target.corrId] = target;
