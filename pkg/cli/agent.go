@@ -142,6 +142,10 @@ func getHost(addrport string) (net.IP, error) {
 	urlObj, err := url.Parse(addrport)
 	if err == nil && urlObj != nil {
 		addrport = urlObj.Host
+		if strings.HasPrefix(addrport, "[") && strings.HasSuffix(addrport, "]") {
+			addrport, _ = strings.CutPrefix(addrport, "[")
+			addrport, _ = strings.CutSuffix(addrport, "]")
+		}
 	}
 	host, _, err := net.SplitHostPort(addrport)
 	if err != nil {
