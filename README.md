@@ -135,5 +135,5 @@ Grab the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), w
 
 ## Todo List
 
-- HTTP Probe (http/1.1, http/2, http/3)
 - Key Revocation List
+- More probe types: SMTP, IMAP, SSH, etc.
