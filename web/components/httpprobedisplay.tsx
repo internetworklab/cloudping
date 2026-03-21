@@ -79,7 +79,7 @@ export function HTTPProbeDisplay(props: {
             }}
           />
         </Box>
-        {!isLoading && (
+        {!isLoading && allDsts.length + allSrcs.length > 0 && (
           <EventsFilterDisplay
             allDsts={allDsts}
             allSrcs={allSrcs}

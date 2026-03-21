@@ -64,6 +64,12 @@ export function PingTaskSourceSelector(props: {
             CapabilityDNSProbe: "true",
           };
         }
+        if (pendingTask.type === "http") {
+          filter = {
+            ...(filter || {}),
+            CapabilityHTTPProbe: "true",
+          };
+        }
 
         return getCurrentPingerOptions(filter).then((nodes) => {
           return nodes.map((node) => ({
