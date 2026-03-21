@@ -94,7 +94,9 @@ export function expandDNSProbePlan(
         transport: plan.transport,
         queryType: plan.type,
         dotServerName:
-          plan.transport === "tls"
+          plan.transport === "tls" ||
+          plan.transport === "http/2" ||
+          plan.transport === "http/3"
             ? getServerName(resolver, nameMap)
             : undefined,
       };

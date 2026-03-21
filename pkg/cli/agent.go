@@ -139,6 +139,10 @@ func getHostFromIP(ipstr string) (net.IP, error) {
 }
 
 func getHost(addrport string) (net.IP, error) {
+	urlObj, err := url.Parse(addrport)
+	if err == nil && urlObj != nil {
+		addrport = urlObj.Host
+	}
 	host, _, err := net.SplitHostPort(addrport)
 	if err != nil {
 		return getHostFromIP(addrport)
