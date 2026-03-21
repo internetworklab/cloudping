@@ -108,10 +108,15 @@ func stripTLSURLPrefix(s string) string {
 	return s
 }
 
-func appendPort53(s string) string {
+func appendDNSPort(s string, transport Transport) string {
+	port := "53"
+	if transport == TransportTLS {
+		// As per RFC7853, https://datatracker.ietf.org/doc/html/rfc7858#section-3.1
+		port = "853"
+	}
 	_, _, err := net.SplitHostPort(s)
 	if err != nil {
-		return net.JoinHostPort(s, "53")
+		return net.JoinHostPort(s, port)
 	}
 	return s
 }
@@ -158,7 +163,7 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 
 	addrPort := parameter.AddrPort
 	addrPort = stripTLSURLPrefix(addrPort)
-	addrPort = appendPort53(addrPort)
+	addrPort = appendDNSPort(addrPort, transport)
 	addrportObj, err := netip.ParseAddrPort(addrPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse addrport %s as netip.AddrPort: %v", parameter.AddrPort, err)
