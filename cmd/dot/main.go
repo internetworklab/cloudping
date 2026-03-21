@@ -24,7 +24,7 @@ func main() {
 					MinVersion: tls.VersionTLS12,
 				},
 			}
-			return dialer.DialContext(ctx, network, address)
+			return dialer.DialContext(ctx, "tcp", address)
 		},
 	}
 
