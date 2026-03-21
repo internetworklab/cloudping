@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"codeberg.org/miekg/dns"
+	"codeberg.org/miekg/dns/dnsutil"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
 
@@ -43,7 +44,14 @@ const (
 const defaultDNSProbeTransport = TransportUDP
 
 type LookupParameter struct {
-	CorrelationID string       `json:"corrId,omitempty"`
+	CorrelationID string `json:"corrId,omitempty"`
+
+	// For UDP, or TCP transport, valid addrPort are ip addresses or <ip>:<port>, [<ipv6>]:<port>
+	// e.g. 1.1.1.1, 1.1.1.1:53, 2606:4700:4700::1111, [2606:4700:4700::1111]:53
+	// For DoT, valid addrPort including valid addrPort for UDP, TCP transport plus a `tls://` prefix,
+	// e.g. tls://1.1.1.1, 1.1.1.1, 1.1.1.1:53, 2606:4700:4700::1111, [2606:4700:4700::1111]:53
+	// For DoH, valid addrPort should be an HTTPS URL, but the host part must be ip or ipv6 address literal
+	// e.g. https://8.8.8.8/dns-query, or https://[2001:4860:4860::8888]/dns-query, ipv6 address literal must be wrapped within a bracket pair.
 	AddrPort      string       `json:"addrport"`
 	Target        string       `json:"target"`
 	TimeoutMs     *int64       `json:"timeoutMs,omitempty"`
@@ -133,7 +141,7 @@ const minTimeoutMs = 10
 const maxTimeoutMs = 10 * 1000
 const defaultDNSProbeTimeoutMs = 3000
 
-func getDoHRequest(ctx context.Context, urlStr string, m *dns.Msg) (*http.Request, error) {
+func getDoHRequest(ctx context.Context, urlStr string, m *dns.Msg, serverName string) (*http.Request, error) {
 
 	mime := "application/dns-message"
 
@@ -144,6 +152,11 @@ func getDoHRequest(ctx context.Context, urlStr string, m *dns.Msg) (*http.Reques
 	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, m)
 	if err != nil {
 		return nil, err
+	}
+
+	if serverName != "" {
+		// Note, such serverName is actually the Host (or :authority) header field
+		req.Host = serverName
 	}
 
 	req.Header.Set("Accept", mime)
@@ -198,14 +211,6 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 	queryResult.TransportUsed = transport
 	queryResult.CorrelationID = parameter.CorrelationID
 
-	addrPort := parameter.AddrPort
-	addrPort = stripTLSURLPrefix(addrPort)
-	addrPort = appendDNSPort(addrPort, transport)
-	addrportObj, err := netip.ParseAddrPort(addrPort)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse addrport %s as netip.AddrPort: %v", parameter.AddrPort, err)
-	}
-
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ServerName: parameter.DoTServerName,
@@ -236,7 +241,12 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 		case DNSQueryTypeNS:
 			m = dns.NewMsg(target, dns.TypeNS)
 		case DNSQueryTypePTR:
-			m = dns.NewMsg(target, dns.TypePTR)
+			ipaddr, err := netip.ParseAddr(target)
+			if err != nil {
+				return nil, fmt.Errorf("invalid ip: %w", err)
+			}
+			reverseAddr := dnsutil.ReverseAddr(ipaddr)
+			m = dns.NewMsg(reverseAddr, dns.TypePTR)
 		case DNSQueryTypeTXT:
 			m = dns.NewMsg(target, dns.TypeTXT)
 		default:
@@ -246,7 +256,7 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 		m.ID = dns.ID()
 		m.RecursionDesired = true
 
-		req, err := getDoHRequest(ctx, "todo", m)
+		req, err := getDoHRequest(ctx, parameter.AddrPort, m, parameter.DoTServerName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create DoH request: %w", err)
 		}
@@ -262,7 +272,7 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 		}
 
 		if resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("DoH request failed with status code: %d", resp.StatusCode)
+			return nil, fmt.Errorf("DoH request failed with status code: %s", resp.Status)
 		}
 
 		defer resp.Body.Close()
@@ -286,6 +296,13 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 
 		return queryResult, nil
 	} else {
+		addrPort := parameter.AddrPort
+		addrPort = stripTLSURLPrefix(addrPort)
+		addrPort = appendDNSPort(addrPort, transport)
+		addrportObj, err := netip.ParseAddrPort(addrPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse addrport %s as netip.AddrPort: %v", parameter.AddrPort, err)
+		}
 		resolver := net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {

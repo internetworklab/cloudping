@@ -3,17 +3,23 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
-	dns "codeberg.org/miekg/dns"
+	"codeberg.org/miekg/dns"
+	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
 
+const serverName string = "dns.google"
+const urlStr string = "https://[2001:4860:4860::8888]/dns-query"
+
 func getDemoRequest() *http.Request {
-	urlStr := "https://dns.google/dns-query"
 
 	ctx := context.Background()
 	mime := "application/dns-message"
@@ -29,6 +35,8 @@ func getDemoRequest() *http.Request {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	req.Host = serverName
 
 	req.Header.Set("Accept", mime)
 	req.Header.Set("Content-Type", mime)
@@ -78,7 +86,8 @@ func doh3Demo(addCA []string) error {
 			return err
 		}
 		tr.TLSClientConfig = &tls.Config{
-			RootCAs: caPool,
+			RootCAs:    caPool,
+			ServerName: serverName,
 		}
 	}
 
@@ -102,12 +111,37 @@ func doh3Demo(addCA []string) error {
 	return nil
 }
 
-func main() {
-	log.Printf("Starting DoH (DNS over HTTP/2) demo")
-	dohDemo()
+func dnsProbeDemo() {
 
-	log.Printf("Starting DoH (DNS over HTTP/3) demo")
-	if err := doh3Demo([]string{}); err != nil {
-		log.Fatal(err)
+	tr := new(pkgdnsprobe.Transport)
+	*tr = pkgdnsprobe.TransportHTTP3
+	lookupParameter := pkgdnsprobe.LookupParameter{
+		CorrelationID: "1",
+		AddrPort:      urlStr,
+		Target:        "2a00:1450:4001:81c::200e",
+		Transport:     tr,
+		QueryType:     pkgdnsprobe.DNSQueryTypePTR,
+		DoTServerName: serverName,
 	}
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	res, err := pkgdnsprobe.LookupDNS(ctx, lookupParameter, nil)
+	if err != nil {
+	}
+	json.NewEncoder(os.Stdout).Encode(res)
+}
+
+func main() {
+	// log.Printf("Starting DoH (DNS over HTTP/2) demo")
+	// dohDemo()
+
+	// log.Printf("Starting DoH (DNS over HTTP/3) demo")
+	// if err := doh3Demo([]string{}); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	log.Printf("Starting DNS Probe demo")
+	dnsProbeDemo()
 }
