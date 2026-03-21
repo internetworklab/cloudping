@@ -2,7 +2,7 @@ import { ISO8601Timestamp } from "./common";
 
 export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns" | "http";
 
-export type DNSTransport = "udp" | "tcp" | "tls";
+export type DNSTransport = "udp" | "tcp" | "tls" | "http/2" | "http/3";
 
 export type DNSQueryType = "a" | "aaaa" | "cname" | "mx" | "ns" | "ptr" | "txt";
 

@@ -39,6 +39,8 @@ export function DNSProbeTransportSelect(props: {
         <FormControlLabel control={<Radio />} value="udp" label="UDP" />
         <FormControlLabel control={<Radio />} value="tcp" label="TCP" />
         <FormControlLabel control={<Radio />} value="tls" label="TLS" />
+        <FormControlLabel control={<Radio />} value="http/2" label="HTTP/2" />
+        <FormControlLabel control={<Radio />} value="http/3" label="HTTP/3" />
       </RadioGroup>
     </FormControl>
   );
@@ -114,7 +116,12 @@ export function DNSProbeTaskPanel(props: {
       <TextField
         sx={{ marginTop: 2 }}
         variant="standard"
-        placeholder="e.g. 8.8.8.8, or [2001:4860:4860::8888]:53, no hostname here."
+        placeholder={
+          pendingTask.dnsProbePlan?.transport === "http/2" ||
+          pendingTask.dnsProbePlan?.transport === "http/3"
+            ? "e.g. https://8.8.8.8/dns-query, https://[2001:4860:4860::8888]/dns-query"
+            : "e.g. 8.8.8.8, or [2001:4860:4860::8888]:53, no hostname here."
+        }
         fullWidth
         label="Resolvers"
         value={pendingTask.dnsProbePlan.resolversInput || ""}
