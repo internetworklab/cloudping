@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"time"
 )
 
 func main() {
 	// Define the DoT server details
-	address := "[2606:4700:4700::1111]:853"
+	address := "[2606:4700:4700::1001]:853"
+	tcpaddr := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(address))
 	serverName := "one.one.one.one"
 
 	// Create a custom resolver
@@ -24,7 +26,8 @@ func main() {
 					MinVersion: tls.VersionTLS12,
 				},
 			}
-			return dialer.DialContext(ctx, "tcp", address)
+			log.Printf("Dialing %s", tcpaddr.String())
+			return dialer.DialContext(ctx, "tcp", tcpaddr.String())
 		},
 	}
 

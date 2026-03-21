@@ -2,11 +2,14 @@ package dnsprobe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -15,6 +18,7 @@ type Transport string
 const (
 	TransportUDP Transport = "udp"
 	TransportTCP Transport = "tcp"
+	TransportTLS Transport = "tls" // DNS over TLS, defined by RFC7858
 )
 
 type DNSQueryType string
@@ -38,6 +42,7 @@ type LookupParameter struct {
 	TimeoutMs     *int64       `json:"timeoutMs,omitempty"`
 	Transport     *Transport   `json:"transport,omitempty"`
 	QueryType     DNSQueryType `json:"queryType"`
+	DoTServerName string       `json:"dotServerName"`
 }
 
 type QueryResult struct {
@@ -96,6 +101,13 @@ func analyzeError(err error, queryResult *QueryResult) bool {
 	}
 }
 
+func stripTLSURLPrefix(s string) string {
+	if after, ok := strings.CutPrefix(s, "tls://"); ok {
+		return after
+	}
+	return s
+}
+
 func appendPort53(s string) string {
 	_, _, err := net.SplitHostPort(s)
 	if err != nil {
@@ -109,7 +121,7 @@ const maxTimeoutMs = 10 * 1000
 const defaultDNSProbeTimeoutMs = 3000
 
 // returns: answers, error
-func LookupDNS(ctx context.Context, parameter LookupParameter) (*QueryResult, error) {
+func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.CertPool) (*QueryResult, error) {
 
 	var transport Transport = defaultDNSProbeTransport
 	if parameter.Transport != nil {
@@ -144,9 +156,20 @@ func LookupDNS(ctx context.Context, parameter LookupParameter) (*QueryResult, er
 	queryResult.TransportUsed = transport
 	queryResult.CorrelationID = parameter.CorrelationID
 
-	addrportObj, err := netip.ParseAddrPort(appendPort53(parameter.AddrPort))
+	addrPort := parameter.AddrPort
+	addrPort = stripTLSURLPrefix(addrPort)
+	addrPort = appendPort53(addrPort)
+	addrportObj, err := netip.ParseAddrPort(addrPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse addrport %s as netip.AddrPort: %v", parameter.AddrPort, err)
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: parameter.DoTServerName,
+	}
+	if certPool != nil {
+		tlsConfig.RootCAs = certPool
 	}
 
 	queryResult.StartedAt = time.Now()
@@ -169,6 +192,12 @@ func LookupDNS(ctx context.Context, parameter LookupParameter) (*QueryResult, er
 					return nil, fmt.Errorf("failed to get tcpaddr from %s", addrportObj.String())
 				}
 				return net.DialTCP("tcp", nil, tcpaddr)
+			} else if transport == TransportTLS {
+				tcpaddr := net.TCPAddrFromAddrPort(addrportObj)
+				dialer := &tls.Dialer{
+					Config: tlsConfig,
+				}
+				return dialer.DialContext(ctx, "tcp", tcpaddr.String())
 			} else {
 				return nil, fmt.Errorf("transport is not specified or invalid transport: %s", transport)
 			}

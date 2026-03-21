@@ -3,14 +3,11 @@ package httpprobe
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -224,7 +221,7 @@ func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyP
 	tr := &quicHTTP3.Transport{}
 
 	if len(addCA) > 0 {
-		caPool, err := getExtendedCAPool(addCA)
+		caPool, err := pkgutils.GetExtendedCAPool(addCA)
 		if err != nil {
 			return nil, err
 		}
@@ -254,24 +251,6 @@ func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyP
 	tr.Dial = dialFunc
 
 	return tr, nil
-}
-
-func getExtendedCAPool(additionalCAPaths []string) (*x509.CertPool, error) {
-	caPool, err := x509.SystemCertPool()
-	if err != nil {
-		return nil, errors.New("can't obtain system's CA pool")
-	}
-	caPool = caPool.Clone()
-	for _, caPath := range additionalCAPaths {
-		caData, err := os.ReadFile(caPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CA file %s: %w", caPath, err)
-		}
-		if !caPool.AppendCertsFromPEM(caData) {
-			return nil, fmt.Errorf("failed to parse CA certificate from %s", caPath)
-		}
-	}
-	return caPool, nil
 }
 
 func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference, addCA []string) (http.RoundTripper, error) {
@@ -316,7 +295,7 @@ func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, p
 		NextProtos: []string{"http/1.1"},
 	}
 	if len(addCA) > 0 {
-		caPool, err := getExtendedCAPool(addCA)
+		caPool, err := pkgutils.GetExtendedCAPool(addCA)
 		if err != nil {
 			return nil, err
 		}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,4 +53,22 @@ func AppendCustomCA(caPool *x509.CertPool, urlorpath string) error {
 		return fmt.Errorf("failed to append CA to pool")
 	}
 	return nil
+}
+
+func GetExtendedCAPool(additionalCAPaths []string) (*x509.CertPool, error) {
+	caPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.New("can't obtain system's CA pool")
+	}
+	caPool = caPool.Clone()
+	for _, caPath := range additionalCAPaths {
+		caData, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file %s: %w", caPath, err)
+		}
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", caPath)
+		}
+	}
+	return caPool, nil
 }
