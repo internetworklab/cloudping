@@ -258,7 +258,7 @@ export function DNSProbeDisplay(props: {
             </IconButton>
           </Tooltip>
           <TaskCloseIconButton
-            taskId={0}
+            taskId={task.taskId}
             onConfirmedClosed={() => {
               onDeleted();
             }}
