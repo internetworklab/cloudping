@@ -118,7 +118,7 @@ func dnsProbeDemo() {
 	lookupParameter := pkgdnsprobe.LookupParameter{
 		CorrelationID: "1",
 		AddrPort:      urlStr,
-		Target:        "2a00:1450:4001:81c::200e",
+		Target:        "142.251.127.139",
 		Transport:     tr,
 		QueryType:     pkgdnsprobe.DNSQueryTypePTR,
 		DoTServerName: serverName,
@@ -129,6 +129,7 @@ func dnsProbeDemo() {
 	defer cancel()
 	res, err := pkgdnsprobe.LookupDNS(ctx, lookupParameter, nil)
 	if err != nil {
+		log.Fatal(err)
 	}
 	json.NewEncoder(os.Stdout).Encode(res)
 }

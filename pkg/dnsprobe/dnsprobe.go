@@ -164,20 +164,6 @@ func getDoHRequest(ctx context.Context, urlStr string, m *dns.Msg, serverName st
 	return req, nil
 }
 
-func getDoHTransportClient(transport Transport, tlsConfig *tls.Config) (http.RoundTripper, error) {
-	if transport == TransportHTTP2 {
-		return &http.Transport{
-			TLSClientConfig: tlsConfig,
-		}, nil
-	} else if transport == TransportHTTP3 {
-		return &quicHTTP3.Transport{
-			TLSClientConfig: tlsConfig,
-		}, nil
-	} else {
-		return nil, fmt.Errorf("invalid transport: %s", transport)
-	}
-}
-
 // returns: answers, error
 func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.CertPool) (*QueryResult, error) {
 
@@ -261,28 +247,40 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 			return nil, fmt.Errorf("failed to create DoH request: %w", err)
 		}
 
-		tr, err := getDoHTransportClient(transport, tlsConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get DoH transport client: %w", err)
-		}
-
-		resp, err := tr.RoundTrip(req)
-		if err != nil {
-			return nil, fmt.Errorf("failed to send DoH request: %w", err)
-		}
-
-		if resp.StatusCode >= 400 {
-			return nil, fmt.Errorf("DoH request failed with status code: %s", resp.Status)
-		}
-
-		defer resp.Body.Close()
-		ansDNSBlob, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read DoH response: %w", err)
-		}
-
 		ansM := new(dns.Msg)
-		ansM.Data = ansDNSBlob
+		if transport == TransportHTTP2 {
+			cli := http.DefaultClient
+			resp, err := cli.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("failed to send DoH request via http client: %w", err)
+			}
+			if resp.StatusCode >= 400 {
+				return nil, fmt.Errorf("DoH request failed with status code: %s", resp.Status)
+			}
+			defer resp.Body.Close()
+			ansM.Data, err = io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read DoH response: %w", err)
+			}
+		} else {
+			tr := &quicHTTP3.Transport{
+				TLSClientConfig: tlsConfig,
+			}
+			var err error
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				return nil, fmt.Errorf("failed to send DoH request via quic client: %w", err)
+			}
+			if resp.StatusCode >= 400 {
+				return nil, fmt.Errorf("DoH3 request failed with status code: %s", resp.Status)
+			}
+			defer resp.Body.Close()
+			ansM.Data, err = io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read DoH response: %w", err)
+			}
+		}
+
 		if err := ansM.Unpack(); err != nil {
 			return nil, fmt.Errorf("failed to unpack DoH response: %w", err)
 		}
