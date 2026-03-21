@@ -4,3 +4,6 @@
 [submodule "regquery"]
 	path = regquery
 	url = git@github.com:internetworklab/regquery.git
+[submodule "miekg"]
+	path = miekg
+	url = https://codeberg.org/miekg/dns.git
