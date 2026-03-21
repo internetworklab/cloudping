@@ -72,12 +72,21 @@ func (pingReq *SimplePingRequest) DeriveAsDNSProbeRequest(from string, dnsTarget
 	return derivedPingRequest
 }
 
-func (pingReq *SimplePingRequest) DeriveAdHTTPProbeRequest(from string) *SimplePingRequest {
+func (pingReq *SimplePingRequest) DeriveAdHTTPProbeRequest(from string, maximumBodyRead *int) *SimplePingRequest {
 	derivedPingRequest := new(SimplePingRequest)
 	*derivedPingRequest = *pingReq
 	derivedPingRequest.From = []string{from}
 	derivedPingRequest.HTTPTargets = make([]pkghttpprobe.HTTPProbe, len(pingReq.HTTPTargets))
 	copy(derivedPingRequest.HTTPTargets, pingReq.HTTPTargets)
+	if maximumBodyRead != nil {
+		for idx := range derivedPingRequest.HTTPTargets {
+			if currentLim := derivedPingRequest.HTTPTargets[idx].SizeLimit; currentLim == nil {
+				lim := new(int64)
+				*lim = int64(*maximumBodyRead)
+				derivedPingRequest.HTTPTargets[idx].SizeLimit = lim
+			}
+		}
+	}
 	return derivedPingRequest
 }
 

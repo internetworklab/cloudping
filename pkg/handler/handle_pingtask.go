@@ -34,6 +34,7 @@ type PingTaskHandler struct {
 	MinPktInterval          *time.Duration
 	MaxPktTimeout           *time.Duration
 	PktCountClamp           *int
+	HTTPResponseBodyClamp   *int
 }
 
 const (
@@ -343,7 +344,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 			}
 
 			sp := &pkgpinger.SimpleRemotePinger{
-				Request:            *form.DeriveAdHTTPProbeRequest(from),
+				Request:            *form.DeriveAdHTTPProbeRequest(from, handler.HTTPResponseBodyClamp),
 				ClientTLSConfig:    handler.ClientTLSConfig,
 				ExtraRequestHeader: extraRequestHeader,
 				QUICClient:         quicClient,

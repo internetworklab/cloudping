@@ -48,6 +48,7 @@ type HubCmd struct {
 	MinPktInterval          string `help:"The minimum interval between packets"`
 	MaxPktTimeout           string `help:"The maximum timeout for a packet"`
 	PktCountClamp           *int   `help:"The maximum number of packets to send for a single ping task"`
+	HTTPResponseBodyClamp   *int   `name:"http-response-body-clamp" help:"To restrict the maximum http body size to read in unit of bytes when such limit didn't appear in the requesting HTTP probe task"`
 
 	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
 	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
@@ -169,6 +170,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		MinPktInterval:          minPktInterval,
 		MaxPktTimeout:           maxPktTimeout,
 		PktCountClamp:           hubCmd.PktCountClamp,
+		HTTPResponseBodyClamp:   hubCmd.HTTPResponseBodyClamp,
 	}
 
 	jwtSec, err := hubCmd.getJWTSecret()
