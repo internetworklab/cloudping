@@ -6,10 +6,14 @@ CloudPing is a web-based ping & traceroute project, providing easy to use interf
 
 - Ping, Traceroute (UDP flavor or ICMP flavor)
 - TCP Ping
-- Basic DNS Probe
+- DNS Probe (UDP, TCP and DoT)
+- HTTP Probe (HTTP/1.1, HTTP/2 and HTTP/3)
 - DN42 Dual Stack support, Internet support
 - Basic IP information display (like ASN, Country, and probably Lat Lon)
 - API-first design, CLI friendly (can access through http clients like `curl`)
+- QUIC for hub-agent communication support and NAT-traversal
+- JWT authentication
+- Mobile friendly
 - Prometheus Metrics
 
 ## Build
