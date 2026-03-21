@@ -94,7 +94,9 @@ export function DNSProbeTaskPanel(props: {
           }))
         }
       />
-      {pendingTask.dnsProbePlan?.transport === "tls" && (
+      {(pendingTask.dnsProbePlan?.transport === "tls" ||
+        pendingTask.dnsProbePlan?.transport === "http/2" ||
+        pendingTask.dnsProbePlan?.transport === "http/3") && (
         <TextField
           sx={{ marginTop: 1 }}
           variant="standard"
