@@ -3,14 +3,7 @@
 import { EventObject, FILTERKEY_FROM, FILTERKEY_CORR_ID } from "@/apis/types";
 import { useDockingMode } from "@/apis/useDockingMode";
 import { Box, Chip, Paper, Typography } from "@mui/material";
-import {
-  Dispatch,
-  Fragment,
-  SetStateAction,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 
 function applyEVsLabelFilter(
   evs: EventObject[],
@@ -50,7 +43,11 @@ export function useEVsRead(
             return;
           }
           if (value) {
-            setEVs((prev) => [...prev, value]);
+            setEVs((prev) =>
+              prev.find((item) => item.id === value.id)
+                ? prev
+                : [...prev, value],
+            );
             const src = value.labels?.[FILTERKEY_FROM];
 
             if (src) {
@@ -79,6 +76,7 @@ export function useEVsRead(
       if (tick) {
         clearTimeout(tick);
       }
+      setEVs([]);
     };
   }, [eventsReader]);
   return {
