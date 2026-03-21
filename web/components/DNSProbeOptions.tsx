@@ -78,7 +78,7 @@ export function DNSProbeTaskPanel(props: {
         </Select>
       </FormControl>
       <TextField
-        sx={{ marginTop: 2 }}
+        sx={{ marginTop: 1 }}
         variant="standard"
         placeholder="Querying Domains, separated by comma"
         fullWidth
@@ -96,7 +96,7 @@ export function DNSProbeTaskPanel(props: {
       />
       {pendingTask.dnsProbePlan?.transport === "tls" && (
         <TextField
-          sx={{ marginTop: 2 }}
+          sx={{ marginTop: 1 }}
           variant="standard"
           placeholder="e.g. 1.1.1.1=one.one.one.one, 2001:4860:4860::8888=dns.google"
           fullWidth
@@ -114,7 +114,7 @@ export function DNSProbeTaskPanel(props: {
         />
       )}
       <TextField
-        sx={{ marginTop: 2 }}
+        sx={{ marginTop: 1 }}
         variant="standard"
         placeholder={
           pendingTask.dnsProbePlan?.transport === "http/2" ||
