@@ -92,7 +92,7 @@ type AgentCmd struct {
 	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"true"`
 	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"true"`
 	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"true"`
-	SupportHTTP bool `help:"Declare supportness for HTTP probing" default:"true"`
+	SupportHTTP bool `name:"support-http" help:"Declare supportness for HTTP probing" default:"true"`
 
 	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`
