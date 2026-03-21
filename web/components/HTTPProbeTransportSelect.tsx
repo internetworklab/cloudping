@@ -10,7 +10,7 @@ import {
   Radio,
   Switch,
 } from "@mui/material";
-import { PendingTask } from "@/apis/types";
+import { defaultHTTPProto, PendingTask } from "@/apis/types";
 import { Dispatch, SetStateAction } from "react";
 
 export function HTTPProbeTransportSelect(props: {
@@ -23,7 +23,7 @@ export function HTTPProbeTransportSelect(props: {
       <FormLabel>Transport</FormLabel>
       <RadioGroup
         row
-        value={pendingTask.selectingHttpTransport || "http/1.1"}
+        value={pendingTask.selectingHttpTransport || defaultHTTPProto}
         onChange={(e) =>
           setPendingTask((prev) => ({
             ...prev,

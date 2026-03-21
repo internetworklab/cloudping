@@ -75,11 +75,14 @@ export function expandDNSProbePlan(plan: DNSProbePlan): {
   return { targets, targetsMap };
 }
 
+export type HTTPProto = "http/1.1" | "http/2" | "http/3";
+export const defaultHTTPProto: HTTPProto = "http/1.1";
+
 export interface HTTPTarget {
   url: string;
   correlationId: string;
   extraHeaders?: Record<string, string>;
-  proto?: "http/1.1" | "http/2" | "http/3";
+  proto?: HTTPProto;
   resolver?: string;
   inetFamilyPreference?: "ip4" | "ip6" | "ip";
 }
@@ -98,7 +101,7 @@ export type PendingTask = {
   httpProbeTargets?: HTTPTarget[];
   targetsInput?: string;
   headersInput?: string;
-  selectingHttpTransport?: "http/1.1" | "http/2" | "http/3";
+  selectingHttpTransport?: HTTPProto;
   addHeaderSW?: boolean;
 };
 

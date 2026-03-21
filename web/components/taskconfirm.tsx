@@ -9,7 +9,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import { Fragment } from "react";
-import { PendingTask } from "@/apis/types";
+import { defaultHTTPProto, PendingTask } from "@/apis/types";
 
 // Also validating task here, not just for comfirmation and previewing.
 export function TaskConfirmDialog(props: {
@@ -51,7 +51,9 @@ export function TaskConfirmDialog(props: {
           At least one source and one effective target are required.
         </DialogContent>
         <DialogActions>
-          <Button onClick={onCancel}>Good</Button>
+          <Button variant="contained" onClick={onCancel}>
+            Good
+          </Button>
         </DialogActions>
       </Dialog>
     );
@@ -94,8 +96,9 @@ export function TaskConfirmDialog(props: {
               </Typography>
               <Typography gutterBottom>
                 {"Transport: "}
-                {pendingTask.selectingHttpTransport?.toUpperCase() ??
-                  "(Default)"}
+                {(
+                  pendingTask.selectingHttpTransport ?? defaultHTTPProto
+                )?.toUpperCase() ?? "(Unknown)"}
               </Typography>
               {pendingTask.addHeaderSW && pendingTask.headersInput && (
                 <Typography gutterBottom>
@@ -113,7 +116,9 @@ export function TaskConfirmDialog(props: {
         </DialogContent>
         <DialogActions>
           <Button onClick={onCancel}>Cancel</Button>
-          <Button onClick={onConfirm}>Confirm</Button>
+          <Button variant="contained" onClick={onConfirm}>
+            Confirm
+          </Button>
         </DialogActions>
       </Dialog>
     </Fragment>

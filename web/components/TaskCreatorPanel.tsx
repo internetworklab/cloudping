@@ -18,6 +18,7 @@ import {
   expandDNSProbePlan,
   PendingTask,
   HTTPTarget,
+  defaultHTTPProto,
 } from "@/apis/types";
 import { generateRandomTaskId } from "@/apis/random";
 import { SiteName } from "@/components/sitename";
@@ -176,7 +177,7 @@ function expandHTTPProbes(prev: PendingTask): Promise<PendingTask> {
     url,
     correlationId: url,
     extraHeaders: Object.keys(httpHeaders).length > 0 ? httpHeaders : undefined,
-    proto: prev.selectingHttpTransport,
+    proto: prev.selectingHttpTransport || defaultHTTPProto,
   }));
 
   return Promise.resolve({
