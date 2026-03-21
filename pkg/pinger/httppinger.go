@@ -11,6 +11,7 @@ import (
 type HTTPPinger struct {
 	Requests    []pkghttpprobe.HTTPProbe
 	RateLimiter pkgratelimit.RateLimiter
+	AddCA       []string
 }
 
 func (dp *HTTPPinger) Ping(ctx context.Context) <-chan PingEvent {
@@ -25,6 +26,7 @@ func (dp *HTTPPinger) Ping(ctx context.Context) <-chan PingEvent {
 			// Each request has a unique correlation_id, so one can easily pair the events with the corresponding original request.
 			go func(req pkghttpprobe.HTTPProbe) {
 				defer wg.Done()
+				req.AddCA = dp.AddCA
 				for ev := range req.Do(ctx) {
 					wrappedEV := PingEvent{
 						Data: &ev,

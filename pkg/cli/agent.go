@@ -87,12 +87,13 @@ type AgentCmd struct {
 	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112"`
 	MetricsPath          string `help:"Path of the Prometheus metrics endpoint, e.g. /metrics" default:"/metrics"`
 
-	// Bonus features
-	SupportUDP  bool `help:"Declare supportness for UDP traceroute" default:"true"`
-	SupportPMTU bool `help:"Declare supportness for PMTU discovery" default:"true"`
-	SupportTCP  bool `help:"Declare supportness for TCP-flavored ping" default:"true"`
-	SupportDNS  bool `help:"Declare supportness for DNS probing" default:"true"`
-	SupportHTTP bool `name:"support-http" help:"Declare supportness for HTTP probing" default:"true"`
+	// Probing capabilities declaration
+	SupportUDP            bool     `help:"Declare supportness for UDP traceroute" default:"true"`
+	SupportPMTU           bool     `help:"Declare supportness for PMTU discovery" default:"true"`
+	SupportTCP            bool     `help:"Declare supportness for TCP-flavored ping" default:"true"`
+	SupportDNS            bool     `help:"Declare supportness for DNS probing" default:"true"`
+	SupportHTTP           bool     `name:"support-http" help:"Declare supportness for HTTP probing" default:"true"`
+	HTTPProbeAdditionalCA []string `name:"http-probe-add-ca" help:"CAs to trust in addition to the systems' default CA store"`
 
 	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`
@@ -123,9 +124,10 @@ func (agentCmd *AgentCmd) getJWTToken() string {
 }
 
 type PingHandler struct {
-	IPInfoReg          *pkgipinfo.IPInfoProviderRegistry
-	RespondRange       []net.IPNet
-	DomainRespondRange []regexp.Regexp
+	IPInfoReg             *pkgipinfo.IPInfoProviderRegistry
+	RespondRange          []net.IPNet
+	DomainRespondRange    []regexp.Regexp
+	HTTPProbeAdditionalCA []string
 }
 
 func getHostFromIP(ipstr string) (net.IP, error) {
@@ -263,6 +265,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			httpPinger := &pkgpinger.HTTPPinger{
 				Requests:    make([]pkghttpprobe.HTTPProbe, 0),
 				RateLimiter: rateLimiterUsed,
+				AddCA:       ph.HTTPProbeAdditionalCA,
 			}
 			for _, tgt := range pingRequest.HTTPTargets {
 				urlObj, err := url.Parse(tgt.URL)
@@ -508,9 +511,10 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	}
 
 	handler := &PingHandler{
-		IPInfoReg:          ipinfoReg,
-		RespondRange:       respondRangeNet,
-		DomainRespondRange: domaonRespondRange,
+		IPInfoReg:             ipinfoReg,
+		RespondRange:          respondRangeNet,
+		DomainRespondRange:    domaonRespondRange,
+		HTTPProbeAdditionalCA: agentCmd.HTTPProbeAdditionalCA,
 	}
 
 	muxer := http.NewServeMux()

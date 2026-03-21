@@ -3,11 +3,14 @@ package httpprobe
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -217,8 +220,18 @@ func doDNSLookup(ctx context.Context, logger *Logger, resolver *net.Resolver, ne
 	return reJoinedAddr, nil
 }
 
-func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference) (*quicHTTP3.Transport, error) {
+func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference, addCA []string) (*quicHTTP3.Transport, error) {
 	tr := &quicHTTP3.Transport{}
+
+	if len(addCA) > 0 {
+		caPool, err := getExtendedCAPool(addCA)
+		if err != nil {
+			return nil, err
+		}
+		tr.TLSClientConfig = &tls.Config{
+			RootCAs: caPool,
+		}
+	}
 
 	dialFunc := func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quicGo.Config) (*quicGo.Conn, error) {
 		nw := "quic"
@@ -243,7 +256,25 @@ func getHTTP3Transport(logger *Logger, resolver *net.Resolver, pref *InetFamilyP
 	return tr, nil
 }
 
-func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference) (http.RoundTripper, error) {
+func getExtendedCAPool(additionalCAPaths []string) (*x509.CertPool, error) {
+	caPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.New("can't obtain system's CA pool")
+	}
+	caPool = caPool.Clone()
+	for _, caPath := range additionalCAPaths {
+		caData, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file %s: %w", caPath, err)
+		}
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", caPath)
+		}
+	}
+	return caPool, nil
+}
+
+func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, pref *InetFamilyPreference, addCA []string) (http.RoundTripper, error) {
 	// Clone the system's default transport
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -284,6 +315,13 @@ func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, p
 	defaultTransport.TLSClientConfig = &tls.Config{
 		NextProtos: []string{"http/1.1"},
 	}
+	if len(addCA) > 0 {
+		caPool, err := getExtendedCAPool(addCA)
+		if err != nil {
+			return nil, err
+		}
+		defaultTransport.TLSClientConfig.RootCAs = caPool
+	}
 
 	defaultTransport.Protocols.SetHTTP1(false)
 	defaultTransport.Protocols.SetHTTP2(false)
@@ -299,7 +337,7 @@ func getTransport(httpProto HTTPProto, logger *Logger, resolver *net.Resolver, p
 		defaultTransport.ForceAttemptHTTP2 = true
 		defaultTransport.TLSClientConfig.NextProtos = []string{"h2"}
 	case HTTPProtoHTTP3:
-		return getHTTP3Transport(logger, resolver, pref)
+		return getHTTP3Transport(logger, resolver, pref, addCA)
 	default:
 		panic("Invalid HTTP protocol")
 	}
@@ -343,6 +381,9 @@ type HTTPProbe struct {
 	// CorrelationIDs are for identifying targets.
 	// A (agent_id, correlation_id) tuple uniquely identifies a http probing event stream in the global scope.
 	CorrelationID string `json:"correlationId,omitempty"`
+
+	// list of paths to additional CAs to trust in addition to the system's default CAs
+	AddCA []string
 }
 
 func (probe *HTTPProbe) Do(ctx context.Context) <-chan Event {
@@ -396,7 +437,7 @@ func sendRequest(ctx context.Context, probe HTTPProbe) (<-chan TransportEvent, <
 		logger := NewLogger(eventChan)
 		defer logger.Close()
 
-		defaultTransport, err := getTransport(httpProto, logger, pkgutils.NewCustomResolver(probe.Resolver, 10*time.Second), probe.IPPref)
+		defaultTransport, err := getTransport(httpProto, logger, pkgutils.NewCustomResolver(probe.Resolver, 10*time.Second), probe.IPPref, probe.AddCA)
 		if err != nil {
 			errChan <- err
 			return
