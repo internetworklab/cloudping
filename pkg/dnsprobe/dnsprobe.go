@@ -6,19 +6,26 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"strings"
 	"time"
+
+	"codeberg.org/miekg/dns"
+	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )
 
 type Transport string
 
 const (
-	TransportUDP Transport = "udp"
-	TransportTCP Transport = "tcp"
-	TransportTLS Transport = "tls" // DNS over TLS, defined by RFC7858
+	TransportUDP   Transport = "udp"
+	TransportTCP   Transport = "tcp"
+	TransportTLS   Transport = "tls"    // DNS over TLS, defined by RFC7858
+	TransportHTTP2 Transport = "http/2" // RFC8484, HTTP/2, POST method, application/dns-message wire format
+	TransportHTTP3 Transport = "http/3" // RFC8484, HTTP/3, POST method, application/dns-message wire format
 )
 
 type DNSQueryType string
@@ -70,7 +77,8 @@ func (qr *QueryResult) PreStringify() (*QueryResult, error) {
 		clone.ErrString = clone.Error.Error()
 		clone.Error = nil
 	}
-	if clone.Answers != nil {
+
+	if clone.Answers != nil && qr.TransportUsed != TransportHTTP2 && qr.TransportUsed != TransportHTTP3 {
 		answerStrings := make([]string, 0)
 		for _, ans := range clone.Answers {
 			ansStr, err := wrappedAnsToString(ans, clone.QueryType)
@@ -124,6 +132,38 @@ func appendDNSPort(s string, transport Transport) string {
 const minTimeoutMs = 10
 const maxTimeoutMs = 10 * 1000
 const defaultDNSProbeTimeoutMs = 3000
+
+func getDoHRequest(ctx context.Context, urlStr string, m *dns.Msg) (*http.Request, error) {
+
+	mime := "application/dns-message"
+
+	if err := m.Pack(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, m)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", mime)
+	req.Header.Set("Content-Type", mime)
+	return req, nil
+}
+
+func getDoHTransportClient(transport Transport, tlsConfig *tls.Config) (http.RoundTripper, error) {
+	if transport == TransportHTTP2 {
+		return &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}, nil
+	} else if transport == TransportHTTP3 {
+		return &quicHTTP3.Transport{
+			TLSClientConfig: tlsConfig,
+		}, nil
+	} else {
+		return nil, fmt.Errorf("invalid transport: %s", transport)
+	}
+}
 
 // returns: answers, error
 func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.CertPool) (*QueryResult, error) {
@@ -179,111 +219,177 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 		queryResult.Elapsed = time.Since(queryResult.StartedAt)
 	}()
 
-	resolver := net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			if transport == TransportUDP {
-				udpaddr := net.UDPAddrFromAddrPort(addrportObj)
-				if udpaddr == nil {
-					return nil, fmt.Errorf("failed to get udpaddr from %s", addrportObj.String())
-				}
-				return net.DialUDP("udp", nil, udpaddr)
-			} else if transport == TransportTCP {
-				tcpaddr := net.TCPAddrFromAddrPort(addrportObj)
-				if tcpaddr == nil {
-					return nil, fmt.Errorf("failed to get tcpaddr from %s", addrportObj.String())
-				}
-				return net.DialTCP("tcp", nil, tcpaddr)
-			} else if transport == TransportTLS {
-				tcpaddr := net.TCPAddrFromAddrPort(addrportObj)
-				dialer := &tls.Dialer{
-					Config: tlsConfig,
-				}
-				return dialer.DialContext(ctx, "tcp", tcpaddr.String())
-			} else {
-				return nil, fmt.Errorf("transport is not specified or invalid transport: %s", transport)
-			}
-		},
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	switch queryType {
-	case DNSQueryTypeA, DNSQueryTypeAAAA:
-		ipPref := "ip"
-		if queryType == DNSQueryTypeA {
-			ipPref = "ip4"
-		} else if queryType == DNSQueryTypeAAAA {
-			ipPref = "ip6"
-		}
-		answers, err := resolver.LookupIP(ctx, ipPref, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup ip (type %s) for %s: %v", queryType, target, err)
-		}
-
-		for _, ans := range answers {
-			queryResult.Answers = append(queryResult.Answers, ans)
-		}
-		return queryResult, nil
-	case DNSQueryTypeCNAME:
-		answer, err := resolver.LookupCNAME(ctx, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup ip (type %s) for %s: %v", queryType, target, err)
+	if transport == TransportHTTP2 || transport == TransportHTTP3 {
+		var m *dns.Msg = nil
+		switch queryType {
+		case DNSQueryTypeA:
+			m = dns.NewMsg(target, dns.TypeA)
+		case DNSQueryTypeAAAA:
+			m = dns.NewMsg(target, dns.TypeAAAA)
+		case DNSQueryTypeCNAME:
+			m = dns.NewMsg(target, dns.TypeCNAME)
+		case DNSQueryTypeMX:
+			m = dns.NewMsg(target, dns.TypeMX)
+		case DNSQueryTypeNS:
+			m = dns.NewMsg(target, dns.TypeNS)
+		case DNSQueryTypePTR:
+			m = dns.NewMsg(target, dns.TypePTR)
+		case DNSQueryTypeTXT:
+			m = dns.NewMsg(target, dns.TypeTXT)
+		default:
+			return nil, fmt.Errorf("invalid query type: %s", queryType)
 		}
 
-		if answer != "" {
-			queryResult.Answers = append(queryResult.Answers, answer)
+		m.ID = dns.ID()
+		m.RecursionDesired = true
+
+		req, err := getDoHRequest(ctx, "todo", m)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DoH request: %w", err)
 		}
+
+		tr, err := getDoHTransportClient(transport, tlsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get DoH transport client: %w", err)
+		}
+
+		resp, err := tr.RoundTrip(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send DoH request: %w", err)
+		}
+
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("DoH request failed with status code: %d", resp.StatusCode)
+		}
+
+		defer resp.Body.Close()
+		ansDNSBlob, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read DoH response: %w", err)
+		}
+
+		ansM := new(dns.Msg)
+		ansM.Data = ansDNSBlob
+		if err := ansM.Unpack(); err != nil {
+			return nil, fmt.Errorf("failed to unpack DoH response: %w", err)
+		}
+
+		for _, rr := range ansM.Answer {
+			rrData := rr.Data()
+			ansDataStr := rrData.String()
+			queryResult.Answers = append(queryResult.Answers, rrData)
+			queryResult.AnswerStrings = append(queryResult.AnswerStrings, ansDataStr)
+		}
+
 		return queryResult, nil
-	case DNSQueryTypeMX:
-		answers, err := resolver.LookupMX(ctx, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup mx for %s: %v", target, err)
+	} else {
+		resolver := net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				if transport == TransportUDP {
+					udpaddr := net.UDPAddrFromAddrPort(addrportObj)
+					if udpaddr == nil {
+						return nil, fmt.Errorf("failed to get udpaddr from %s", addrportObj.String())
+					}
+					return net.DialUDP("udp", nil, udpaddr)
+				} else if transport == TransportTCP {
+					tcpaddr := net.TCPAddrFromAddrPort(addrportObj)
+					if tcpaddr == nil {
+						return nil, fmt.Errorf("failed to get tcpaddr from %s", addrportObj.String())
+					}
+					return net.DialTCP("tcp", nil, tcpaddr)
+				} else if transport == TransportTLS {
+					tcpaddr := net.TCPAddrFromAddrPort(addrportObj)
+					dialer := &tls.Dialer{
+						Config: tlsConfig,
+					}
+					return dialer.DialContext(ctx, "tcp", tcpaddr.String())
+				} else {
+					return nil, fmt.Errorf("transport is not specified or invalid transport: %s", transport)
+				}
+			},
 		}
-		for _, ans := range answers {
-			if ans == nil {
-				continue
+
+		switch queryType {
+		case DNSQueryTypeA, DNSQueryTypeAAAA:
+			ipPref := "ip"
+			if queryType == DNSQueryTypeA {
+				ipPref = "ip4"
+			} else if queryType == DNSQueryTypeAAAA {
+				ipPref = "ip6"
 			}
-			queryResult.Answers = append(queryResult.Answers, ans)
-		}
-		return queryResult, nil
-	case DNSQueryTypeNS:
-		answers, err := resolver.LookupNS(ctx, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup ns for %s: %v", target, err)
-		}
-		for _, ans := range answers {
-			if ans == nil {
-				continue
+			answers, err := resolver.LookupIP(ctx, ipPref, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup ip (type %s) for %s: %v", queryType, target, err)
 			}
-			queryResult.Answers = append(queryResult.Answers, ans)
-		}
-		return queryResult, nil
-	case DNSQueryTypePTR:
-		answer, err := resolver.LookupAddr(ctx, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup ptr for %s: %v", target, err)
-		}
-		for _, ans := range answer {
-			if ans == "" {
-				continue
+
+			for _, ans := range answers {
+				queryResult.Answers = append(queryResult.Answers, ans)
 			}
-			queryResult.Answers = append(queryResult.Answers, ans)
+			return queryResult, nil
+		case DNSQueryTypeCNAME:
+			answer, err := resolver.LookupCNAME(ctx, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup ip (type %s) for %s: %v", queryType, target, err)
+			}
+
+			if answer != "" {
+				queryResult.Answers = append(queryResult.Answers, answer)
+			}
+			return queryResult, nil
+		case DNSQueryTypeMX:
+			answers, err := resolver.LookupMX(ctx, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup mx for %s: %v", target, err)
+			}
+			for _, ans := range answers {
+				if ans == nil {
+					continue
+				}
+				queryResult.Answers = append(queryResult.Answers, ans)
+			}
+			return queryResult, nil
+		case DNSQueryTypeNS:
+			answers, err := resolver.LookupNS(ctx, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup ns for %s: %v", target, err)
+			}
+			for _, ans := range answers {
+				if ans == nil {
+					continue
+				}
+				queryResult.Answers = append(queryResult.Answers, ans)
+			}
+			return queryResult, nil
+		case DNSQueryTypePTR:
+			answer, err := resolver.LookupAddr(ctx, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup ptr for %s: %v", target, err)
+			}
+			for _, ans := range answer {
+				if ans == "" {
+					continue
+				}
+				queryResult.Answers = append(queryResult.Answers, ans)
+			}
+			return queryResult, nil
+		case DNSQueryTypeTXT:
+			answer, err := resolver.LookupTXT(ctx, target)
+			if err != nil && !analyzeError(err, queryResult) {
+				return nil, fmt.Errorf("failed to lookup txt for %s: %v", target, err)
+			}
+			for _, ans := range answer {
+				queryResult.Answers = append(queryResult.Answers, ans)
+			}
+			return queryResult, nil
+		default:
+			return nil, fmt.Errorf("invalid query type: %s", queryType)
 		}
-		return queryResult, nil
-	case DNSQueryTypeTXT:
-		answer, err := resolver.LookupTXT(ctx, target)
-		if err != nil && !analyzeError(err, queryResult) {
-			return nil, fmt.Errorf("failed to lookup txt for %s: %v", target, err)
-		}
-		for _, ans := range answer {
-			queryResult.Answers = append(queryResult.Answers, ans)
-		}
-		return queryResult, nil
-	default:
-		return nil, fmt.Errorf("invalid query type: %s", queryType)
 	}
+
 }
 
 func wrappedAnsToString(ans interface{}, qtype DNSQueryType) (string, error) {

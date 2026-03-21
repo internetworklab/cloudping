@@ -45,7 +45,7 @@ func dealDNSResp(respBody []byte) {
 	}
 
 	for idx, ans := range ansM.Answer {
-		log.Printf("[%d] ans: %s", idx, ans.String())
+		log.Printf("[%d] ans: %s, data: %s", idx, ans.String(), ans.Data().String())
 	}
 }
 
