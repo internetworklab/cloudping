@@ -132,9 +132,6 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 	if parameter.Transport != nil {
 		transport = *parameter.Transport
 	}
-	if transport != TransportUDP && transport != TransportTCP {
-		return nil, fmt.Errorf("not a supported transport: %s", transport)
-	}
 
 	target := parameter.Target
 

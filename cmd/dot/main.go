@@ -2,45 +2,36 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
+	"encoding/json"
 	"log"
-	"net"
-	"net/netip"
+	"os"
 	"time"
+
+	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
 )
 
 func main() {
 	// Define the DoT server details
 	address := "[2606:4700:4700::1001]:853"
-	tcpaddr := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(address))
 	serverName := "one.one.one.one"
 
-	// Create a custom resolver
-	resolver := &net.Resolver{
-		PreferGo: true, // Crucial: ensures the Go-native resolver is used
-		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			dialer := &tls.Dialer{
-				Config: &tls.Config{
-					ServerName: serverName,
-					MinVersion: tls.VersionTLS12,
-				},
-			}
-			log.Printf("Dialing %s", tcpaddr.String())
-			return dialer.DialContext(ctx, "tcp", tcpaddr.String())
-		},
+	tr := new(pkgdnsprobe.Transport)
+	*tr = pkgdnsprobe.TransportTLS
+	lookupParameter := pkgdnsprobe.LookupParameter{
+		CorrelationID: "1",
+		AddrPort:      address,
+		Target:        "example.com",
+		Transport:     tr,
+		QueryType:     pkgdnsprobe.DNSQueryTypeAAAA,
+		DoTServerName: serverName,
 	}
 
-	// Use the resolver to look up a host
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-
-	ips, err := resolver.LookupHost(ctx, "example.com")
+	res, err := pkgdnsprobe.LookupDNS(ctx, lookupParameter, nil)
 	if err != nil {
-		log.Fatalf("Lookup failed: %v", err)
+		log.Fatal(err)
 	}
-
-	for _, ip := range ips {
-		fmt.Printf("example.com IN A %s\n", ip)
-	}
+	json.NewEncoder(os.Stdout).Encode(res)
 }

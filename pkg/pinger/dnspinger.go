@@ -20,6 +20,7 @@ type DNSPinger struct {
 func (dp *DNSPinger) Ping(ctx context.Context) <-chan PingEvent {
 	evChan := make(chan PingEvent)
 	go func() {
+		defer close(evChan)
 		var certPool *x509.CertPool = nil
 		if len(dp.AddCAPaths) > 0 {
 			var err error
@@ -30,7 +31,6 @@ func (dp *DNSPinger) Ping(ctx context.Context) <-chan PingEvent {
 			}
 		}
 
-		defer close(evChan)
 		wg := &sync.WaitGroup{}
 		defer wg.Wait()
 

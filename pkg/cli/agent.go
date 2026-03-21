@@ -93,7 +93,7 @@ type AgentCmd struct {
 	SupportTCP            bool     `help:"Declare supportness for TCP-flavored ping" default:"true"`
 	SupportDNS            bool     `help:"Declare supportness for DNS probing" default:"true"`
 	SupportHTTP           bool     `name:"support-http" help:"Declare supportness for HTTP probing" default:"true"`
-	HTTPProbeAdditionalCA []string `name:"http-probe-add-ca" help:"CAs to trust in addition to the systems' default CA store"`
+	HTTPProbeAdditionalCA []string `name:"http-probe-add-ca" help:"CAs to trust in addition to the systems' default CA store when doing DNS probe (DoT) or HTTP probe"`
 
 	// Some Debugging features
 	LogEchoReplies bool `help:"Log echo replies" default:"false"`
@@ -259,6 +259,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			pinger = &pkgpinger.DNSPinger{
 				Requests:    pingRequest.DNSTargets,
 				RateLimiter: rateLimiterUsed,
+				AddCAPaths:  ph.HTTPProbeAdditionalCA,
 			}
 		case pkgpinger.L7ProtoHTTP:
 			httpUrls := make([]string, 0)
