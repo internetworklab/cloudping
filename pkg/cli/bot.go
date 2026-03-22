@@ -23,10 +23,12 @@ import (
 
 // Please note, sensitive data such as token are provided via env, not presented in the command line.
 type BotCmd struct {
-	ListenAddress         string `help:"Address to listen on." type:"string" default:":8083"`
-	PublicEndpoint        string `help:"Public endpoint of the bot." type:"string"`
-	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
-	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	ListenAddress            string `help:"Address to listen on." type:"string" default:":8083"`
+	PublicEndpoint           string `help:"Public endpoint of the bot." type:"string"`
+	JWTAuthSecretFromEnv     string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
+	JWTAuthSecretFromFile    string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	TelegramWebhookSecretEnv string `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
+	TelegramBotSecretEnv     string `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
 }
 
 func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
@@ -39,7 +41,31 @@ const (
 	CtxKeyJWTSecret = CtxKey("jwt_secret")
 )
 
+func (botCmd *BotCmd) getTGBotSecret() (string, error) {
+	if botCmd.TelegramBotSecretEnv == "" {
+		return "", errors.New("TelegramBotSecretEnv must not be empty")
+	}
+	botToken := os.Getenv(botCmd.TelegramBotSecretEnv)
+	if botToken == "" {
+		return "", fmt.Errorf("%s is not set", botCmd.TelegramBotSecretEnv)
+	}
+	return botToken, nil
+}
+
+func (botCmd *BotCmd) getTGWebhookSecret() (string, error) {
+	if botCmd.TelegramWebhookSecretEnv == "" {
+		return "", errors.New("TelegramWebhookSecretEnv must not be empty")
+	}
+	tgWebSocketSecret := os.Getenv(botCmd.TelegramWebhookSecretEnv)
+	if tgWebSocketSecret == "" {
+		return "", fmt.Errorf("%s is not set", botCmd.TelegramWebhookSecretEnv)
+	}
+	return tgWebSocketSecret, nil
+}
+
 func (botCmd *BotCmd) Run() error {
+	// the parent command's Run() method already loaded the .env file,
+	// so it's not needed to repeat that here.
 
 	secret, err := botCmd.getJWTSecret()
 	if err != nil {
@@ -52,14 +78,14 @@ func (botCmd *BotCmd) Run() error {
 
 	ctx = context.WithValue(ctx, CtxKeyJWTSecret, secret)
 
-	botToken := os.Getenv("TG_BOT_TOKEN")
-	if botToken == "" {
-		return fmt.Errorf("TG_BOT_TOKEN is not set")
+	botToken, err := botCmd.getTGBotSecret()
+	if err != nil {
+		return fmt.Errorf("failed to get Telegram bot secret: %v", err)
 	}
 
-	tgWebSocketSecret := os.Getenv("TG_WS_SECRET")
-	if tgWebSocketSecret == "" {
-		return fmt.Errorf("TG_WS_SECRET is not set")
+	tgWebSocketSecret, err := botCmd.getTGWebhookSecret()
+	if err != nil {
+		return fmt.Errorf("failed to get Telegram webhook secret: %v", err)
 	}
 
 	if botCmd.PublicEndpoint == "" {
@@ -312,8 +338,6 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					{
 						{Text: "Class A", CallbackData: "ping_class_a"},
 						{Text: "Class B", CallbackData: "ping_class_b"},
-					},
-					{
 						{Text: "Class C", CallbackData: "ping_class_c"},
 						{Text: "Class D", CallbackData: "ping_class_d"},
 					},
