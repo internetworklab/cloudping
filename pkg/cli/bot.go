@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -93,6 +94,7 @@ func (botCmd *BotCmd) Run() error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), handlePing)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), handleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), handleToken)
+	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_class_[a-d]$`), handlePingClassCallback)
 
 	go b.StartWebhook(ctx)
 
@@ -153,61 +155,148 @@ func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 }
 
-func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
-	type MockPingEvent struct {
-		Seq   int
-		Class string
-		RTTMs int
-	}
+// Mock ping data (same as in handlePing)
+type MockPingEvent struct {
+	Seq   int
+	Class string
+	RTTMs int
+}
+
+func getMockedPingEvents() []MockPingEvent {
 	mockedPingData := []MockPingEvent{
-		// Class A events (10 entries)
-		{Seq: 0, Class: "A"},
-		{Seq: 1, Class: "A"},
-		{Seq: 2, Class: "A"},
-		{Seq: 3, Class: "A"},
-		{Seq: 4, Class: "A"},
-		{Seq: 5, Class: "A"},
-		{Seq: 6, Class: "A"},
-		{Seq: 7, Class: "A"},
-		{Seq: 8, Class: "A"},
-		{Seq: 9, Class: "A"},
-		// Class B events (10 entries)
-		{Seq: 10, Class: "B"},
-		{Seq: 11, Class: "B"},
-		{Seq: 12, Class: "B"},
-		{Seq: 13, Class: "B"},
-		{Seq: 14, Class: "B"},
-		{Seq: 15, Class: "B"},
-		{Seq: 16, Class: "B"},
-		{Seq: 17, Class: "B"},
-		{Seq: 18, Class: "B"},
-		{Seq: 19, Class: "B"},
-		// Class C events (10 entries)
-		{Seq: 20, Class: "C"},
-		{Seq: 21, Class: "C"},
-		{Seq: 22, Class: "C"},
-		{Seq: 23, Class: "C"},
-		{Seq: 24, Class: "C"},
-		{Seq: 25, Class: "C"},
-		{Seq: 26, Class: "C"},
-		{Seq: 27, Class: "C"},
-		{Seq: 28, Class: "C"},
-		{Seq: 29, Class: "C"},
-		// Class D events (10 entries)
-		{Seq: 30, Class: "D"},
-		{Seq: 31, Class: "D"},
-		{Seq: 32, Class: "D"},
-		{Seq: 33, Class: "D"},
-		{Seq: 34, Class: "D"},
-		{Seq: 35, Class: "D"},
-		{Seq: 36, Class: "D"},
-		{Seq: 37, Class: "D"},
-		{Seq: 38, Class: "D"},
-		{Seq: 39, Class: "D"},
+		// Class A events (10 entries) - Low latency: 10-50ms
+		{Seq: 0, Class: "A", RTTMs: 12},
+		{Seq: 1, Class: "A", RTTMs: 15},
+		{Seq: 2, Class: "A", RTTMs: 11},
+		{Seq: 3, Class: "A", RTTMs: 18},
+		{Seq: 4, Class: "A", RTTMs: 14},
+		{Seq: 5, Class: "A", RTTMs: 20},
+		{Seq: 6, Class: "A", RTTMs: 16},
+		{Seq: 7, Class: "A", RTTMs: 13},
+		{Seq: 8, Class: "A", RTTMs: 22},
+		{Seq: 9, Class: "A", RTTMs: 19},
+		// Class B events (10 entries) - Moderate latency: 50-150ms
+		{Seq: 10, Class: "B", RTTMs: 65},
+		{Seq: 11, Class: "B", RTTMs: 72},
+		{Seq: 12, Class: "B", RTTMs: 58},
+		{Seq: 13, Class: "B", RTTMs: 89},
+		{Seq: 14, Class: "B", RTTMs: 94},
+		{Seq: 15, Class: "B", RTTMs: 76},
+		{Seq: 16, Class: "B", RTTMs: 112},
+		{Seq: 17, Class: "B", RTTMs: 85},
+		{Seq: 18, Class: "B", RTTMs: 68},
+		{Seq: 19, Class: "B", RTTMs: 103},
+		// Class C events (10 entries) - Higher latency: 100-300ms
+		{Seq: 20, Class: "C", RTTMs: 145},
+		{Seq: 21, Class: "C", RTTMs: 187},
+		{Seq: 22, Class: "C", RTTMs: 156},
+		{Seq: 23, Class: "C", RTTMs: 203},
+		{Seq: 24, Class: "C", RTTMs: 178},
+		{Seq: 25, Class: "C", RTTMs: 134},
+		{Seq: 26, Class: "C", RTTMs: 221},
+		{Seq: 27, Class: "C", RTTMs: 167},
+		{Seq: 28, Class: "C", RTTMs: 198},
+		{Seq: 29, Class: "C", RTTMs: 245},
+		// Class D events (10 entries) - High latency: 200-600ms
+		{Seq: 30, Class: "D", RTTMs: 312},
+		{Seq: 31, Class: "D", RTTMs: 456},
+		{Seq: 32, Class: "D", RTTMs: 378},
+		{Seq: 33, Class: "D", RTTMs: 534},
+		{Seq: 34, Class: "D", RTTMs: 289},
+		{Seq: 35, Class: "D", RTTMs: 467},
+		{Seq: 36, Class: "D", RTTMs: 398},
+		{Seq: 37, Class: "D", RTTMs: 512},
+		{Seq: 38, Class: "D", RTTMs: 423},
+		{Seq: 39, Class: "D", RTTMs: 587},
+	}
+	return mockedPingData
+}
+
+// ClassStatistics holds calculated statistics for a ping class
+type ClassStatistics struct {
+	Class  string
+	Count  int
+	MinRTT int
+	MaxRTT int
+	AvgRTT int
+}
+
+// getClassStatistics calculates and returns statistics for a given class.
+// Returns nil if no events found for the class.
+func getClassStatistics(class string) *ClassStatistics {
+	var classEvents []MockPingEvent
+	for _, event := range getMockedPingEvents() {
+		if event.Class == class {
+			classEvents = append(classEvents, event)
+		}
 	}
 
+	if len(classEvents) == 0 {
+		return nil
+	}
+
+	minRTT := classEvents[0].RTTMs
+	maxRTT := classEvents[0].RTTMs
+	totalRTT := 0
+	for _, event := range classEvents {
+		if event.RTTMs < minRTT {
+			minRTT = event.RTTMs
+		}
+		if event.RTTMs > maxRTT {
+			maxRTT = event.RTTMs
+		}
+		totalRTT += event.RTTMs
+	}
+	avgRTT := totalRTT / len(classEvents)
+
+	return &ClassStatistics{
+		Class:  class,
+		Count:  len(classEvents),
+		MinRTT: minRTT,
+		MaxRTT: maxRTT,
+		AvgRTT: avgRTT,
+	}
+}
+
+// getFormattedPingEvents returns a formatted string of ping events for a given class,
+// similar to the output of a ping command (individual replies, not statistics).
+// Returns an empty string if no events found for the class.
+func getFormattedPingEvents(class string) string {
+	var classEvents []MockPingEvent
+	for _, event := range getMockedPingEvents() {
+		if event.Class == class {
+			classEvents = append(classEvents, event)
+		}
+	}
+
+	if len(classEvents) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, event := range classEvents {
+		// Format similar to: 64 bytes from mock-server.local: icmp_seq=0 ttl=64 time=12 ms
+		sb.WriteString(fmt.Sprintf("64 bytes from class-%s.mock-server.local: icmp_seq=%d ttl=64 time=%d ms\n",
+			class, event.Seq, event.RTTMs))
+	}
+
+	return sb.String()
+}
+
+func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
-		txt := "Pong!"
+		// Use Class A as default, show full ping output like the callback handler
+		class := "A"
+		stats := getClassStatistics(class)
+
+		// Build response message - formatted like real ping output
+		pingEvents := getFormattedPingEvents(class)
+		statsLine := fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
+			"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
+			"round-trip min/avg/max = %d/%d/%d ms",
+			class, stats.Count, stats.Count, stats.MinRTT, stats.AvgRTT, stats.MaxRTT)
+		txt := pingEvents + "\n" + statsLine
+
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   txt,
@@ -218,8 +307,68 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					Length: len(txt),
 				},
 			},
+			ReplyMarkup: &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{
+					{
+						{Text: "Class A", CallbackData: "ping_class_a"},
+						{Text: "Class B", CallbackData: "ping_class_b"},
+					},
+					{
+						{Text: "Class C", CallbackData: "ping_class_c"},
+						{Text: "Class D", CallbackData: "ping_class_d"},
+					},
+				},
+			},
 		})
 	}
+}
+
+func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.CallbackQuery == nil {
+		return
+	}
+
+	// Parse the callback data to extract the class
+	callbackData := update.CallbackQuery.Data
+	class := string(callbackData[len(callbackData)-1]) // Last character is the class (a, b, c, d)
+	class = strings.ToUpper(class)
+
+	// Get statistics for the class
+	stats := getClassStatistics(class)
+	if stats == nil {
+		b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+			CallbackQueryID: update.CallbackQuery.ID,
+			Text:            "No data for class " + class,
+		})
+		return
+	}
+
+	// Build response message - formatted like real ping output
+	pingEvents := getFormattedPingEvents(class)
+	statsLine := fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
+		"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
+		"round-trip min/avg/max = %d/%d/%d ms",
+		class, stats.Count, stats.Count, stats.MinRTT, stats.AvgRTT, stats.MaxRTT)
+	txt := pingEvents + "\n" + statsLine
+
+	// Edit the original message with the statistics
+	b.EditMessageText(ctx, &bot.EditMessageTextParams{
+		ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
+		MessageID: update.CallbackQuery.Message.Message.ID,
+		Text:      txt,
+		Entities: []models.MessageEntity{
+			{
+				Type:   models.MessageEntityTypePre,
+				Offset: 0,
+				Length: len(txt),
+			},
+		},
+	})
+
+	// Answer the callback query to remove the loading state
+	b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+		CallbackQueryID: update.CallbackQuery.ID,
+	})
 }
 
 func handleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
