@@ -227,12 +227,17 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 		case DNSQueryTypeNS:
 			m = dns.NewMsg(target, dns.TypeNS)
 		case DNSQueryTypePTR:
-			ipaddr, err := netip.ParseAddr(target)
-			if err != nil {
-				return nil, fmt.Errorf("invalid ip: %w", err)
+			queryingTarget := target
+			if dnsutil.IsReverse(queryingTarget) > 0 {
+				m = dns.NewMsg(queryingTarget, dns.TypePTR)
+			} else {
+				ipaddr, err := netip.ParseAddr(queryingTarget)
+				if err != nil {
+					return nil, fmt.Errorf("invalid ip: %w", err)
+				}
+				queryingTarget = dnsutil.ReverseAddr(ipaddr)
+				m = dns.NewMsg(queryingTarget, dns.TypePTR)
 			}
-			reverseAddr := dnsutil.ReverseAddr(ipaddr)
-			m = dns.NewMsg(reverseAddr, dns.TypePTR)
 		case DNSQueryTypeTXT:
 			m = dns.NewMsg(target, dns.TypeTXT)
 		default:
@@ -380,7 +385,16 @@ func LookupDNS(ctx context.Context, parameter LookupParameter, certPool *x509.Ce
 			}
 			return queryResult, nil
 		case DNSQueryTypePTR:
-			answer, err := resolver.LookupAddr(ctx, target)
+			queryingTarget := target
+			// test if the querying name has .in-addr.arpa. suffix or .ip6.arpa. suffix
+			if dnsutil.IsReverse(queryingTarget) > 0 {
+				targetObj := dnsutil.AddrReverse(queryingTarget)
+				if !targetObj.IsValid() {
+					return nil, fmt.Errorf("invalid address: %s", queryingTarget)
+				}
+				queryingTarget = targetObj.String()
+			}
+			answer, err := resolver.LookupAddr(ctx, queryingTarget)
 			if err != nil && !analyzeError(err, queryResult) {
 				return nil, fmt.Errorf("failed to lookup ptr for %s: %v", target, err)
 			}
