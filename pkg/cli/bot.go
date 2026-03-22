@@ -154,6 +154,58 @@ func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 }
 
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
+	type MockPingEvent struct {
+		Seq   int
+		Class string
+		RTTMs int
+	}
+	mockedPingData := []MockPingEvent{
+		// Class A events (10 entries)
+		{Seq: 0, Class: "A"},
+		{Seq: 1, Class: "A"},
+		{Seq: 2, Class: "A"},
+		{Seq: 3, Class: "A"},
+		{Seq: 4, Class: "A"},
+		{Seq: 5, Class: "A"},
+		{Seq: 6, Class: "A"},
+		{Seq: 7, Class: "A"},
+		{Seq: 8, Class: "A"},
+		{Seq: 9, Class: "A"},
+		// Class B events (10 entries)
+		{Seq: 10, Class: "B"},
+		{Seq: 11, Class: "B"},
+		{Seq: 12, Class: "B"},
+		{Seq: 13, Class: "B"},
+		{Seq: 14, Class: "B"},
+		{Seq: 15, Class: "B"},
+		{Seq: 16, Class: "B"},
+		{Seq: 17, Class: "B"},
+		{Seq: 18, Class: "B"},
+		{Seq: 19, Class: "B"},
+		// Class C events (10 entries)
+		{Seq: 20, Class: "C"},
+		{Seq: 21, Class: "C"},
+		{Seq: 22, Class: "C"},
+		{Seq: 23, Class: "C"},
+		{Seq: 24, Class: "C"},
+		{Seq: 25, Class: "C"},
+		{Seq: 26, Class: "C"},
+		{Seq: 27, Class: "C"},
+		{Seq: 28, Class: "C"},
+		{Seq: 29, Class: "C"},
+		// Class D events (10 entries)
+		{Seq: 30, Class: "D"},
+		{Seq: 31, Class: "D"},
+		{Seq: 32, Class: "D"},
+		{Seq: 33, Class: "D"},
+		{Seq: 34, Class: "D"},
+		{Seq: 35, Class: "D"},
+		{Seq: 36, Class: "D"},
+		{Seq: 37, Class: "D"},
+		{Seq: 38, Class: "D"},
+		{Seq: 39, Class: "D"},
+	}
+
 	if update.Message != nil {
 		txt := "Pong!"
 		b.SendMessage(ctx, &bot.SendMessageParams{
