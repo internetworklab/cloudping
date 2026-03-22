@@ -309,6 +309,28 @@ func getFormattedPingEvents(class string) string {
 	return sb.String()
 }
 
+// getPingClassButtons returns an inline keyboard markup with class buttons,
+// showing a checkmark indicator on the currently selected class.
+func getPingClassButtons(selectedClass string) *models.InlineKeyboardMarkup {
+	buttons := [][]models.InlineKeyboardButton{
+		{
+			{Text: getClassButtonText("A", selectedClass), CallbackData: "ping_class_a"},
+			{Text: getClassButtonText("B", selectedClass), CallbackData: "ping_class_b"},
+			{Text: getClassButtonText("C", selectedClass), CallbackData: "ping_class_c"},
+			{Text: getClassButtonText("D", selectedClass), CallbackData: "ping_class_d"},
+		},
+	}
+	return &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
+}
+
+// getClassButtonText returns the button text for a class, with a checkmark if selected.
+func getClassButtonText(class, selectedClass string) string {
+	if class == selectedClass {
+		return "✓ Class " + class
+	}
+	return "Class " + class
+}
+
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		// Use Class A as default, show full ping output like the callback handler
@@ -333,16 +355,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{
-					{
-						{Text: "Class A", CallbackData: "ping_class_a"},
-						{Text: "Class B", CallbackData: "ping_class_b"},
-						{Text: "Class C", CallbackData: "ping_class_c"},
-						{Text: "Class D", CallbackData: "ping_class_d"},
-					},
-				},
-			},
+			ReplyMarkup: getPingClassButtons(class),
 		})
 	}
 }
@@ -387,6 +400,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 				Length: len(txt),
 			},
 		},
+		ReplyMarkup: getPingClassButtons(class),
 	})
 
 	// Answer the callback query to remove the loading state
