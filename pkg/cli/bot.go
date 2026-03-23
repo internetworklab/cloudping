@@ -200,7 +200,12 @@ func (e *PingEvent) String() string {
 		e.IPPacketSize, e.Peer, e.Seq, e.RTTMs)
 }
 
-type PingEventsProvider struct{}
+type PingEventsProvider interface {
+	GetEventsByLocationCode(ctx context.Context, locationCode string) <-chan PingEvent
+	GetAllLocations(ctx context.Context) []LocationDescriptor
+}
+
+type MockPingEventsProvider struct{}
 
 func evsToEVChan(evs []PingEvent) <-chan PingEvent {
 	evsChan := make(chan PingEvent, 0)
@@ -213,7 +218,7 @@ func evsToEVChan(evs []PingEvent) <-chan PingEvent {
 	return evsChan
 }
 
-func (provider *PingEventsProvider) GetEventsByLocationCode(code string) <-chan PingEvent {
+func (provider *MockPingEventsProvider) GetEventsByLocationCode(ctx context.Context, code string) <-chan PingEvent {
 	lcode := strings.ToLower(code)
 	if lcode == "hk-hkg1" {
 		evs := []PingEvent{
@@ -280,7 +285,7 @@ type LocationDescriptor struct {
 	CityIATACode      string
 }
 
-func (provider *PingEventsProvider) GetAllLocations() []LocationDescriptor {
+func (provider *MockPingEventsProvider) GetAllLocations(ctx context.Context) []LocationDescriptor {
 	return []LocationDescriptor{
 		{Id: "hk-hkg1", Label: "HKG1", Alpha2CountryCode: "HK", CityIATACode: "HKG"},
 		{Id: "us-lax1", Label: "LAX1", Alpha2CountryCode: "US", CityIATACode: "LAX"},
@@ -384,9 +389,9 @@ func getLocationButtonText(loc LocationDescriptor, activeLocationCode string) st
 
 // GetLocationButtons returns an inline keyboard markup with class buttons,
 // showing a checkmark indicator on the currently selected class.
-func GetLocationButtons(selectedLocationCode string, provider *PingEventsProvider) *models.InlineKeyboardMarkup {
+func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider *MockPingEventsProvider) *models.InlineKeyboardMarkup {
 	buttonsRow := make([]models.InlineKeyboardButton, 0)
-	for _, loc := range provider.GetAllLocations() {
+	for _, loc := range provider.GetAllLocations(ctx) {
 		buttonsRow = append(buttonsRow, models.InlineKeyboardButton{
 			Text: getLocationButtonText(loc, selectedLocationCode), CallbackData: FormatPingCallbackData(loc.Id),
 		})
@@ -398,17 +403,17 @@ func GetLocationButtons(selectedLocationCode string, provider *PingEventsProvide
 }
 
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := &PingEventsProvider{}
+	provider := &MockPingEventsProvider{}
 	statsWriter := &PingStatisticsBuilder{}
 
 	if update.Message != nil {
 		locationCode := ""
-		allLocs := provider.GetAllLocations()
+		allLocs := provider.GetAllLocations(ctx)
 		if len(allLocs) > 0 {
 			locationCode = allLocs[0].Id
 		}
 
-		for ev := range provider.GetEventsByLocationCode(locationCode) {
+		for ev := range provider.GetEventsByLocationCode(ctx, locationCode) {
 			statsWriter.WriteEvent(ev)
 		}
 		stats := ""
@@ -430,7 +435,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: GetLocationButtons(locationCode, provider),
+			ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
 		})
 	}
 }
@@ -440,12 +445,12 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 		return
 	}
 
-	provider := &PingEventsProvider{}
+	provider := &MockPingEventsProvider{}
 	statsWriter := &PingStatisticsBuilder{}
 
 	activeLocationCode := ParseLocationCodeFromPingCallbackData(update.CallbackQuery.Data)
 
-	for ev := range provider.GetEventsByLocationCode(activeLocationCode) {
+	for ev := range provider.GetEventsByLocationCode(ctx, activeLocationCode) {
 		statsWriter.WriteEvent(ev)
 	}
 	stats := ""
@@ -469,7 +474,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 				Length: len(txt),
 			},
 		},
-		ReplyMarkup: GetLocationButtons(activeLocationCode, provider),
+		ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
 	})
 
 	// Answer the callback query to remove the loading state
