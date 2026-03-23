@@ -182,10 +182,13 @@ func handleDefault(ctx context.Context, b *bot.Bot, update *models.Update) {
 func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		if update.Message.Chat.Type == models.ChatTypePrivate {
-			b.SendMessage(ctx, &bot.SendMessageParams{
+			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
 				Text:   "Already started!",
 			})
+			if err != nil {
+				log.Printf("failed to send message: %v", err)
+			}
 		}
 	}
 }
@@ -502,7 +505,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 		txt := "Ping is starting..."
 		// Send initial message with buttons
-		msg, _ := b.SendMessage(ctx, &bot.SendMessageParams{
+		msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   txt,
 			Entities: []models.MessageEntity{
@@ -514,6 +517,9 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 			},
 			ReplyMarkup: GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 		})
+		if err != nil {
+			log.Printf("failed to send message: %v", err)
+		}
 
 		// Emulate network latency and middleware overhead
 		time.Sleep(1000 * time.Millisecond)
@@ -522,7 +528,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 			statsWriter.WriteEvent(ev)
 			txt := statsWriter.GetHumanReadableText()
 			// Edit the original message with the statistics
-			b.EditMessageText(ctx, &bot.EditMessageTextParams{
+			_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{
 				ChatID:    update.Message.Chat.ID,
 				MessageID: msg.ID,
 				Text:      txt,
@@ -535,6 +541,9 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 				},
 				ReplyMarkup: GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 			})
+			if err != nil {
+				log.Printf("failed to edit message: %v", err)
+			}
 			<-time.After(streamInterval)
 		}
 	}
@@ -552,7 +561,7 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 	activeLocationCode := ParseLocationCodeFromPingCallbackData(update.CallbackQuery.Data)
 
 	txt := "Ping is starting..."
-	b.EditMessageText(ctx, &bot.EditMessageTextParams{
+	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
 		MessageID: update.CallbackQuery.Message.Message.ID,
 		Text:      txt,
@@ -565,6 +574,9 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 		},
 		ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 	})
+	if err != nil {
+		log.Printf("failed to edit message: %v", err)
+	}
 
 	// Emulate network latency and middleware overhead
 	time.Sleep(1000 * time.Millisecond)
@@ -573,7 +585,7 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 		statsWriter.WriteEvent(ev)
 		txt := statsWriter.GetHumanReadableText()
 		// Edit the original message with the statistics
-		b.EditMessageText(ctx, &bot.EditMessageTextParams{
+		_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{
 			ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
 			MessageID: update.CallbackQuery.Message.Message.ID,
 			Text:      txt,
@@ -586,13 +598,19 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 			},
 			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 		})
+		if err != nil {
+			log.Printf("failed to edit message: %v", err)
+		}
 		<-time.After(streamInterval)
 	}
 
 	// Answer the callback query to remove the loading state (only once, after all updates)
-	b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+	_, err = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: update.CallbackQuery.ID,
 	})
+	if err != nil {
+		log.Printf("failed to answer callback query: %v", err)
+	}
 }
 
 func handleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -600,7 +618,7 @@ func handleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
 		startedAt := ctx.Value(pkgutils.CtxKeyStartedAt).(time.Time)
 		uptime := time.Since(startedAt)
 		txt := fmt.Sprintf("Started at: %s\nUptime: %s", startedAt.Format(time.RFC3339), uptime.String())
-		b.SendMessage(ctx, &bot.SendMessageParams{
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   txt,
 			Entities: []models.MessageEntity{
@@ -611,6 +629,9 @@ func handleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
 				},
 			},
 		})
+		if err != nil {
+			log.Printf("failed to send message: %v", err)
+		}
 	}
 }
 
@@ -639,10 +660,13 @@ func handleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
 			issuer := issuerName.(string)
 			subject := getSubjectFromMessage(update.Message)
 			if subject == "" {
-				b.SendMessage(ctx, &bot.SendMessageParams{
+				_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 					ChatID: update.Message.Chat.ID,
 					Text:   "Error: Failed to get subject from message",
 				})
+				if err != nil {
+					log.Printf("failed to send message: %v", err)
+				}
 				return
 			}
 			subject = fmt.Sprintf("telegram:@%s", subject)
@@ -658,17 +682,23 @@ func handleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 			tokenString, err := tokenObject.SignedString(secret)
 			if err != nil {
-				b.SendMessage(ctx, &bot.SendMessageParams{
+				_, sendErr := b.SendMessage(ctx, &bot.SendMessageParams{
 					ChatID: update.Message.Chat.ID,
 					Text:   fmt.Sprintf("Error: Failed to sign token: %v", err.Error()),
 				})
+				if sendErr != nil {
+					log.Printf("failed to send message: %v", sendErr)
+				}
 				return
 			}
 
-			b.SendMessage(ctx, &bot.SendMessageParams{
+			_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
 				Text:   fmt.Sprintf("Token: %s", tokenString),
 			})
+			if err != nil {
+				log.Printf("failed to send message: %v", err)
+			}
 			defer log.Printf("issued token for %s, token id: %s", subject, tokenId)
 		}
 	}
