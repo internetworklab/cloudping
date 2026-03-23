@@ -31,6 +31,7 @@ type BotCmd struct {
 	TelegramWebhookSecretEnv string        `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
 	TelegramBotSecretEnv     string        `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
 	TextStreamInterval       time.Duration `name:"tg-bot-text-stream-interval" help:"Sleeping interval between two consecutive Telegram bot text edit" default:"1500ms"`
+	ButtonLayoutColumns      int           `name:"tg-bot-button-layout-columns" help:"Specify the number of columns of the layout of buttons grid of the bot's response message" default:"4"`
 }
 
 func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
@@ -40,9 +41,10 @@ func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
 type CtxKey string
 
 const (
-	CtxKeyJWTSecret     = CtxKey("jwt_secret")
-	CtxKeyIssuerName    = CtxKey("issuer_name")
-	CtxKeyTxtStreamIntv = CtxKey("txt_stream_intv")
+	CtxKeyJWTSecret      = CtxKey("jwt_secret")
+	CtxKeyIssuerName     = CtxKey("issuer_name")
+	CtxKeyTxtStreamIntv  = CtxKey("txt_stream_intv")
+	CtxKeyTGBtnLayoutCol = CtxKey("tg_btn_layout_col")
 )
 
 func (botCmd *BotCmd) getTGBotSecret() (string, error) {
@@ -121,6 +123,7 @@ func (botCmd *BotCmd) Run() error {
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
 	ctx = context.WithValue(ctx, CtxKeyTxtStreamIntv, botCmd.TextStreamInterval)
 	ctx = context.WithValue(ctx, CtxKeyIssuerName, botCmd.JWTIssuerName)
+	ctx = context.WithValue(ctx, CtxKeyTGBtnLayoutCol, botCmd.ButtonLayoutColumns)
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), handleStart)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), handlePing)
@@ -464,16 +467,24 @@ func getLocationButtonText(loc LocationDescriptor, activeLocationCode string) st
 
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.
-func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider *MockPingEventsProvider) *models.InlineKeyboardMarkup {
-	buttonsRow := make([]models.InlineKeyboardButton, 0)
-	for _, loc := range provider.GetAllLocations(ctx) {
-		buttonsRow = append(buttonsRow, models.InlineKeyboardButton{
+func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider *MockPingEventsProvider, numCols int) *models.InlineKeyboardMarkup {
+	allLocations := provider.GetAllLocations(ctx)
+	buttons := make([][]models.InlineKeyboardButton, 0)
+
+	// Create buttons and organize them into rows with numCols buttons each
+	for i, loc := range allLocations {
+		// Start a new row if we're at the beginning or at a column boundary
+		if i%numCols == 0 {
+			buttons = append(buttons, make([]models.InlineKeyboardButton, 0))
+		}
+
+		// Add button to the current row
+		currentRow := &buttons[len(buttons)-1]
+		*currentRow = append(*currentRow, models.InlineKeyboardButton{
 			Text: getLocationButtonText(loc, selectedLocationCode), CallbackData: FormatPingCallbackData(loc.Id),
 		})
 	}
 
-	buttons := make([][]models.InlineKeyboardButton, 0)
-	buttons = append(buttons, buttonsRow)
 	return &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 }
 
@@ -501,7 +512,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
+			ReplyMarkup: GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 		})
 
 		// Emulate network latency and middleware overhead
@@ -522,7 +533,7 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 						Length: len(txt),
 					},
 				},
-				ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
+				ReplyMarkup: GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 			})
 			<-time.After(streamInterval)
 		}
@@ -552,7 +563,7 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 				Length: len(txt),
 			},
 		},
-		ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
+		ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 	})
 
 	// Emulate network latency and middleware overhead
@@ -573,7 +584,7 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
+			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int)),
 		})
 		<-time.After(streamInterval)
 	}
