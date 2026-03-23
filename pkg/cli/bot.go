@@ -23,13 +23,14 @@ import (
 
 // Please note, sensitive data such as token are provided via env, not presented in the command line.
 type BotCmd struct {
-	ListenAddress            string `help:"Address to listen on." type:"string" default:":8083"`
-	PublicEndpoint           string `help:"Public endpoint of the bot." type:"string"`
-	JWTAuthSecretFromEnv     string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
-	JWTAuthSecretFromFile    string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
-	JWTIssuerName            string `name:"jwt-issuer-name" help:"The issuer appeared in the signed jwt token" default:"globalping-hub"`
-	TelegramWebhookSecretEnv string `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
-	TelegramBotSecretEnv     string `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
+	ListenAddress            string        `help:"Address to listen on." type:"string" default:":8083"`
+	PublicEndpoint           string        `help:"Public endpoint of the bot." type:"string"`
+	JWTAuthSecretFromEnv     string        `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
+	JWTAuthSecretFromFile    string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	JWTIssuerName            string        `name:"jwt-issuer-name" help:"The issuer appeared in the signed jwt token" default:"globalping-hub"`
+	TelegramWebhookSecretEnv string        `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
+	TelegramBotSecretEnv     string        `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
+	TextStreamInterval       time.Duration `name:"tg-bot-text-stream-interval" help:"Sleeping interval between two consecutive Telegram bot text edit" default:"1500ms"`
 }
 
 func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
@@ -39,8 +40,9 @@ func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
 type CtxKey string
 
 const (
-	CtxKeyJWTSecret  = CtxKey("jwt_secret")
-	CtxKeyIssuerName = CtxKey("issuer_name")
+	CtxKeyJWTSecret     = CtxKey("jwt_secret")
+	CtxKeyIssuerName    = CtxKey("issuer_name")
+	CtxKeyTxtStreamIntv = CtxKey("txt_stream_intv")
 )
 
 func (botCmd *BotCmd) getTGBotSecret() (string, error) {
@@ -117,12 +119,14 @@ func (botCmd *BotCmd) Run() error {
 
 	startedAt := time.Now()
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
+	ctx = context.WithValue(ctx, CtxKeyTxtStreamIntv, botCmd.TextStreamInterval)
+	ctx = context.WithValue(ctx, CtxKeyIssuerName, botCmd.JWTIssuerName)
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), handleStart)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), handlePing)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), handleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), handleToken)
-	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_class_[a-d]$`), handlePingClassCallback)
+	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), handlePingQueryCallback)
 
 	go b.StartWebhook(ctx)
 
@@ -304,7 +308,7 @@ func (provider *MockPingEventsProvider) GetAllLocations(ctx context.Context) []L
 	}
 }
 
-// PingStatistics holds calculated statistics for a ping class
+// PingStatistics holds calculated statistics for a ping task
 type PingStatistics struct {
 	ReceivedPktCount int
 	LossPktCount     int
@@ -322,7 +326,7 @@ func (s *PingStatistics) String() string {
 }
 
 type PingStatisticsBuilder struct {
-	classEvents      []PingEvent
+	pingEvs          []PingEvent
 	receivedPktCount int
 	lossPktCount     int
 	minRTT           int
@@ -331,7 +335,7 @@ type PingStatisticsBuilder struct {
 }
 
 func (statsBuilder *PingStatisticsBuilder) WriteEvent(ev PingEvent) {
-	statsBuilder.classEvents = append(statsBuilder.classEvents, ev)
+	statsBuilder.pingEvs = append(statsBuilder.pingEvs, ev)
 
 	// Update packet counts
 	if ev.Timeout {
@@ -355,10 +359,10 @@ func (statsBuilder *PingStatisticsBuilder) WriteEvent(ev PingEvent) {
 	}
 }
 
-// getPingStatistics calculates and returns statistics for a given class.
-// Returns nil if no events found for the class.
+// getPingStatistics calculates and returns statistics for a given ping task.
+// Returns nil if no events found for the task.
 func (statsBuilder *PingStatisticsBuilder) GetPingStatistics() *PingStatistics {
-	if len(statsBuilder.classEvents) == 0 {
+	if len(statsBuilder.pingEvs) == 0 {
 		return nil
 	}
 
@@ -377,18 +381,18 @@ func (statsBuilder *PingStatisticsBuilder) GetPingStatistics() *PingStatistics {
 	}
 }
 
-// getFormattedPingEvents returns a formatted string of ping events for a given class,
+// getFormattedPingEvents returns a formatted string of ping events for a given ping task,
 // similar to the output of a ping command (individual replies, not statistics).
-// Returns an empty string if no events found for the class.
+// Returns an empty string if no events found for the ping task.
 func (statsBuilder *PingStatisticsBuilder) GetFormattedPingEvents() string {
-	classEvents := statsBuilder.classEvents
+	pingEvs := statsBuilder.pingEvs
 
-	if len(classEvents) == 0 {
+	if len(pingEvs) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
-	for _, event := range classEvents {
+	for _, event := range pingEvs {
 		sb.WriteString(event.String() + "\n")
 	}
 
@@ -417,7 +421,7 @@ func ParseLocationCodeFromPingCallbackData(pingCallbackData string) string {
 	return ""
 }
 
-// getLocationButtonText returns the button text for a class, with a checkmark if selected.
+// getLocationButtonText returns the button text for a ping task, with a checkmark if selected.
 func getLocationButtonText(loc LocationDescriptor, activeLocationCode string) string {
 	if loc.Id == activeLocationCode {
 		return fmt.Sprintf("✓ %s", loc.Label)
@@ -425,8 +429,8 @@ func getLocationButtonText(loc LocationDescriptor, activeLocationCode string) st
 	return loc.Label
 }
 
-// GetLocationButtons returns an inline keyboard markup with class buttons,
-// showing a checkmark indicator on the currently selected class.
+// GetLocationButtons returns an inline keyboard markup with location buttons,
+// showing a checkmark indicator on the currently selected location.
 func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider *MockPingEventsProvider) *models.InlineKeyboardMarkup {
 	buttonsRow := make([]models.InlineKeyboardButton, 0)
 	for _, loc := range provider.GetAllLocations(ctx) {
@@ -443,6 +447,7 @@ func GetLocationButtons(ctx context.Context, selectedLocationCode string, provid
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	provider := &MockPingEventsProvider{}
 	statsWriter := &PingStatisticsBuilder{}
+	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 
 	if update.Message != nil {
 		locationCode := ""
@@ -486,16 +491,17 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 				},
 				ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
 			})
-			<-time.After(1200 * time.Millisecond)
+			<-time.After(streamInterval)
 		}
 	}
 }
 
-func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
+func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update == nil || update.CallbackQuery == nil {
 		return
 	}
 
+	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	provider := &MockPingEventsProvider{}
 	statsWriter := &PingStatisticsBuilder{}
 
@@ -536,7 +542,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 			},
 			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
 		})
-		<-time.After(1200 * time.Millisecond)
+		<-time.After(streamInterval)
 	}
 
 	// Answer the callback query to remove the loading state (only once, after all updates)
