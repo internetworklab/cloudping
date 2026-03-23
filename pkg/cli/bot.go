@@ -319,10 +319,15 @@ type PingStatistics struct {
 
 // String returns a formatted string representation of the ping statistics
 func (s *PingStatistics) String() string {
+	totalPkts := s.ReceivedPktCount + s.LossPktCount
+	lossPercent := 0.0
+	if totalPkts > 0 {
+		lossPercent = float64(s.LossPktCount) / float64(totalPkts) * 100
+	}
 	return fmt.Sprintf("--- ping statistics ---\n"+
-		"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
+		"%d packets transmitted, %d packets received, %.1f%% packet loss\n"+
 		"round-trip min/avg/max = %d/%d/%d ms",
-		s.ReceivedPktCount+s.LossPktCount, s.ReceivedPktCount, s.MinRTT, s.AvgRTT, s.MaxRTT)
+		totalPkts, s.ReceivedPktCount, lossPercent, s.MinRTT, s.AvgRTT, s.MaxRTT)
 }
 
 type PingStatisticsBuilder struct {
