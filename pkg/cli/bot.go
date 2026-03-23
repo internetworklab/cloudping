@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -230,13 +231,41 @@ func GetLocationButtons(ctx context.Context, selectedLocationCode string, provid
 	return &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 }
 
+func extractDestinationFromMessage(update *models.Message) string {
+	if update == nil || update.Text == "" {
+		return ""
+	}
+
+	// Check if the message starts with /ping and extract the destination
+	text := strings.TrimSpace(update.Text)
+	rest, found := strings.CutPrefix(text, "/ping ")
+	if !found {
+		return ""
+	}
+
+	// Trim any leading/trailing whitespace from the destination
+	destination := strings.TrimSpace(rest)
+	return destination
+}
+
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
 	statsWriter := &pkgbot.PingStatisticsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	var destination string = "todo"
 
 	if update.Message != nil {
+		destination := extractDestinationFromMessage(update.Message)
+		if destination == "" {
+			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: update.Message.Chat.ID,
+				Text:   "Error: Destination cannot be omitted. Usage: /ping <destination>",
+			})
+			if err != nil {
+				log.Printf("failed to send message: %v", err)
+			}
+			return
+		}
+
 		locationCode := ""
 		allLocs := provider.GetAllLocations(ctx)
 		if len(allLocs) > 0 {
