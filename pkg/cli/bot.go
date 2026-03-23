@@ -223,12 +223,8 @@ func (provider *MockPingEventsProvider) GetEventsByLocationCode(ctx context.Cont
 		evsChan := make(chan PingEvent, 0)
 		go func(evs []PingEvent) {
 			defer close(evsChan)
-			for i, ev := range evs {
+			for _, ev := range evs {
 				evsChan <- ev
-				if i == len(evs)-1 {
-					return
-				}
-				<-time.After(1200 * time.Millisecond) // emulate network latency and ping interval
 			}
 		}(evs)
 		return evsChan
@@ -399,6 +395,17 @@ func (statsBuilder *PingStatisticsBuilder) GetFormattedPingEvents() string {
 	return sb.String()
 }
 
+func (statsBuilder *PingStatisticsBuilder) GetHumanReadableText() string {
+	stats := ""
+	if s := statsBuilder.GetPingStatistics(); s != nil {
+		stats = s.String()
+	}
+
+	pingEvents := statsBuilder.GetFormattedPingEvents()
+	txt := pingEvents + "\n" + stats
+	return txt
+}
+
 func FormatPingCallbackData(locationCode string) string {
 	return fmt.Sprintf("ping_location_%s", locationCode)
 }
@@ -444,19 +451,9 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 			locationCode = allLocs[0].Id
 		}
 
-		for ev := range provider.GetEventsByLocationCode(ctx, locationCode) {
-			statsWriter.WriteEvent(ev)
-		}
-		stats := ""
-		if s := statsWriter.GetPingStatistics(); s != nil {
-			stats = s.String()
-		}
-
-		// Build response message - formatted like real ping output
-		pingEvents := statsWriter.GetFormattedPingEvents()
-		txt := pingEvents + "\n" + stats
-
-		b.SendMessage(ctx, &bot.SendMessageParams{
+		txt := "Ping is starting..."
+		// Send initial message with buttons
+		msg, _ := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   txt,
 			Entities: []models.MessageEntity{
@@ -468,6 +465,29 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 			},
 			ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
 		})
+
+		// Emulate network latency and middleware overhead
+		time.Sleep(1000 * time.Millisecond)
+
+		for ev := range provider.GetEventsByLocationCode(ctx, locationCode) {
+			statsWriter.WriteEvent(ev)
+			txt := statsWriter.GetHumanReadableText()
+			// Edit the original message with the statistics
+			b.EditMessageText(ctx, &bot.EditMessageTextParams{
+				ChatID:    update.Message.Chat.ID,
+				MessageID: msg.ID,
+				Text:      txt,
+				Entities: []models.MessageEntity{
+					{
+						Type:   models.MessageEntityTypePre,
+						Offset: 0,
+						Length: len(txt),
+					},
+				},
+				ReplyMarkup: GetLocationButtons(ctx, locationCode, provider),
+			})
+			<-time.After(1200 * time.Millisecond)
+		}
 	}
 }
 
@@ -481,19 +501,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 
 	activeLocationCode := ParseLocationCodeFromPingCallbackData(update.CallbackQuery.Data)
 
-	for ev := range provider.GetEventsByLocationCode(ctx, activeLocationCode) {
-		statsWriter.WriteEvent(ev)
-	}
-	stats := ""
-	if s := statsWriter.GetPingStatistics(); s != nil {
-		stats = s.String()
-	}
-
-	// Build response message - formatted like real ping output
-	pingEvents := statsWriter.GetFormattedPingEvents()
-	txt := pingEvents + "\n" + stats
-
-	// Edit the original message with the statistics
+	txt := "Ping is starting..."
 	b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
 		MessageID: update.CallbackQuery.Message.Message.ID,
@@ -508,7 +516,30 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 		ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
 	})
 
-	// Answer the callback query to remove the loading state
+	// Emulate network latency and middleware overhead
+	time.Sleep(1000 * time.Millisecond)
+
+	for ev := range provider.GetEventsByLocationCode(ctx, activeLocationCode) {
+		statsWriter.WriteEvent(ev)
+		txt := statsWriter.GetHumanReadableText()
+		// Edit the original message with the statistics
+		b.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
+			MessageID: update.CallbackQuery.Message.Message.ID,
+			Text:      txt,
+			Entities: []models.MessageEntity{
+				{
+					Type:   models.MessageEntityTypePre,
+					Offset: 0,
+					Length: len(txt),
+				},
+			},
+			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider),
+		})
+		<-time.After(1200 * time.Millisecond)
+	}
+
+	// Answer the callback query to remove the loading state (only once, after all updates)
 	b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: update.CallbackQuery.ID,
 	})
