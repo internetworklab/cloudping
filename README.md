@@ -57,17 +57,64 @@ Currently the looking is still rugged, but we are actively iterating it.
 
 ## API Design
 
-The agents respond to HTTP requests that have a path prefixed as `/simpleping`, and the hub responds to HTTP requests that have a path prefixed as `/ping`. Both HTTP request methods are GET, and port numbers are determined by command-line arguments. Parameters are encoded as URL search params.
+### Endpoints Overview
 
-Refer to [pkg/pinger/request.go](pkg/pinger/request.go) for what parameters are supported, and refer to [pkg/pinger/ping.go](pkg/pinger/ping.go) for the effects of the parameters.
+| Component | Endpoint | Method | Target Parameter | Targets Supported |
+|-----------|----------|--------|------------------|-------------------|
+| Agent | `/simpleping` | GET | `destination` | Single target |
+| Hub | `/ping` | GET | `targets` | Multiple (comma-separated) |
 
-Both `/simpleping` and `/ping` return a stream of JSON lines, so the line feed character can be used as the delimiter.
+Port numbers are configured via command-line arguments.
 
-When sending requests to the hub, targets are encoded in `--url-query targets=` and separated by commas. When sending requests to the agent, only one target is supported at a time, and should be encoded in `--url-query destination`. The `--url-query` option is a syntax sugar provided by curl for easily encoding URL search params.
+### Request Format
 
-A client certificate pair is required for calling the agent's API endpoint, which is protected. Every request sent to it is authenticated via mTLS. Just refer to `bin/globalping agent --help` or `bin/globalping hub --help` for how to configure the certificates.
+Parameters are encoded as URL search params. For available parameters and their effects, see:
+- [pkg/pinger/request.go](pkg/pinger/request.go) - Supported parameters
+- [pkg/pinger/ping.go](pkg/pinger/ping.go) - Parameter effects
 
-The APIs of the system are not intended to be called directly by end users; only developers should do that.
+**Example (curl):**
+```shell
+# Agent - single target
+curl --url-query destination=1.1.1.1 --url-query count=3 localhost:8084/simpleping
+
+# Hub - multiple targets
+curl --url-query targets=1.1.1.1,8.8.8.8 localhost:8080/ping
+```
+
+> Note: `--url-query` is curl syntax sugar for encoding URL search params.
+
+### Response Format
+
+Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimiter.
+
+### Authentication
+
+| Endpoint | Authentication |
+|----------|----------------|
+| Agent (`/simpleping`) | mTLS (client certificate required) |
+| Hub (`/ping`) | JWT token |
+
+For certificate configuration, run `bin/globalping agent --help` or `bin/globalping hub --help`.
+
+### Developer Note
+
+These APIs are intended for developers only. End users should use the Web UI.
+
+## Deployment
+
+### Web (frontend)
+
+The Web UI is built with Next.js and supports the following build-time environment variables:
+
+| Variable | Description | Default (Example) |
+|----------|-------------|-------------|
+| `NEXT_PUBLIC_API_ENDPOINT` | API endpoint to use (prefix prepended to every request path) | `/api` |
+| `NEXT_PUBLIC_GITHUB_REPO` | Link to the repository website | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
+| `NEXT_PUBLIC_TG_INVITE_LINK` | Invite link for the Telegram discussion group | Just a URL |
+| `NEXT_PUBLIC_SITE_NAME` | WebUI title for self-hosted deployments | `CloudPing` |
+| `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend | `172.20.0.53` |
+
+These variables are evaluated at build time and embedded into the frontend bundle.
 
 ## Join Agent
 
