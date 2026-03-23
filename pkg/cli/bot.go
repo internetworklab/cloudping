@@ -253,6 +253,10 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	statsWriter := &pkgbot.PingStatisticsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 
+	chatId := update.Message.Chat.ID
+	fromId := update.Message.From.ID
+	log.Printf("[dbg] handlePing chatId=%v:fromId=%v", chatId, fromId)
+
 	if update.Message != nil {
 		destination := extractDestinationFromMessage(update.Message)
 		if destination == "" {
@@ -329,6 +333,10 @@ func handlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 	var destination string = "todo"
 
 	activeLocationCode := pkgbot.ParseLocationCodeFromPingCallbackData(update.CallbackQuery.Data)
+
+	chatId := update.CallbackQuery.Message.Message.Chat.ID
+	fromId := update.CallbackQuery.From.ID
+	log.Printf("[dbg] handlePingQueryCallback chatId=%v:fromId=%v", chatId, fromId)
 
 	txt := fmt.Sprintf("Ping to %s is starting...", destination)
 	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
