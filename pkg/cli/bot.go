@@ -182,100 +182,142 @@ func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 }
 
 // Mock ping data (same as in handlePing)
-type MockPingEvent struct {
-	Seq      int
-	Class    string
-	RTTMs    int
-	Peer     string
-	PeerRDNS string
+type PingEvent struct {
+	Seq          int
+	RTTMs        int
+	Peer         string
+	PeerRDNS     string
+	IPPacketSize int
 }
 
 // String returns a formatted string representation of the ping event
-func (e *MockPingEvent) String() string {
+func (e *PingEvent) String() string {
 	if e.PeerRDNS != "" {
-		return fmt.Sprintf("64 bytes from %s (%s): icmp_seq=%d ttl=64 time=%d ms",
-			e.Peer, e.PeerRDNS, e.Seq, e.RTTMs)
+		return fmt.Sprintf("%d bytes from %s (%s): icmp_seq=%d ttl=64 time=%d ms",
+			e.IPPacketSize, e.Peer, e.PeerRDNS, e.Seq, e.RTTMs)
 	}
-	return fmt.Sprintf("64 bytes from %s: icmp_seq=%d ttl=64 time=%d ms",
-		e.Peer, e.Seq, e.RTTMs)
+	return fmt.Sprintf("%d bytes from %s: icmp_seq=%d ttl=64 time=%d ms",
+		e.IPPacketSize, e.Peer, e.Seq, e.RTTMs)
 }
 
-func getMockedPingEvents() []MockPingEvent {
-	mockedPingData := []MockPingEvent{
-		// Class A events (10 entries) - Low latency: 10-50ms
-		{Seq: 0, Class: "A", RTTMs: 12, Peer: "10.0.1.1", PeerRDNS: "server-a1.local"},
-		{Seq: 1, Class: "A", RTTMs: 15, Peer: "10.0.1.2", PeerRDNS: "server-a2.local"},
-		{Seq: 2, Class: "A", RTTMs: 11, Peer: "10.0.1.3", PeerRDNS: "server-a3.local"},
-		{Seq: 3, Class: "A", RTTMs: 18, Peer: "10.0.1.4", PeerRDNS: "server-a4.local"},
-		{Seq: 4, Class: "A", RTTMs: 14, Peer: "10.0.1.5", PeerRDNS: ""},
-		{Seq: 5, Class: "A", RTTMs: 20, Peer: "10.0.1.6", PeerRDNS: "server-a6.local"},
-		{Seq: 6, Class: "A", RTTMs: 16, Peer: "10.0.1.7", PeerRDNS: ""},
-		{Seq: 7, Class: "A", RTTMs: 13, Peer: "10.0.1.8", PeerRDNS: "server-a8.local"},
-		{Seq: 8, Class: "A", RTTMs: 22, Peer: "10.0.1.9", PeerRDNS: "server-a9.local"},
-		{Seq: 9, Class: "A", RTTMs: 19, Peer: "10.0.1.10", PeerRDNS: ""},
-		// Class B events (10 entries) - Moderate latency: 50-150ms
-		{Seq: 10, Class: "B", RTTMs: 65, Peer: "10.0.2.1", PeerRDNS: "node-b1.example.com"},
-		{Seq: 11, Class: "B", RTTMs: 72, Peer: "10.0.2.2", PeerRDNS: "node-b2.example.com"},
-		{Seq: 12, Class: "B", RTTMs: 58, Peer: "10.0.2.3", PeerRDNS: ""},
-		{Seq: 13, Class: "B", RTTMs: 89, Peer: "10.0.2.4", PeerRDNS: "node-b4.example.com"},
-		{Seq: 14, Class: "B", RTTMs: 94, Peer: "10.0.2.5", PeerRDNS: "node-b5.example.com"},
-		{Seq: 15, Class: "B", RTTMs: 76, Peer: "10.0.2.6", PeerRDNS: ""},
-		{Seq: 16, Class: "B", RTTMs: 112, Peer: "10.0.2.7", PeerRDNS: "node-b7.example.com"},
-		{Seq: 17, Class: "B", RTTMs: 85, Peer: "10.0.2.8", PeerRDNS: "node-b8.example.com"},
-		{Seq: 18, Class: "B", RTTMs: 68, Peer: "10.0.2.9", PeerRDNS: ""},
-		{Seq: 19, Class: "B", RTTMs: 103, Peer: "10.0.2.10", PeerRDNS: "node-b10.example.com"},
-		// Class C events (10 entries) - Higher latency: 100-300ms
-		{Seq: 20, Class: "C", RTTMs: 145, Peer: "192.168.100.1", PeerRDNS: "host-c1.remote.net"},
-		{Seq: 21, Class: "C", RTTMs: 187, Peer: "192.168.100.2", PeerRDNS: "host-c2.remote.net"},
-		{Seq: 22, Class: "C", RTTMs: 156, Peer: "192.168.100.3", PeerRDNS: ""},
-		{Seq: 23, Class: "C", RTTMs: 203, Peer: "192.168.100.4", PeerRDNS: "host-c4.remote.net"},
-		{Seq: 24, Class: "C", RTTMs: 178, Peer: "192.168.100.5", PeerRDNS: "host-c5.remote.net"},
-		{Seq: 25, Class: "C", RTTMs: 134, Peer: "192.168.100.6", PeerRDNS: ""},
-		{Seq: 26, Class: "C", RTTMs: 221, Peer: "192.168.100.7", PeerRDNS: "host-c7.remote.net"},
-		{Seq: 27, Class: "C", RTTMs: 167, Peer: "192.168.100.8", PeerRDNS: "host-c8.remote.net"},
-		{Seq: 28, Class: "C", RTTMs: 198, Peer: "192.168.100.9", PeerRDNS: ""},
-		{Seq: 29, Class: "C", RTTMs: 245, Peer: "192.168.100.10", PeerRDNS: "host-c10.remote.net"},
-		// Class D events (10 entries) - High latency: 200-600ms
-		{Seq: 30, Class: "D", RTTMs: 312, Peer: "172.16.50.1", PeerRDNS: "far-d1.distant.io"},
-		{Seq: 31, Class: "D", RTTMs: 456, Peer: "172.16.50.2", PeerRDNS: "far-d2.distant.io"},
-		{Seq: 32, Class: "D", RTTMs: 378, Peer: "172.16.50.3", PeerRDNS: ""},
-		{Seq: 33, Class: "D", RTTMs: 534, Peer: "172.16.50.4", PeerRDNS: "far-d4.distant.io"},
-		{Seq: 34, Class: "D", RTTMs: 289, Peer: "172.16.50.5", PeerRDNS: "far-d5.distant.io"},
-		{Seq: 35, Class: "D", RTTMs: 467, Peer: "172.16.50.6", PeerRDNS: ""},
-		{Seq: 36, Class: "D", RTTMs: 398, Peer: "172.16.50.7", PeerRDNS: "far-d7.distant.io"},
-		{Seq: 37, Class: "D", RTTMs: 512, Peer: "172.16.50.8", PeerRDNS: "far-d8.distant.io"},
-		{Seq: 38, Class: "D", RTTMs: 423, Peer: "172.16.50.9", PeerRDNS: ""},
-		{Seq: 39, Class: "D", RTTMs: 587, Peer: "172.16.50.10", PeerRDNS: "far-d10.distant.io"},
+type PingEventsProvider struct{}
+
+func evsToEVChan(evs []PingEvent) <-chan PingEvent {
+	evsChan := make(chan PingEvent, 0)
+	go func(evs []PingEvent) {
+		defer close(evsChan)
+		for _, ev := range evs {
+			evsChan <- ev
+		}
+	}(evs)
+	return evsChan
+}
+
+func (provider *PingEventsProvider) GetEventsByLocationCode(code string) <-chan PingEvent {
+	lcode := strings.ToLower(code)
+	if lcode == "hk-hkg1" {
+		evs := []PingEvent{
+			{Seq: 0, RTTMs: 12, Peer: "10.0.1.1", PeerRDNS: "server-a1.local"},
+			{Seq: 1, RTTMs: 15, Peer: "10.0.1.2", PeerRDNS: "server-a2.local"},
+			{Seq: 2, RTTMs: 11, Peer: "10.0.1.3", PeerRDNS: "server-a3.local"},
+			{Seq: 3, RTTMs: 18, Peer: "10.0.1.4", PeerRDNS: "server-a4.local"},
+			{Seq: 4, RTTMs: 14, Peer: "10.0.1.5", PeerRDNS: ""},
+			{Seq: 5, RTTMs: 20, Peer: "10.0.1.6", PeerRDNS: "server-a6.local"},
+			{Seq: 6, RTTMs: 16, Peer: "10.0.1.7", PeerRDNS: ""},
+			{Seq: 7, RTTMs: 13, Peer: "10.0.1.8", PeerRDNS: "server-a8.local"},
+			{Seq: 8, RTTMs: 22, Peer: "10.0.1.9", PeerRDNS: "server-a9.local"},
+			{Seq: 9, RTTMs: 19, Peer: "10.0.1.10", PeerRDNS: ""},
+		}
+		return evsToEVChan(evs)
+	} else if lcode == "us-lax1" {
+		return evsToEVChan([]PingEvent{
+			{Seq: 10, RTTMs: 65, Peer: "10.0.2.1", PeerRDNS: "node-b1.example.com"},
+			{Seq: 11, RTTMs: 72, Peer: "10.0.2.2", PeerRDNS: "node-b2.example.com"},
+			{Seq: 12, RTTMs: 58, Peer: "10.0.2.3", PeerRDNS: ""},
+			{Seq: 13, RTTMs: 89, Peer: "10.0.2.4", PeerRDNS: "node-b4.example.com"},
+			{Seq: 14, RTTMs: 94, Peer: "10.0.2.5", PeerRDNS: "node-b5.example.com"},
+			{Seq: 15, RTTMs: 76, Peer: "10.0.2.6", PeerRDNS: ""},
+			{Seq: 16, RTTMs: 112, Peer: "10.0.2.7", PeerRDNS: "node-b7.example.com"},
+			{Seq: 17, RTTMs: 85, Peer: "10.0.2.8", PeerRDNS: "node-b8.example.com"},
+			{Seq: 18, RTTMs: 68, Peer: "10.0.2.9", PeerRDNS: ""},
+			{Seq: 19, RTTMs: 103, Peer: "10.0.2.10", PeerRDNS: "node-b10.example.com"},
+		})
+	} else if lcode == "jp-tyo1" {
+		return evsToEVChan([]PingEvent{
+			{Seq: 20, RTTMs: 145, Peer: "192.168.100.1", PeerRDNS: "host-c1.remote.net"},
+			{Seq: 21, RTTMs: 187, Peer: "192.168.100.2", PeerRDNS: "host-c2.remote.net"},
+			{Seq: 22, RTTMs: 156, Peer: "192.168.100.3", PeerRDNS: ""},
+			{Seq: 23, RTTMs: 203, Peer: "192.168.100.4", PeerRDNS: "host-c4.remote.net"},
+			{Seq: 24, RTTMs: 178, Peer: "192.168.100.5", PeerRDNS: "host-c5.remote.net"},
+			{Seq: 25, RTTMs: 134, Peer: "192.168.100.6", PeerRDNS: ""},
+			{Seq: 26, RTTMs: 221, Peer: "192.168.100.7", PeerRDNS: "host-c7.remote.net"},
+			{Seq: 27, RTTMs: 167, Peer: "192.168.100.8", PeerRDNS: "host-c8.remote.net"},
+			{Seq: 28, RTTMs: 198, Peer: "192.168.100.9", PeerRDNS: ""},
+			{Seq: 29, RTTMs: 245, Peer: "192.168.100.10", PeerRDNS: "host-c10.remote.net"},
+		})
+	} else if lcode == "de-fra1" {
+		return evsToEVChan([]PingEvent{
+			{Seq: 30, RTTMs: 312, Peer: "172.16.50.1", PeerRDNS: "far-d1.distant.io"},
+			{Seq: 31, RTTMs: 456, Peer: "172.16.50.2", PeerRDNS: "far-d2.distant.io"},
+			{Seq: 32, RTTMs: 378, Peer: "172.16.50.3", PeerRDNS: ""},
+			{Seq: 33, RTTMs: 534, Peer: "172.16.50.4", PeerRDNS: "far-d4.distant.io"},
+			{Seq: 34, RTTMs: 289, Peer: "172.16.50.5", PeerRDNS: "far-d5.distant.io"},
+			{Seq: 35, RTTMs: 467, Peer: "172.16.50.6", PeerRDNS: ""},
+			{Seq: 36, RTTMs: 398, Peer: "172.16.50.7", PeerRDNS: "far-d7.distant.io"},
+			{Seq: 37, RTTMs: 512, Peer: "172.16.50.8", PeerRDNS: "far-d8.distant.io"},
+			{Seq: 38, RTTMs: 423, Peer: "172.16.50.9", PeerRDNS: ""},
+			{Seq: 39, RTTMs: 587, Peer: "172.16.50.10", PeerRDNS: "far-d10.distant.io"},
+		})
+	} else {
+		return evsToEVChan([]PingEvent{})
 	}
-	return mockedPingData
+}
+
+type LocationDescriptor struct {
+	Id                string
+	Label             string
+	Alpha2CountryCode string
+	CityIATACode      string
+}
+
+func (provider *PingEventsProvider) GetAllLocations() []LocationDescriptor {
+	return []LocationDescriptor{
+		{Id: "hk-hkg1", Label: "HKG1", Alpha2CountryCode: "HK", CityIATACode: "HKG"},
+		{Id: "us-lax1", Label: "LAX1", Alpha2CountryCode: "US", CityIATACode: "LAX"},
+		{Id: "jp-tyo1", Label: "TYO1", Alpha2CountryCode: "JP", CityIATACode: "TYO"},
+		{Id: "de-fra1", Label: "FRA1", Alpha2CountryCode: "DE", CityIATACode: "FRA"},
+	}
 }
 
 // PingStatistics holds calculated statistics for a ping class
 type PingStatistics struct {
-	Class  string
-	Count  int
-	MinRTT int
-	MaxRTT int
-	AvgRTT int
+	ReceivedPktCount int
+	LossPktCount     int
+	MinRTT           int
+	MaxRTT           int
+	AvgRTT           int
 }
 
 // String returns a formatted string representation of the ping statistics
 func (s *PingStatistics) String() string {
-	return fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
+	return fmt.Sprintf("--- ping statistics ---\n"+
 		"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
 		"round-trip min/avg/max = %d/%d/%d ms",
-		s.Class, s.Count, s.Count, s.MinRTT, s.AvgRTT, s.MaxRTT)
+		s.ReceivedPktCount+s.LossPktCount, s.ReceivedPktCount, s.MinRTT, s.AvgRTT, s.MaxRTT)
+}
+
+type PingStatisticsBuilder struct {
+	classEvents []PingEvent
+}
+
+func (statsBuilder *PingStatisticsBuilder) WriteEvent(ev PingEvent) {
+	statsBuilder.classEvents = append(statsBuilder.classEvents, ev)
 }
 
 // getPingStatistics calculates and returns statistics for a given class.
 // Returns nil if no events found for the class.
-func getPingStatistics(class string) *PingStatistics {
-	var classEvents []MockPingEvent
-	for _, event := range getMockedPingEvents() {
-		if event.Class == class {
-			classEvents = append(classEvents, event)
-		}
-	}
+func (statsBuilder *PingStatisticsBuilder) GetPingStatistics() *PingStatistics {
+	classEvents := statsBuilder.classEvents
 
 	if len(classEvents) == 0 {
 		return nil
@@ -296,24 +338,18 @@ func getPingStatistics(class string) *PingStatistics {
 	avgRTT := totalRTT / len(classEvents)
 
 	return &PingStatistics{
-		Class:  class,
-		Count:  len(classEvents),
-		MinRTT: minRTT,
-		MaxRTT: maxRTT,
-		AvgRTT: avgRTT,
+		ReceivedPktCount: len(classEvents),
+		MinRTT:           minRTT,
+		MaxRTT:           maxRTT,
+		AvgRTT:           avgRTT,
 	}
 }
 
 // getFormattedPingEvents returns a formatted string of ping events for a given class,
 // similar to the output of a ping command (individual replies, not statistics).
 // Returns an empty string if no events found for the class.
-func getFormattedPingEvents(class string) string {
-	var classEvents []MockPingEvent
-	for _, event := range getMockedPingEvents() {
-		if event.Class == class {
-			classEvents = append(classEvents, event)
-		}
-	}
+func (statsBuilder *PingStatisticsBuilder) GetFormattedPingEvents() string {
+	classEvents := statsBuilder.classEvents
 
 	if len(classEvents) == 0 {
 		return ""
@@ -327,37 +363,62 @@ func getFormattedPingEvents(class string) string {
 	return sb.String()
 }
 
-// getPingClassButtons returns an inline keyboard markup with class buttons,
-// showing a checkmark indicator on the currently selected class.
-func getPingClassButtons(selectedClass string) *models.InlineKeyboardMarkup {
-	buttons := [][]models.InlineKeyboardButton{
-		{
-			{Text: getClassButtonText("A", selectedClass), CallbackData: "ping_class_a"},
-			{Text: getClassButtonText("B", selectedClass), CallbackData: "ping_class_b"},
-			{Text: getClassButtonText("C", selectedClass), CallbackData: "ping_class_c"},
-			{Text: getClassButtonText("D", selectedClass), CallbackData: "ping_class_d"},
-		},
+func FormatPingCallbackData(locationCode string) string {
+	return fmt.Sprintf("ping_location_%s", locationCode)
+}
+
+func ParseLocationCodeFromPingCallbackData(pingCallbackData string) string {
+	if suffix, found := strings.CutPrefix(pingCallbackData, "ping_location_"); found {
+		return suffix
 	}
+	return ""
+}
+
+// getLocationButtonText returns the button text for a class, with a checkmark if selected.
+func getLocationButtonText(loc LocationDescriptor, activeLocationCode string) string {
+	if loc.Id == activeLocationCode {
+		return fmt.Sprintf("✓ %s", loc.Label)
+	}
+	return loc.Label
+}
+
+// GetLocationButtons returns an inline keyboard markup with class buttons,
+// showing a checkmark indicator on the currently selected class.
+func GetLocationButtons(selectedLocationCode string, provider *PingEventsProvider) *models.InlineKeyboardMarkup {
+	buttonsRow := make([]models.InlineKeyboardButton, 0)
+	for _, loc := range provider.GetAllLocations() {
+		buttonsRow = append(buttonsRow, models.InlineKeyboardButton{
+			Text: getLocationButtonText(loc, selectedLocationCode), CallbackData: FormatPingCallbackData(loc.Id),
+		})
+	}
+
+	buttons := make([][]models.InlineKeyboardButton, 0)
+	buttons = append(buttons, buttonsRow)
 	return &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 }
 
-// getClassButtonText returns the button text for a class, with a checkmark if selected.
-func getClassButtonText(class, selectedClass string) string {
-	if class == selectedClass {
-		return "✓ Class " + class
-	}
-	return "Class " + class
-}
-
 func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
+	provider := &PingEventsProvider{}
+	statsWriter := &PingStatisticsBuilder{}
+
 	if update.Message != nil {
-		// Use Class A as default, show full ping output like the callback handler
-		class := "A"
-		stats := getPingStatistics(class)
+		locationCode := ""
+		allLocs := provider.GetAllLocations()
+		if len(allLocs) > 0 {
+			locationCode = allLocs[0].Id
+		}
+
+		for ev := range provider.GetEventsByLocationCode(locationCode) {
+			statsWriter.WriteEvent(ev)
+		}
+		stats := ""
+		if s := statsWriter.GetPingStatistics(); s != nil {
+			stats = s.String()
+		}
 
 		// Build response message - formatted like real ping output
-		pingEvents := getFormattedPingEvents(class)
-		txt := pingEvents + "\n" + stats.String()
+		pingEvents := statsWriter.GetFormattedPingEvents()
+		txt := pingEvents + "\n" + stats
 
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
@@ -369,34 +430,32 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: getPingClassButtons(class),
+			ReplyMarkup: GetLocationButtons(locationCode, provider),
 		})
 	}
 }
 
 func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
-	if update.CallbackQuery == nil {
+	if update == nil || update.CallbackQuery == nil {
 		return
 	}
 
-	// Parse the callback data to extract the class
-	callbackData := update.CallbackQuery.Data
-	class := string(callbackData[len(callbackData)-1]) // Last character is the class (a, b, c, d)
-	class = strings.ToUpper(class)
+	provider := &PingEventsProvider{}
+	statsWriter := &PingStatisticsBuilder{}
 
-	// Get statistics for the class
-	stats := getPingStatistics(class)
-	if stats == nil {
-		b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
-			CallbackQueryID: update.CallbackQuery.ID,
-			Text:            "No data for class " + class,
-		})
-		return
+	activeLocationCode := ParseLocationCodeFromPingCallbackData(update.CallbackQuery.Data)
+
+	for ev := range provider.GetEventsByLocationCode(activeLocationCode) {
+		statsWriter.WriteEvent(ev)
+	}
+	stats := ""
+	if s := statsWriter.GetPingStatistics(); s != nil {
+		stats = s.String()
 	}
 
 	// Build response message - formatted like real ping output
-	pingEvents := getFormattedPingEvents(class)
-	txt := pingEvents + "\n" + stats.String()
+	pingEvents := statsWriter.GetFormattedPingEvents()
+	txt := pingEvents + "\n" + stats
 
 	// Edit the original message with the statistics
 	b.EditMessageText(ctx, &bot.EditMessageTextParams{
@@ -410,7 +469,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 				Length: len(txt),
 			},
 		},
-		ReplyMarkup: getPingClassButtons(class),
+		ReplyMarkup: GetLocationButtons(activeLocationCode, provider),
 	})
 
 	// Answer the callback query to remove the loading state
