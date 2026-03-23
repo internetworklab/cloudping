@@ -183,63 +183,75 @@ func handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 // Mock ping data (same as in handlePing)
 type MockPingEvent struct {
-	Seq   int
-	Class string
-	RTTMs int
+	Seq      int
+	Class    string
+	RTTMs    int
+	Peer     string
+	PeerRDNS string
+}
+
+// String returns a formatted string representation of the ping event
+func (e *MockPingEvent) String() string {
+	if e.PeerRDNS != "" {
+		return fmt.Sprintf("64 bytes from %s (%s): icmp_seq=%d ttl=64 time=%d ms",
+			e.Peer, e.PeerRDNS, e.Seq, e.RTTMs)
+	}
+	return fmt.Sprintf("64 bytes from %s: icmp_seq=%d ttl=64 time=%d ms",
+		e.Peer, e.Seq, e.RTTMs)
 }
 
 func getMockedPingEvents() []MockPingEvent {
 	mockedPingData := []MockPingEvent{
 		// Class A events (10 entries) - Low latency: 10-50ms
-		{Seq: 0, Class: "A", RTTMs: 12},
-		{Seq: 1, Class: "A", RTTMs: 15},
-		{Seq: 2, Class: "A", RTTMs: 11},
-		{Seq: 3, Class: "A", RTTMs: 18},
-		{Seq: 4, Class: "A", RTTMs: 14},
-		{Seq: 5, Class: "A", RTTMs: 20},
-		{Seq: 6, Class: "A", RTTMs: 16},
-		{Seq: 7, Class: "A", RTTMs: 13},
-		{Seq: 8, Class: "A", RTTMs: 22},
-		{Seq: 9, Class: "A", RTTMs: 19},
+		{Seq: 0, Class: "A", RTTMs: 12, Peer: "10.0.1.1", PeerRDNS: "server-a1.local"},
+		{Seq: 1, Class: "A", RTTMs: 15, Peer: "10.0.1.2", PeerRDNS: "server-a2.local"},
+		{Seq: 2, Class: "A", RTTMs: 11, Peer: "10.0.1.3", PeerRDNS: "server-a3.local"},
+		{Seq: 3, Class: "A", RTTMs: 18, Peer: "10.0.1.4", PeerRDNS: "server-a4.local"},
+		{Seq: 4, Class: "A", RTTMs: 14, Peer: "10.0.1.5", PeerRDNS: ""},
+		{Seq: 5, Class: "A", RTTMs: 20, Peer: "10.0.1.6", PeerRDNS: "server-a6.local"},
+		{Seq: 6, Class: "A", RTTMs: 16, Peer: "10.0.1.7", PeerRDNS: ""},
+		{Seq: 7, Class: "A", RTTMs: 13, Peer: "10.0.1.8", PeerRDNS: "server-a8.local"},
+		{Seq: 8, Class: "A", RTTMs: 22, Peer: "10.0.1.9", PeerRDNS: "server-a9.local"},
+		{Seq: 9, Class: "A", RTTMs: 19, Peer: "10.0.1.10", PeerRDNS: ""},
 		// Class B events (10 entries) - Moderate latency: 50-150ms
-		{Seq: 10, Class: "B", RTTMs: 65},
-		{Seq: 11, Class: "B", RTTMs: 72},
-		{Seq: 12, Class: "B", RTTMs: 58},
-		{Seq: 13, Class: "B", RTTMs: 89},
-		{Seq: 14, Class: "B", RTTMs: 94},
-		{Seq: 15, Class: "B", RTTMs: 76},
-		{Seq: 16, Class: "B", RTTMs: 112},
-		{Seq: 17, Class: "B", RTTMs: 85},
-		{Seq: 18, Class: "B", RTTMs: 68},
-		{Seq: 19, Class: "B", RTTMs: 103},
+		{Seq: 10, Class: "B", RTTMs: 65, Peer: "10.0.2.1", PeerRDNS: "node-b1.example.com"},
+		{Seq: 11, Class: "B", RTTMs: 72, Peer: "10.0.2.2", PeerRDNS: "node-b2.example.com"},
+		{Seq: 12, Class: "B", RTTMs: 58, Peer: "10.0.2.3", PeerRDNS: ""},
+		{Seq: 13, Class: "B", RTTMs: 89, Peer: "10.0.2.4", PeerRDNS: "node-b4.example.com"},
+		{Seq: 14, Class: "B", RTTMs: 94, Peer: "10.0.2.5", PeerRDNS: "node-b5.example.com"},
+		{Seq: 15, Class: "B", RTTMs: 76, Peer: "10.0.2.6", PeerRDNS: ""},
+		{Seq: 16, Class: "B", RTTMs: 112, Peer: "10.0.2.7", PeerRDNS: "node-b7.example.com"},
+		{Seq: 17, Class: "B", RTTMs: 85, Peer: "10.0.2.8", PeerRDNS: "node-b8.example.com"},
+		{Seq: 18, Class: "B", RTTMs: 68, Peer: "10.0.2.9", PeerRDNS: ""},
+		{Seq: 19, Class: "B", RTTMs: 103, Peer: "10.0.2.10", PeerRDNS: "node-b10.example.com"},
 		// Class C events (10 entries) - Higher latency: 100-300ms
-		{Seq: 20, Class: "C", RTTMs: 145},
-		{Seq: 21, Class: "C", RTTMs: 187},
-		{Seq: 22, Class: "C", RTTMs: 156},
-		{Seq: 23, Class: "C", RTTMs: 203},
-		{Seq: 24, Class: "C", RTTMs: 178},
-		{Seq: 25, Class: "C", RTTMs: 134},
-		{Seq: 26, Class: "C", RTTMs: 221},
-		{Seq: 27, Class: "C", RTTMs: 167},
-		{Seq: 28, Class: "C", RTTMs: 198},
-		{Seq: 29, Class: "C", RTTMs: 245},
+		{Seq: 20, Class: "C", RTTMs: 145, Peer: "192.168.100.1", PeerRDNS: "host-c1.remote.net"},
+		{Seq: 21, Class: "C", RTTMs: 187, Peer: "192.168.100.2", PeerRDNS: "host-c2.remote.net"},
+		{Seq: 22, Class: "C", RTTMs: 156, Peer: "192.168.100.3", PeerRDNS: ""},
+		{Seq: 23, Class: "C", RTTMs: 203, Peer: "192.168.100.4", PeerRDNS: "host-c4.remote.net"},
+		{Seq: 24, Class: "C", RTTMs: 178, Peer: "192.168.100.5", PeerRDNS: "host-c5.remote.net"},
+		{Seq: 25, Class: "C", RTTMs: 134, Peer: "192.168.100.6", PeerRDNS: ""},
+		{Seq: 26, Class: "C", RTTMs: 221, Peer: "192.168.100.7", PeerRDNS: "host-c7.remote.net"},
+		{Seq: 27, Class: "C", RTTMs: 167, Peer: "192.168.100.8", PeerRDNS: "host-c8.remote.net"},
+		{Seq: 28, Class: "C", RTTMs: 198, Peer: "192.168.100.9", PeerRDNS: ""},
+		{Seq: 29, Class: "C", RTTMs: 245, Peer: "192.168.100.10", PeerRDNS: "host-c10.remote.net"},
 		// Class D events (10 entries) - High latency: 200-600ms
-		{Seq: 30, Class: "D", RTTMs: 312},
-		{Seq: 31, Class: "D", RTTMs: 456},
-		{Seq: 32, Class: "D", RTTMs: 378},
-		{Seq: 33, Class: "D", RTTMs: 534},
-		{Seq: 34, Class: "D", RTTMs: 289},
-		{Seq: 35, Class: "D", RTTMs: 467},
-		{Seq: 36, Class: "D", RTTMs: 398},
-		{Seq: 37, Class: "D", RTTMs: 512},
-		{Seq: 38, Class: "D", RTTMs: 423},
-		{Seq: 39, Class: "D", RTTMs: 587},
+		{Seq: 30, Class: "D", RTTMs: 312, Peer: "172.16.50.1", PeerRDNS: "far-d1.distant.io"},
+		{Seq: 31, Class: "D", RTTMs: 456, Peer: "172.16.50.2", PeerRDNS: "far-d2.distant.io"},
+		{Seq: 32, Class: "D", RTTMs: 378, Peer: "172.16.50.3", PeerRDNS: ""},
+		{Seq: 33, Class: "D", RTTMs: 534, Peer: "172.16.50.4", PeerRDNS: "far-d4.distant.io"},
+		{Seq: 34, Class: "D", RTTMs: 289, Peer: "172.16.50.5", PeerRDNS: "far-d5.distant.io"},
+		{Seq: 35, Class: "D", RTTMs: 467, Peer: "172.16.50.6", PeerRDNS: ""},
+		{Seq: 36, Class: "D", RTTMs: 398, Peer: "172.16.50.7", PeerRDNS: "far-d7.distant.io"},
+		{Seq: 37, Class: "D", RTTMs: 512, Peer: "172.16.50.8", PeerRDNS: "far-d8.distant.io"},
+		{Seq: 38, Class: "D", RTTMs: 423, Peer: "172.16.50.9", PeerRDNS: ""},
+		{Seq: 39, Class: "D", RTTMs: 587, Peer: "172.16.50.10", PeerRDNS: "far-d10.distant.io"},
 	}
 	return mockedPingData
 }
 
-// ClassStatistics holds calculated statistics for a ping class
-type ClassStatistics struct {
+// PingStatistics holds calculated statistics for a ping class
+type PingStatistics struct {
 	Class  string
 	Count  int
 	MinRTT int
@@ -247,9 +259,17 @@ type ClassStatistics struct {
 	AvgRTT int
 }
 
-// getClassStatistics calculates and returns statistics for a given class.
+// String returns a formatted string representation of the ping statistics
+func (s *PingStatistics) String() string {
+	return fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
+		"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
+		"round-trip min/avg/max = %d/%d/%d ms",
+		s.Class, s.Count, s.Count, s.MinRTT, s.AvgRTT, s.MaxRTT)
+}
+
+// getPingStatistics calculates and returns statistics for a given class.
 // Returns nil if no events found for the class.
-func getClassStatistics(class string) *ClassStatistics {
+func getPingStatistics(class string) *PingStatistics {
 	var classEvents []MockPingEvent
 	for _, event := range getMockedPingEvents() {
 		if event.Class == class {
@@ -275,7 +295,7 @@ func getClassStatistics(class string) *ClassStatistics {
 	}
 	avgRTT := totalRTT / len(classEvents)
 
-	return &ClassStatistics{
+	return &PingStatistics{
 		Class:  class,
 		Count:  len(classEvents),
 		MinRTT: minRTT,
@@ -301,9 +321,7 @@ func getFormattedPingEvents(class string) string {
 
 	var sb strings.Builder
 	for _, event := range classEvents {
-		// Format similar to: 64 bytes from mock-server.local: icmp_seq=0 ttl=64 time=12 ms
-		sb.WriteString(fmt.Sprintf("64 bytes from class-%s.mock-server.local: icmp_seq=%d ttl=64 time=%d ms\n",
-			class, event.Seq, event.RTTMs))
+		sb.WriteString(event.String() + "\n")
 	}
 
 	return sb.String()
@@ -335,15 +353,11 @@ func handlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		// Use Class A as default, show full ping output like the callback handler
 		class := "A"
-		stats := getClassStatistics(class)
+		stats := getPingStatistics(class)
 
 		// Build response message - formatted like real ping output
 		pingEvents := getFormattedPingEvents(class)
-		statsLine := fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
-			"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
-			"round-trip min/avg/max = %d/%d/%d ms",
-			class, stats.Count, stats.Count, stats.MinRTT, stats.AvgRTT, stats.MaxRTT)
-		txt := pingEvents + "\n" + statsLine
+		txt := pingEvents + "\n" + stats.String()
 
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
@@ -371,7 +385,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 	class = strings.ToUpper(class)
 
 	// Get statistics for the class
-	stats := getClassStatistics(class)
+	stats := getPingStatistics(class)
 	if stats == nil {
 		b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 			CallbackQueryID: update.CallbackQuery.ID,
@@ -382,11 +396,7 @@ func handlePingClassCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 
 	// Build response message - formatted like real ping output
 	pingEvents := getFormattedPingEvents(class)
-	statsLine := fmt.Sprintf("--- class-%s.mock-server.local ping statistics ---\n"+
-		"%d packets transmitted, %d packets received, 0.0%% packet loss\n"+
-		"round-trip min/avg/max = %d/%d/%d ms",
-		class, stats.Count, stats.Count, stats.MinRTT, stats.AvgRTT, stats.MaxRTT)
-	txt := pingEvents + "\n" + statsLine
+	txt := pingEvents + "\n" + stats.String()
 
 	// Edit the original message with the statistics
 	b.EditMessageText(ctx, &bot.EditMessageTextParams{
