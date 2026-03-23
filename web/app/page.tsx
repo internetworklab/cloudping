@@ -10,11 +10,8 @@ import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 import { HeaderBar } from "@/components/HeaderBar";
 import { TaskCreatorPanel } from "@/components/TaskCreatorPanel";
-import { defaultResolver } from "@/apis/resolver.ts";
 
 export default function Home() {
-  console.log("[dbg] defaultResolver:", defaultResolver);
-
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
 
   const handleTaskDelete = useCallback((taskId: string) => {
