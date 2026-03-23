@@ -27,6 +27,7 @@ type BotCmd struct {
 	PublicEndpoint           string `help:"Public endpoint of the bot." type:"string"`
 	JWTAuthSecretFromEnv     string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
 	JWTAuthSecretFromFile    string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	JWTIssuerName            string `name:"jwt-issuer-name" help:"The issuer appeared in the signed jwt token" default:"globalping-hub"`
 	TelegramWebhookSecretEnv string `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
 	TelegramBotSecretEnv     string `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
 }
@@ -38,7 +39,8 @@ func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
 type CtxKey string
 
 const (
-	CtxKeyJWTSecret = CtxKey("jwt_secret")
+	CtxKeyJWTSecret  = CtxKey("jwt_secret")
+	CtxKeyIssuerName = CtxKey("issuer_name")
 )
 
 func (botCmd *BotCmd) getTGBotSecret() (string, error) {
@@ -188,6 +190,7 @@ type PingEvent struct {
 	Peer         string
 	PeerRDNS     string
 	IPPacketSize int
+	Timeout      bool
 }
 
 // String returns a formatted string representation of the ping event
@@ -514,12 +517,17 @@ func getSubjectFromMessage(message *models.Message) string {
 func handleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
 	secret := ctx.Value(CtxKeyJWTSecret).([]byte)
 	if secret == nil {
-		panic("JWT secret is not set")
+		panic("JWT secret is not set in the context")
+	}
+
+	issuerName := ctx.Value(CtxKeyIssuerName)
+	if issuerName == nil {
+		panic("Issuer name is not set in the context")
 	}
 
 	if update.Message != nil {
 		if update.Message.Chat.Type == models.ChatTypePrivate {
-			issuer := "globalping-hub"
+			issuer := issuerName.(string)
 			subject := getSubjectFromMessage(update.Message)
 			if subject == "" {
 				b.SendMessage(ctx, &bot.SendMessageParams{
