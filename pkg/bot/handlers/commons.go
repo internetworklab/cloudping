@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 
 	pkgbot "example.com/rbmq-demo/pkg/bot"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
@@ -22,7 +23,10 @@ const (
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.
 func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgbot.PingEventsProvider, numCols int) *models.InlineKeyboardMarkup {
-	allLocations := provider.GetAllLocations(ctx)
+	allLocations, err := provider.GetAllLocations(ctx)
+	if err != nil {
+		log.Printf("can't get locations: %s", err.Error())
+	}
 	buttons := make([][]models.InlineKeyboardButton, 0)
 
 	// Create buttons and organize them into rows with numCols buttons each

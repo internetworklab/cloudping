@@ -14,6 +14,7 @@ import (
 	"time"
 
 	pkgbot "example.com/rbmq-demo/pkg/bot"
+	pkgbotdata "example.com/rbmq-demo/pkg/bot/datasource"
 	pkgbothandlers "example.com/rbmq-demo/pkg/bot/handlers"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/go-telegram/bot"
@@ -107,7 +108,7 @@ func (botCmd *BotCmd) Run() error {
 
 	defer b.DeleteWebhook(ctx, &bot.DeleteWebhookParams{})
 
-	var pingEVProvider pkgbot.PingEventsProvider = &pkgbot.MockPingEventsProvider{}
+	var pingEVProvider pkgbot.PingEventsProvider = &pkgbotdata.MockPingEventsProvider{}
 
 	convMngr := &pkgbot.ConversationManager{}
 

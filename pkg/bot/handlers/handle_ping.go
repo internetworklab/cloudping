@@ -46,7 +46,10 @@ func HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 		}
 
 		locationCode := ""
-		allLocs := provider.GetAllLocations(ctx)
+		allLocs, err := provider.GetAllLocations(ctx)
+		if err != nil {
+			log.Printf("can't get locations: %s", err.Error())
+		}
 		if len(allLocs) > 0 {
 			locationCode = allLocs[0].Id
 		}
