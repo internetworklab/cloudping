@@ -1,6 +1,7 @@
 package datasource
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,10 +9,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	pkgbot "example.com/rbmq-demo/pkg/bot"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
+	pkgraw "example.com/rbmq-demo/pkg/raw"
 )
 
 // CloudPingEventsProvider is an implementation
@@ -24,6 +27,7 @@ type CloudPingEventsProvider struct {
 }
 
 const defaultPktsCount int = 10
+const defaultPingIntv time.Duration = 1000 * time.Millisecond
 
 func (provider *CloudPingEventsProvider) GetPktCount() int {
 	if provider.PacketCount != 0 {
@@ -55,9 +59,13 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc PingRequestD
 	}
 
 	pingRequest := pkgpinger.SimplePingRequest{
-		From:    pingRequestDesc.Sources,
-		Targets: pingRequestDesc.Destinations,
+		From:             pingRequestDesc.Sources,
+		Targets:          pingRequestDesc.Destinations,
+		IntvMilliseconds: int(defaultPingIntv.Milliseconds()),
 	}
+	l4Ty := pkgpinger.L4ProtoICMP
+	pingRequest.L4PacketType = &l4Ty
+
 	totalPkts := provider.GetPktCount()
 	if totalPkts == 0 || totalPkts > 10 {
 		return nil, ErrInvalidPingRequest
@@ -99,9 +107,123 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 			}
 			return
 		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlObj.String(), nil)
+		if err != nil {
+			dataCh <- pkgbot.PingEvent{
+				Err: fmt.Sprintf("failed to create request: %s", err.Error()),
+			}
+			return
+		}
+
+		if authHeader := provider.GetAuthorizationHeader(); authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			dataCh <- pkgbot.PingEvent{
+				Err: fmt.Sprintf("failed to fetch ping events: %s", err.Error()),
+			}
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			dataCh <- pkgbot.PingEvent{
+				Err: fmt.Sprintf("unexpected status code: %d", resp.StatusCode),
+			}
+			return
+		}
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				dataCh <- pkgbot.PingEvent{
+					Err: fmt.Sprintf("scanner error: %s", err.Error()),
+				}
+				return
+			}
+
+			line := scanner.Bytes()
+			var pingEVObj pkgpinger.PingEvent
+			if err := json.Unmarshal(line, &pingEVObj); err != nil {
+				dataCh <- pkgbot.PingEvent{
+					Err: fmt.Sprintf("failed to parse ping event: %s", err.Error()),
+				}
+				continue
+			}
+
+			if pingEVObj.Err != nil {
+				dataCh <- pkgbot.PingEvent{
+					Err: *pingEVObj.Err,
+				}
+				continue
+			}
+
+			if pingEVObj.Error != nil {
+				dataCh <- pkgbot.PingEvent{
+					Err: pingEVObj.Error.Error(),
+				}
+				continue
+			}
+
+			botEvent, err := convertPingEventToBotEvent(&pingEVObj)
+			if err != nil {
+				dataCh <- pkgbot.PingEvent{
+					Err: err.Error(),
+				}
+				continue
+			}
+
+			dataCh <- botEvent
+		}
+
+		if err := scanner.Err(); err != nil {
+			dataCh <- pkgbot.PingEvent{
+				Err: fmt.Sprintf("scanner error: %s", err.Error()),
+			}
+		}
 	}()
 
 	return dataCh
+}
+
+func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (pkgbot.PingEvent, error) {
+	botEV := pkgbot.PingEvent{}
+
+	if pingEV.Data == nil {
+		return botEV, errors.New("ping event data is nil")
+	}
+
+	// Marshal and unmarshal to convert interface{} to ICMPTrackerEntry
+	dataBytes, err := json.Marshal(pingEV.Data)
+	if err != nil {
+		return botEV, fmt.Errorf("failed to marshal ping event data: %w", err)
+	}
+
+	var icmpEntry pkgraw.ICMPTrackerEntry
+	if err := json.Unmarshal(dataBytes, &icmpEntry); err != nil {
+		return botEV, fmt.Errorf("failed to unmarshal ping event data: %w", err)
+	}
+
+	botEV.Seq = icmpEntry.Seq
+
+	if len(icmpEntry.RTTMilliSecs) > 0 {
+		botEV.RTTMs = int(icmpEntry.RTTMilliSecs[0])
+	}
+
+	botEV.Timeout = len(icmpEntry.ReceivedAt) == 0
+
+	if len(icmpEntry.Raw) > 0 {
+		botEV.Peer = icmpEntry.Raw[0].Peer
+		if len(icmpEntry.Raw[0].PeerRDNS) > 0 {
+			botEV.PeerRDNS = icmpEntry.Raw[0].PeerRDNS[0]
+		}
+		botEV.IPPacketSize = icmpEntry.Raw[0].Size
+	}
+
+	return botEV, nil
 }
 
 func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgbot.LocationDescriptor, error) {
