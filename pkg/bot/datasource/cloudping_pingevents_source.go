@@ -167,6 +167,12 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 				}
 				continue
 			}
+			if pingEVObj.Metadata == nil {
+				continue
+			}
+			if tgt := pingEVObj.Metadata["target"]; tgt == "" {
+				continue
+			}
 
 			botEvent, err := convertPingEventToBotEvent(&pingEVObj)
 			if err != nil {
@@ -176,7 +182,9 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 				continue
 			}
 
-			dataCh <- botEvent
+			if botEvent != nil {
+				dataCh <- *botEvent
+			}
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -189,22 +197,22 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 	return dataCh
 }
 
-func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (pkgbot.PingEvent, error) {
+func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent, error) {
 	botEV := pkgbot.PingEvent{}
 
 	if pingEV.Data == nil {
-		return botEV, errors.New("ping event data is nil")
+		return &botEV, errors.New("ping event data is nil")
 	}
 
 	// Marshal and unmarshal to convert interface{} to ICMPTrackerEntry
 	dataBytes, err := json.Marshal(pingEV.Data)
 	if err != nil {
-		return botEV, fmt.Errorf("failed to marshal ping event data: %w", err)
+		return &botEV, fmt.Errorf("failed to marshal ping event data: %w", err)
 	}
 
 	var icmpEntry pkgraw.ICMPTrackerEntry
 	if err := json.Unmarshal(dataBytes, &icmpEntry); err != nil {
-		return botEV, fmt.Errorf("failed to unmarshal ping event data: %w", err)
+		return &botEV, fmt.Errorf("failed to unmarshal ping event data: %w", err)
 	}
 
 	botEV.Seq = icmpEntry.Seq
@@ -223,7 +231,7 @@ func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (pkgbot.PingEvent, 
 		botEV.IPPacketSize = icmpEntry.Raw[0].Size
 	}
 
-	return botEV, nil
+	return &botEV, nil
 }
 
 func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgbot.LocationDescriptor, error) {
