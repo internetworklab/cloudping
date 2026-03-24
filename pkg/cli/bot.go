@@ -25,13 +25,17 @@ import (
 type BotCmd struct {
 	ListenAddress            string        `help:"Address to listen on." type:"string" default:":8083"`
 	PublicEndpoint           string        `help:"Public endpoint of the bot." type:"string"`
-	JWTAuthSecretFromEnv     string        `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
-	JWTAuthSecretFromFile    string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	JWTAuthSecretFromEnv     string        `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret, this secret is for issuing JWT tokens, not for authenticate itself with remote endpoint." default:"JWT_SECRET"`
+	JWTAuthSecretFromFile    string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret, this secret is for issuing JWT tokens, not for authenticate itself with remote endpoint."`
 	JWTIssuerName            string        `name:"jwt-issuer-name" help:"The issuer appeared in the signed jwt token" default:"globalping-hub"`
 	TelegramWebhookSecretEnv string        `name:"tg-webhook-secret-env" help:"Name of the environment variable that stores the Telegram webhook secret" default:"TG_WS_SECRET"`
 	TelegramBotSecretEnv     string        `name:"tg-bot-secret-env" help:"Name of the environment variable that stores the telegram bot secret" default:"TG_BOT_TOKEN"`
 	TextStreamInterval       time.Duration `name:"tg-bot-text-stream-interval" help:"Sleeping interval between two consecutive Telegram bot text edit" default:"1500ms"`
 	ButtonLayoutColumns      int           `name:"tg-bot-button-layout-columns" help:"Specify the number of columns of the layout of buttons grid of the bot's response message" default:"4"`
+	PingPktCount             int           `name:"ping-pkt-count" help:"Number of packets to send within an ICMP ping task" default:"5"`
+	PingResolver             string        `name:"ping-resolver" help:"Resolver being used to resolver hostname to IP address during an ICMP ping or traceroute task" default:"172.20.0.53:53"`
+	UpstreamJWTSecretFromEnv string        `name:"upstream-jwt-sec-env" help:"Name of the enviornment variable that stores the JWT token use to authenticate with the upstream ping events provider" default:"UPSTREAM_JWT_TOKEN"`
+	UpstreamJWTAPIPrefix     string        `name:"upstream-api-prefix" help:"The API prefix of the upstream server where to get ping events data" default:"https://ping2.sh/api"`
 }
 
 func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
@@ -108,7 +112,12 @@ func (botCmd *BotCmd) Run() error {
 
 	defer b.DeleteWebhook(ctx, &bot.DeleteWebhookParams{})
 
-	var pingEVProvider pkgbot.PingEventsProvider = &pkgbotdata.MockPingEventsProvider{}
+	var pingEVProvider pkgbot.PingEventsProvider = &pkgbotdata.CloudPingEventsProvider{
+		APIPrefix:   botCmd.UpstreamJWTAPIPrefix,
+		JWTToken:    os.Getenv(botCmd.UpstreamJWTSecretFromEnv),
+		PacketCount: botCmd.PingPktCount,
+		Resolver:    botCmd.PingResolver,
+	}
 
 	convMngr := &pkgbot.ConversationManager{}
 

@@ -67,7 +67,7 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc PingRequestD
 	pingRequest.L4PacketType = &l4Ty
 
 	totalPkts := provider.GetPktCount()
-	if totalPkts == 0 || totalPkts > 10 {
+	if totalPkts <= 0 {
 		return nil, ErrInvalidPingRequest
 	}
 	pingRequest.TotalPkts = &totalPkts
