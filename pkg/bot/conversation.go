@@ -17,6 +17,12 @@ type ConversationContext struct {
 	Messages  []MessageRecord
 }
 
+// ConversationManager allows a new message handler to interrupt and stop
+// any currently running handler for the same conversation.
+//
+// For example, if a user runs `/ping somewhere.com` (handler A starts processing),
+// and then immediately presses a button, the button's callback handler (B)
+// will cancel handler A and take over the conversation.
 type ConversationManager struct {
 	store sync.Map
 }
