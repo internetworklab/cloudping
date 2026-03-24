@@ -4,27 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	pkgbot "example.com/rbmq-demo/pkg/bot"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
-
-func extractDestinationFromMessage(updateText string) string {
-
-	// Check if the message starts with /ping and extract the destination
-	text := strings.TrimSpace(updateText)
-	rest, found := strings.CutPrefix(text, "/ping ")
-	if !found {
-		return ""
-	}
-
-	// Trim any leading/trailing whitespace from the destination
-	destination := strings.TrimSpace(rest)
-	return destination
-}
 
 func HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
@@ -33,7 +18,7 @@ func HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
 	if update.Message != nil {
-		destination := extractDestinationFromMessage(update.Message.Text)
+		destination := pkgbot.TrimCommandPrefix(update.Message.Text)
 		if destination == "" {
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
@@ -150,7 +135,7 @@ func HandlePingQueryCallback(ctx context.Context, b *bot.Bot, update *models.Upd
 
 	var destination string = ""
 	if len(histMsgs) > 0 {
-		destination = extractDestinationFromMessage(histMsgs[0].Content)
+		destination = pkgbot.TrimCommandPrefix(histMsgs[0].Content)
 	}
 
 	txt := fmt.Sprintf("Ping to %s is starting...", destination)
