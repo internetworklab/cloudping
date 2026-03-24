@@ -141,6 +141,17 @@ func (botCmd *BotCmd) Run() error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), handleToken)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), handlePingQueryCallback)
 
+	_, err = b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+		Commands: []models.BotCommand{
+			{Command: "/start", Description: "No op, just a placeholder."},
+			{Command: "/ping", Description: "Usage: /ping <destination>"},
+		},
+	})
+	if err != nil {
+		log.Fatal("Failed to call setMyCommands", err)
+		return err
+	}
+
 	go b.StartWebhook(ctx)
 
 	listener, err := net.Listen("tcp", botCmd.ListenAddress)
