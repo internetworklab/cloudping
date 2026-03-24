@@ -29,15 +29,9 @@ type CloudPingEventsProvider struct {
 	Resolver    string
 }
 
-const defaultPktsCount int = 10
 const defaultPingIntv time.Duration = 1000 * time.Millisecond
-
-func (provider *CloudPingEventsProvider) GetPktCount() int {
-	if provider.PacketCount != 0 {
-		return provider.PacketCount
-	}
-	return defaultPktsCount
-}
+const defaultPktTiemoutMs int = 3000
+const defaultIPInfoProviderName string = "auto"
 
 func (provider *CloudPingEventsProvider) GetAuthorizationHeader() string {
 	if jwtToken := provider.JWTToken; jwtToken != "" {
@@ -68,8 +62,11 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc PingRequestD
 	}
 	l4Ty := pkgpinger.L4ProtoICMP
 	pingRequest.L4PacketType = &l4Ty
+	pingRequest.PktTimeoutMilliseconds = defaultPktTiemoutMs
+	ipInfoPr := defaultIPInfoProviderName
+	pingRequest.IPInfoProviderName = &ipInfoPr
 
-	totalPkts := provider.GetPktCount()
+	totalPkts := provider.PacketCount
 	if totalPkts <= 0 {
 		return nil, ErrInvalidPingRequest
 	}
@@ -149,7 +146,6 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 			}
 
 			line := scanner.Bytes()
-			fmt.Printf("[dbg] line:\n%s\n", string(line))
 			var pingEVObj pkgpinger.PingEvent
 			if err := json.Unmarshal(line, &pingEVObj); err != nil {
 				dataCh <- pkgbot.PingEvent{
