@@ -25,6 +25,11 @@ type PingEventsProvider interface {
 
 // String returns a formatted string representation of the ping event
 func (e *PingEvent) String() string {
+	// Handle error
+	if err := e.Err; err != "" {
+		return fmt.Sprintf("Error: %s", err)
+	}
+
 	// Handle timeout events
 	if e.Timeout {
 		return fmt.Sprintf("Request timeout for icmp_seq %d", e.Seq)

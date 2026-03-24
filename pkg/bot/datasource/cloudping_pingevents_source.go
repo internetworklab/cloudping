@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -148,6 +149,7 @@ func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(c
 			}
 
 			line := scanner.Bytes()
+			fmt.Printf("[dbg] line:\n%s\n", string(line))
 			var pingEVObj pkgpinger.PingEvent
 			if err := json.Unmarshal(line, &pingEVObj); err != nil {
 				dataCh <- pkgbot.PingEvent{
@@ -285,6 +287,9 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 
 		locations = append(locations, loc)
 	}
+	sort.Slice(locations, func(i, j int) bool {
+		return strings.Compare(locations[i].Label, locations[j].Label) < 0
+	})
 
 	return locations, nil
 }
