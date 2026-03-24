@@ -9,10 +9,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	pkgbot "example.com/rbmq-demo/pkg/bot"
 	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
+	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
 	pkgpinger "example.com/rbmq-demo/pkg/pinger"
 	pkgraw "example.com/rbmq-demo/pkg/raw"
 )
@@ -269,14 +271,14 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 
 		loc := pkgbot.LocationDescriptor{
 			Id:    *conn.NodeName,
-			Label: *conn.NodeName,
+			Label: strings.ToUpper(*conn.NodeName),
 		}
 
 		if conn.Attributes != nil {
-			if country, ok := conn.Attributes["country_code"]; ok {
+			if country, ok := conn.Attributes[pkgnodereg.AttributeKeyCountryCode]; ok {
 				loc.Alpha2CountryCode = country
 			}
-			if city, ok := conn.Attributes["city_iata"]; ok {
+			if city, ok := conn.Attributes[pkgnodereg.AttributeKeyCityName]; ok {
 				loc.CityIATACode = city
 			}
 		}
