@@ -610,41 +610,38 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 				ipCell = fmt.Sprintf("(%s)", peerStats.Peer)
 			}
 
-			// ASN/ISP and Location info
-			var infoParts []string
+			// ASN/ISP info (column 3, row 2)
+			asnIspCell := ""
 			if peerStats.ASN != "" || peerStats.ISP != "" {
-				asnIsp := ""
 				if peerStats.ASN != "" {
-					asnIsp = peerStats.ASN
+					asnIspCell = peerStats.ASN
 				}
 				if peerStats.ISP != "" {
-					if asnIsp != "" {
-						asnIsp += " " + peerStats.ISP
+					if asnIspCell != "" {
+						asnIspCell += " " + peerStats.ISP
 					} else {
-						asnIsp = peerStats.ISP
+						asnIspCell = peerStats.ISP
 					}
 				}
-				infoParts = append(infoParts, asnIsp)
 			}
+
+			// Location info (column 4, row 2)
+			locationCell := ""
 			if peerStats.City != "" || peerStats.CountryAlpha2 != "" {
-				loc := ""
 				if peerStats.City != "" {
-					loc = peerStats.City
+					locationCell = peerStats.City
 				}
 				if peerStats.CountryAlpha2 != "" {
-					if loc != "" {
-						loc += "," + peerStats.CountryAlpha2
+					if locationCell != "" {
+						locationCell += "," + peerStats.CountryAlpha2
 					} else {
-						loc = peerStats.CountryAlpha2
+						locationCell = peerStats.CountryAlpha2
 					}
 				}
-				infoParts = append(infoParts, loc)
 			}
 
-			infoCell := strings.Join(infoParts, ", ")
-
 			table.Rows = append(table.Rows, Row{
-				Cells: []string{"", ipCell, infoCell, ""},
+				Cells: []string{"", ipCell, asnIspCell, locationCell},
 			})
 		}
 	}
