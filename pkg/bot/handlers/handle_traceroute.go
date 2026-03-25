@@ -634,9 +634,9 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 //      (192.168.1.1)
 
 // 2.   a.example.com  10ms 10ms/10ms/10ms     3/3/0%
-//      (17.18.19.20)  AS12345 Example LLC, HongKong,HK
+//      (17.18.19.20)  AS12345 Example LLC     HongKong,HK
 //      b.example.com  11ms 11ms/12ms/13ms     3/3/0%
-//      (17.18.19.21)  AS12345 Example LLC, HongKong,HK
+//      (17.18.19.21)  AS12345 Example LLC     HongKong,HK
 //
 // 3.   [TIMEOUT]
 //      (*)
@@ -651,5 +651,27 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 // GetHumanReadableText returns a formatted traceroute report
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	table := statsBuilder.ToTable()
+	*table = getExampleTable()
 	return table.GetHumanReadableText(2, 0)
+}
+
+func getExampleTable() Table {
+	// Write header rows
+	table := Table{}
+	table.Rows = append(
+		table.Rows,
+		Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
+		Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
+		Row{Cells: []string{"", "", "", ""}},
+		Row{Cells: []string{"1.", "homelab.local", "1ms 1ms/2ms/3ms", "2/3/33%"}},
+		Row{Cells: []string{"", "(192.168.1.1)", "", ""}},
+		Row{Cells: []string{"", "", "", ""}},
+		Row{Cells: []string{"2.", "a.example.com", "10ms 10ms/10ms/10ms", "3/3/0%"}},
+		Row{Cells: []string{"", "(17.18.19.20)", "AS12345 Example LLC", "HongKong,HK"}},
+		Row{Cells: []string{"3.", "[TIMEOUT]", "", ""}},
+		Row{Cells: []string{"", "(*)", "", ""}},
+		Row{Cells: []string{"4.", "google.com", "100ms 100ms/100ms/100ms", "1/1/0%"}},
+	)
+
+	return table
 }
