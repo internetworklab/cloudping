@@ -460,7 +460,7 @@ type Table struct {
 	Rows []Row
 }
 
-func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
+func (tb *Table) GetHumanReadableText(colGap int, rowGap int, maxColWidth int) string {
 	if len(tb.Rows) == 0 {
 		return "(No data)"
 	}
@@ -478,20 +478,35 @@ func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
 	colWidths := make([]int, numCols)
 	for _, row := range tb.Rows {
 		for colIdx, cell := range row.Cells {
-			if colIdx < numCols && len(cell) > colWidths[colIdx] {
-				colWidths[colIdx] = len(cell)
+			cellLen := len(cell)
+			if maxColWidth > 0 && cellLen > maxColWidth {
+				cellLen = maxColWidth
+			}
+			if colIdx < numCols && cellLen > colWidths[colIdx] {
+				colWidths[colIdx] = cellLen
 			}
 		}
 	}
 
 	var sb strings.Builder
 
+	// Helper function to truncate a cell if it exceeds maxColWidth
+	truncateCell := func(cell string) string {
+		if maxColWidth > 0 && len(cell) > maxColWidth {
+			if maxColWidth <= 3 {
+				return cell[:maxColWidth]
+			}
+			return cell[:maxColWidth-3] + "..."
+		}
+		return cell
+	}
+
 	// Helper function to write a row with aligned columns
 	writeRow := func(row Row) {
 		for colIdx := 0; colIdx < numCols; colIdx++ {
 			cell := ""
 			if colIdx < len(row.Cells) {
-				cell = row.Cells[colIdx]
+				cell = truncateCell(row.Cells[colIdx])
 			}
 			// Pad cell to max width for this column (left-aligned)
 			fmt.Fprintf(&sb, "%-*s", colWidths[colIdx], cell)
@@ -525,6 +540,7 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 	table.Rows = append(table.Rows,
 		Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
 		Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
+		Row{Cells: []string{}},
 	)
 
 	if len(stats.HopOrder) == 0 {
@@ -675,7 +691,8 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	table := statsBuilder.ToTable()
 	// *table = getExampleTable()
-	return table.GetHumanReadableText(2, 0)
+	maxColWidth := 30
+	return table.GetHumanReadableText(2, 0, maxColWidth)
 }
 
 func getExampleTable() Table {

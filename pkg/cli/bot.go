@@ -143,7 +143,7 @@ func (botCmd *BotCmd) Run() error {
 		Commands: []models.BotCommand{
 			{Command: "/start", Description: "No op, just a placeholder."},
 			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
-			{Command: "/traceroute", Description: "Usage: /traceroute <destination>"},
+			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
 		},
 	})
 	if err != nil {
