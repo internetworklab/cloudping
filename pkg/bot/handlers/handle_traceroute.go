@@ -427,6 +427,20 @@ func (statsBuilder *TraceStatsBuilder) WriteEvent(ev pkgbot.PingEvent) {
 		maxSeqJ := peerJ.Events[len(peerJ.Events)-1].Seq
 		return maxSeqI > maxSeqJ // descending order
 	})
+
+	// If this is the last hop, delete all higher hops
+	if ev.LastHop {
+		newHopOrder := make([]int, 0, hopTTL)
+		for _, ttl := range stats.HopOrder {
+			if ttl <= hopTTL {
+				newHopOrder = append(newHopOrder, ttl)
+			} else {
+				// Delete the hop from the map
+				delete(stats.Hops, ttl)
+			}
+		}
+		stats.HopOrder = newHopOrder
+	}
 }
 
 // GetTraceStats returns the current traceroute statistics
