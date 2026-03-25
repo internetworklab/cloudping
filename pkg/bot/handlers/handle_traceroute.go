@@ -62,7 +62,7 @@ func (handler *TracerouteCommandHandler) parseCallbackQuery(pingCallbackData str
 
 func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
-	statsWriter := &TraceStatsBuilder{}
+	statsWriter := NewTraceStatsBuilder()
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
@@ -92,7 +92,7 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 		}
 		buttons := GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int), handler.formatCallbackQuery)
 
-		txt := fmt.Sprintf("Ping to %s is starting...", destination)
+		txt := fmt.Sprintf("Traceroute to %s is starting...", destination)
 		// Send initial message with buttons
 		msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
@@ -177,7 +177,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
 	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
-	statsWriter := &TraceStatsBuilder{}
+	statsWriter := NewTraceStatsBuilder()
 
 	activeLocationCode := handler.parseCallbackQuery(update.CallbackQuery.Data)
 
@@ -233,7 +233,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return err
 	}
 
-	if err := doEditMsg(chatId, msgId, fmt.Sprintf("Ping to %s is starting...", destination)); err != nil {
+	if err := doEditMsg(chatId, msgId, fmt.Sprintf("Traceroute to %s is starting...", destination)); err != nil {
 		log.Printf("failed to edit message: %v", err)
 	}
 
@@ -448,6 +448,25 @@ func (statsBuilder *TraceStatsBuilder) GetTraceStats() *TraceStats {
 	return statsBuilder.stats
 }
 
+// Design:
+//
+// ```
+// Hop  Peer           RTTs (Min/Avg/Max)   Stats (Rx/Tx/Loss)
+//      (IP address)   ASN Network, City,Country
+
+// 1.   homelab.local  1ms 1ms/2ms/3ms      2/3/33%
+//      (192.168.1.1)
+
+// 2.   a.example.com  10ms 10ms/10ms/10ms  3/3/0%
+//      (17.18.19.20)  AS12345 Example LLC, HongKong,HK
+//      b.example.com  11ms 11ms/12ms/13ms  3/3/0%
+//      (17.18.19.21)  AS12345 Example LLC, HongKong,HK
+// ```
+
+// Note:
+
+// 1. If RDNS is empty string, use IP address as RDNS
+// 2. A one-line space is between each hop
 // GetHumanReadableText returns a formatted traceroute report
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	stats := statsBuilder.stats
@@ -457,7 +476,12 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 
 	var sb strings.Builder
 
-	for _, hopTTL := range stats.HopOrder {
+	for hopIdx, hopTTL := range stats.HopOrder {
+		// Add blank line between hops
+		if hopIdx > 0 {
+			sb.WriteString("\n")
+		}
+
 		hop := stats.Hops[hopTTL]
 		if hop == nil {
 			continue
@@ -471,69 +495,91 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 				continue
 			}
 
+			// Line 1: Hop number, Peer name, RTT stats, Packet stats
 			if isFirstPeer {
-				sb.WriteString(fmt.Sprintf("%2d  ", hopTTL))
+				sb.WriteString(fmt.Sprintf("%d.", hopTTL))
 				isFirstPeer = false
 			} else {
-				sb.WriteString("    ") // indent for additional peers at same hop
+				sb.WriteString("   ") // indent for additional peers at same hop
 			}
 
-			// Format peer address
-			if peerStats.Peer == "" || peerStats.Peer == "*" {
-				sb.WriteString("*")
+			// Peer name (RDNS or IP if no RDNS)
+			peerName := peerStats.PeerRDNS
+			if peerName == "" {
+				peerName = peerStats.Peer
+			}
+			if peerName == "" || peerName == "*" {
+				peerName = "*"
+			}
+			sb.WriteString(fmt.Sprintf("  %s", peerName))
+
+			// RTT stats: first_rtt min/avg/max
+			if peerStats.ReceivedCount > 0 && len(peerStats.Events) > 0 {
+				// Find first non-timeout event for first RTT
+				firstRTT := 0
+				for _, ev := range peerStats.Events {
+					if !ev.Timeout {
+						firstRTT = ev.RTTMs
+						break
+					}
+				}
+				avgRTT := peerStats.TotalRTT / peerStats.ReceivedCount
+				sb.WriteString(fmt.Sprintf("  %dms %dms/%dms/%dms", firstRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT))
 			} else {
-				if peerStats.PeerRDNS != "" {
-					sb.WriteString(fmt.Sprintf("%s (%s)", peerStats.PeerRDNS, peerStats.Peer))
-				} else {
-					sb.WriteString(peerStats.Peer)
-				}
+				sb.WriteString("  * */*/*")
 			}
 
-			// Add location info if available
-			if peerStats.City != "" || peerStats.CountryAlpha2 != "" {
-				sb.WriteString(" [")
-				if peerStats.City != "" {
-					sb.WriteString(peerStats.City)
-				}
-				if peerStats.City != "" && peerStats.CountryAlpha2 != "" {
-					sb.WriteString(", ")
-				}
-				if peerStats.CountryAlpha2 != "" {
-					sb.WriteString(peerStats.CountryAlpha2)
-				}
-				sb.WriteString("]")
+			// Packet stats: received/total/loss%
+			totalPkts := peerStats.ReceivedCount + peerStats.LossCount
+			lossPercent := 0.0
+			if totalPkts > 0 {
+				lossPercent = float64(peerStats.LossCount) / float64(totalPkts) * 100
+			}
+			sb.WriteString(fmt.Sprintf("  %d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent))
+			sb.WriteString("\n")
+
+			// Line 2: IP address, ASN/ISP, Location
+			sb.WriteString("     ")
+			if peerStats.Peer == "" || peerStats.Peer == "*" {
+				sb.WriteString("(*)")
+			} else {
+				sb.WriteString(fmt.Sprintf("(%s)", peerStats.Peer))
 			}
 
-			// Add ASN/ISP info if available
+			// ASN/ISP and Location info
+			var infoParts []string
 			if peerStats.ASN != "" || peerStats.ISP != "" {
-				sb.WriteString(" (")
+				asnIsp := ""
 				if peerStats.ASN != "" {
-					sb.WriteString(peerStats.ASN)
-				}
-				if peerStats.ASN != "" && peerStats.ISP != "" {
-					sb.WriteString(", ")
+					asnIsp = peerStats.ASN
 				}
 				if peerStats.ISP != "" {
-					sb.WriteString(peerStats.ISP)
-				}
-				sb.WriteString(")")
-			}
-
-			// Format RTT values
-			if len(peerStats.Events) > 0 {
-				sb.WriteString("  ")
-				for i, ev := range peerStats.Events {
-					if i > 0 {
-						sb.WriteString("  ")
-					}
-					if ev.Timeout {
-						sb.WriteString("*")
+					if asnIsp != "" {
+						asnIsp += " " + peerStats.ISP
 					} else {
-						sb.WriteString(fmt.Sprintf("%d ms", ev.RTTMs))
+						asnIsp = peerStats.ISP
 					}
 				}
+				infoParts = append(infoParts, asnIsp)
+			}
+			if peerStats.City != "" || peerStats.CountryAlpha2 != "" {
+				loc := ""
+				if peerStats.City != "" {
+					loc = peerStats.City
+				}
+				if peerStats.CountryAlpha2 != "" {
+					if loc != "" {
+						loc += "," + peerStats.CountryAlpha2
+					} else {
+						loc = peerStats.CountryAlpha2
+					}
+				}
+				infoParts = append(infoParts, loc)
 			}
 
+			if len(infoParts) > 0 {
+				sb.WriteString("  " + strings.Join(infoParts, ", "))
+			}
 			sb.WriteString("\n")
 		}
 	}
