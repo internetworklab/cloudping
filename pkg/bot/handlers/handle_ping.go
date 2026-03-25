@@ -131,6 +131,7 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 			PreferV6:     pingCLI.IPv6,
 			Sources:      []string{locationCode},
 			Destinations: []string{destination},
+			Count:        pingCLI.Count,
 		}
 		evDataCh := provider.GetEvents(ctx, pingRequest)
 		for {
@@ -243,6 +244,7 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 		PreferV6:     pingCLI.IPv6,
 		Sources:      []string{activeLocationCode},
 		Destinations: []string{destination},
+		Count:        pingCLI.Count,
 	}
 	evDataCh := provider.GetEvents(ctx, pingRequest)
 	for {

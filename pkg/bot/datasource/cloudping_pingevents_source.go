@@ -23,15 +23,15 @@ import (
 // CloudPingEventsProvider is an implementation
 // of pkgbot.PingEventsProvider interface
 type CloudPingEventsProvider struct {
-	APIPrefix   string
-	JWTToken    string
-	PacketCount int
-	Resolver    string
+	APIPrefix string
+	JWTToken  string
+	Resolver  string
 }
 
 const defaultPingIntv time.Duration = 1000 * time.Millisecond
 const defaultPktTiemoutMs int = 3000
 const defaultIPInfoProviderName string = "auto"
+const maxPktCountAllowed int = 128
 
 func (provider *CloudPingEventsProvider) GetAuthorizationHeader() string {
 	if jwtToken := provider.JWTToken; jwtToken != "" {
@@ -61,6 +61,11 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc *pkgbot.Ping
 	ipInfoPr := defaultIPInfoProviderName
 	pingRequest.IPInfoProviderName = &ipInfoPr
 
+	if pingRequestDesc.Traceroute {
+		ttl, _ := pkgpinger.ParseToAutoTTL("auto")
+		pingRequest.TTL = ttl
+	}
+
 	preferV6 := pingRequestDesc.PreferV6
 	preferV4 := pingRequestDesc.PreferV4
 	if preferV6 && !preferV4 {
@@ -69,8 +74,8 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc *pkgbot.Ping
 		pingRequest.PreferV4 = &preferV4
 	}
 
-	totalPkts := provider.PacketCount
-	if totalPkts <= 0 {
+	totalPkts := pingRequestDesc.Count
+	if totalPkts <= 0 || totalPkts > maxPktCountAllowed {
 		return nil, ErrInvalidPingRequest
 	}
 	pingRequest.TotalPkts = &totalPkts

@@ -45,6 +45,8 @@ type PingRequestDescriptor struct {
 	Destinations []string
 	PreferV4     bool
 	PreferV6     bool
+	Traceroute   bool
+	Count        int
 }
 
 type PingEventsProvider interface {

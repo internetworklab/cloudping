@@ -19,7 +19,7 @@ import (
 type TracerouteCLI struct {
 	IPv4        bool   `short:"4" name:"prefer-ipv4" help:"Use IPv4"`
 	IPv6        bool   `short:"6" name:"prefer-ipv6" help:"Use IPv6"`
-	Count       int    `short:"c" name:"count" help:"Number of packets to send" default:"5"`
+	Count       int    `short:"c" name:"count" help:"Number of packets to send" default:"24"`
 	Destination string `arg:"" name:"destination" help:"Destination to trace"`
 }
 
@@ -132,6 +132,8 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 			PreferV6:     pingCLI.IPv6,
 			Sources:      []string{locationCode},
 			Destinations: []string{destination},
+			Count:        pingCLI.Count,
+			Traceroute:   true,
 		}
 		evDataCh := provider.GetEvents(ctx, pingRequest)
 		for {
@@ -245,6 +247,8 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		PreferV6:     pingCLI.IPv6,
 		Sources:      []string{activeLocationCode},
 		Destinations: []string{destination},
+		Count:        pingCLI.Count,
+		Traceroute:   true,
 	}
 	evDataCh := provider.GetEvents(ctx, pingRequest)
 	for {
