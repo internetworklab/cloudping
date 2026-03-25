@@ -461,28 +461,44 @@ func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
 		return "(No data)"
 	}
 
+	// Calculate max width for each column
+	numCols := 0
+	for _, row := range tb.Rows {
+		if len(row.Cells) > numCols {
+			numCols = len(row.Cells)
+		}
+	}
+	if numCols == 0 {
+		return "(No data)"
+	}
+	colWidths := make([]int, numCols)
+	for _, row := range tb.Rows {
+		for colIdx, cell := range row.Cells {
+			if colIdx < numCols && len(cell) > colWidths[colIdx] {
+				colWidths[colIdx] = len(cell)
+			}
+		}
+	}
+
 	var sb strings.Builder
 
-	// Write header rows
-	headerRow1 := Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}}
-	headerRow2 := Row{Cells: []string{"", "(IP address)", "ASN Network, City,Country", ""}}
-
-	for colIdx, cell := range headerRow1.Cells {
-		sb.WriteString(cell)
-		if colIdx < len(headerRow1.Cells)-1 && colGap > 0 {
-			sb.WriteString(strings.Repeat(" ", colGap))
+	// Helper function to write a row with aligned columns
+	writeRow := func(row Row) {
+		for colIdx := 0; colIdx < numCols; colIdx++ {
+			cell := ""
+			if colIdx < len(row.Cells) {
+				cell = row.Cells[colIdx]
+			}
+			// Pad cell to max width for this column (left-aligned)
+			fmt.Fprintf(&sb, "%-*s", colWidths[colIdx], cell)
+			if colIdx < numCols-1 && colGap > 0 {
+				sb.WriteString(strings.Repeat(" ", colGap))
+			}
 		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
 
-	for colIdx, cell := range headerRow2.Cells {
-		sb.WriteString(cell)
-		if colIdx < len(headerRow2.Cells)-1 && colGap > 0 {
-			sb.WriteString(strings.Repeat(" ", colGap))
-		}
-	}
-	sb.WriteString("\n")
-
+	// Write all rows
 	for rowIdx, row := range tb.Rows {
 		// Add row gap between hops (blank rows)
 		if rowIdx > 0 && len(row.Cells) == 0 {
@@ -490,13 +506,7 @@ func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
 			continue
 		}
 
-		for colIdx, cell := range row.Cells {
-			sb.WriteString(cell)
-			if colIdx < len(row.Cells)-1 && colGap > 0 {
-				sb.WriteString(strings.Repeat(" ", colGap))
-			}
-		}
-		sb.WriteString("\n")
+		writeRow(row)
 	}
 
 	return sb.String()
@@ -506,6 +516,12 @@ func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
 func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 	stats := statsBuilder.stats
 	table := &Table{Rows: []Row{}}
+
+	// Add header rows
+	table.Rows = append(table.Rows,
+		Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
+		Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
+	)
 
 	if len(stats.HopOrder) == 0 {
 		return table
@@ -537,8 +553,9 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 			}
 
 			// Peer name: [TIMEOUT] for timed out peers, RDNS or IP otherwise
+			isTimeout := peerStats.ReceivedCount == 0 && peerStats.LossCount > 0
 			peerName := ""
-			if peerStats.ReceivedCount == 0 && peerStats.LossCount > 0 {
+			if isTimeout {
 				peerName = "[TIMEOUT]"
 			} else {
 				peerName = peerStats.PeerRDNS
@@ -551,8 +568,10 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 			}
 
 			// RTT stats: last_rtt min/avg/max
-			rttCell := "* */*/*"
-			if peerStats.ReceivedCount > 0 && len(peerStats.Events) > 0 {
+			rttCell := ""
+			if isTimeout {
+				// No RTT data for timeout peers
+			} else if peerStats.ReceivedCount > 0 && len(peerStats.Events) > 0 {
 				lastRTT := 0
 				for i := len(peerStats.Events) - 1; i >= 0; i-- {
 					if !peerStats.Events[i].Timeout {
@@ -562,15 +581,20 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 				}
 				avgRTT := peerStats.TotalRTT / peerStats.ReceivedCount
 				rttCell = fmt.Sprintf("%dms %dms/%dms/%dms", lastRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT)
+			} else {
+				rttCell = "* */*/*"
 			}
 
 			// Packet stats: received/total/loss%
-			totalPkts := peerStats.ReceivedCount + peerStats.LossCount
-			lossPercent := 0.0
-			if totalPkts > 0 {
-				lossPercent = float64(peerStats.LossCount) / float64(totalPkts) * 100
+			statsCell := ""
+			if !isTimeout {
+				totalPkts := peerStats.ReceivedCount + peerStats.LossCount
+				lossPercent := 0.0
+				if totalPkts > 0 {
+					lossPercent = float64(peerStats.LossCount) / float64(totalPkts) * 100
+				}
+				statsCell = fmt.Sprintf("%d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent)
 			}
-			statsCell := fmt.Sprintf("%d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent)
 
 			table.Rows = append(table.Rows, Row{
 				Cells: []string{hopCell, peerName, rttCell, statsCell},
@@ -627,21 +651,19 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 // Design:
 //
 // ```
-// Hop  Peer           RTTs (Last Min/Avg/Max)   Stats (Rx/Tx/Loss)
-//      (IP address)   ASN Network, City,Country
-
-// 1.   homelab.local  1ms 1ms/2ms/3ms         2/3/33%
+// Hop  Peer           RTTs (Last Min/Avg/Max)  Stats (Rx/Tx/Loss)
+//      (IP address)   ASN Network              City,Country
+//
+// 1.   homelab.local  1ms 1ms/2ms/3ms          2/3/33%
 //      (192.168.1.1)
-
-// 2.   a.example.com  10ms 10ms/10ms/10ms     3/3/0%
-//      (17.18.19.20)  AS12345 Example LLC     HongKong,HK
-//      b.example.com  11ms 11ms/12ms/13ms     3/3/0%
-//      (17.18.19.21)  AS12345 Example LLC     HongKong,HK
+//
+// 2.   a.example.com  10ms 10ms/10ms/10ms      3/3/0%
+//      (17.18.19.20)  AS12345 Example LLC      HongKong,HK
 //
 // 3.   [TIMEOUT]
 //      (*)
 //
-// 4.   google.com     100ms 100ms/100ms/100ms 1/1/0%
+// 4.   google.com     100ms 100ms/100ms/100ms  1/1/0%
 // ```
 
 // Note:
@@ -651,7 +673,7 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 // GetHumanReadableText returns a formatted traceroute report
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	table := statsBuilder.ToTable()
-	*table = getExampleTable()
+	// *table = getExampleTable()
 	return table.GetHumanReadableText(2, 0)
 }
 
@@ -668,8 +690,10 @@ func getExampleTable() Table {
 		Row{Cells: []string{"", "", "", ""}},
 		Row{Cells: []string{"2.", "a.example.com", "10ms 10ms/10ms/10ms", "3/3/0%"}},
 		Row{Cells: []string{"", "(17.18.19.20)", "AS12345 Example LLC", "HongKong,HK"}},
+		Row{Cells: []string{}},
 		Row{Cells: []string{"3.", "[TIMEOUT]", "", ""}},
 		Row{Cells: []string{"", "(*)", "", ""}},
+		Row{Cells: []string{}},
 		Row{Cells: []string{"4.", "google.com", "100ms 100ms/100ms/100ms", "1/1/0%"}},
 	)
 
