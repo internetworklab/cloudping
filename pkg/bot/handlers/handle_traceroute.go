@@ -126,7 +126,13 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 		// Emulate network latency and middleware overhead
 		time.Sleep(1000 * time.Millisecond)
 
-		evDataCh := provider.GetEventsByLocationCodeAndDestination(ctx, locationCode, destination)
+		pingRequest := &pkgbot.PingRequestDescriptor{
+			PreferV4:     pingCLI.IPv4,
+			PreferV6:     pingCLI.IPv6,
+			Sources:      []string{locationCode},
+			Destinations: []string{destination},
+		}
+		evDataCh := provider.GetEvents(ctx, pingRequest)
 		for {
 			select {
 			case <-ctx.Done():
@@ -233,7 +239,13 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	// Emulate network latency and middleware overhead
 	time.Sleep(1000 * time.Millisecond)
 
-	evDataCh := provider.GetEventsByLocationCodeAndDestination(ctx, activeLocationCode, destination)
+	pingRequest := &pkgbot.PingRequestDescriptor{
+		PreferV4:     pingCLI.IPv4,
+		PreferV6:     pingCLI.IPv6,
+		Sources:      []string{activeLocationCode},
+		Destinations: []string{destination},
+	}
+	evDataCh := provider.GetEvents(ctx, pingRequest)
 	for {
 		select {
 		case <-ctx.Done():

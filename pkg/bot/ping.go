@@ -8,17 +8,44 @@ import (
 // Bot text display models
 // Ping event data
 type PingEvent struct {
+	// Error during the generation of ping/icmp events, if any
+	Err string
+
 	Seq          int
 	RTTMs        int
 	Peer         string
 	PeerRDNS     string
 	IPPacketSize int
 	Timeout      bool
-	Err          string
+
+	// ASN of the network where the reply packet is associated with, useful for rendering traceroute
+	ASN string
+
+	// Network name of the reply packet sender, useful for rendering traceroute
+	ISP string
+
+	// todo: parse it from the json stream
+	ExactLocation interface{}
+
+	// The TTL of the reply IP packet, usually this is less matter than the OriginTTL
+	TTL int
+
+	// The TTL of the original outbound IP packet, when doing traceroute, the value of this field could be vary based on Seq.
+	OriginTTL int
+
+	// Useful for rendering traceroute
+	LastHop bool
+}
+
+type PingRequestDescriptor struct {
+	Sources      []string
+	Destinations []string
+	PreferV4     bool
+	PreferV6     bool
 }
 
 type PingEventsProvider interface {
-	GetEventsByLocationCodeAndDestination(ctx context.Context, locationCode string, destination string) <-chan PingEvent
+	GetEvents(ctx context.Context, requst *PingRequestDescriptor) <-chan PingEvent
 	GetAllLocations(ctx context.Context) ([]LocationDescriptor, error)
 }
 

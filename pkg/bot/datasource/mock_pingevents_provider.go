@@ -11,8 +11,8 @@ import (
 // of pkgbot.PingEventsProvider interface
 type MockPingEventsProvider struct{}
 
-func (provider *MockPingEventsProvider) GetEventsByLocationCodeAndDestination(ctx context.Context, code string, destination string) <-chan pkgbot.PingEvent {
-	lcode := strings.ToLower(code)
+func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
+	lcode := strings.ToLower(pingRequest.Sources[0])
 
 	evsToEVChan := func(evs []pkgbot.PingEvent) <-chan pkgbot.PingEvent {
 		evsChan := make(chan pkgbot.PingEvent, 0)

@@ -43,12 +43,7 @@ func (provider *CloudPingEventsProvider) GetAuthorizationHeader() string {
 var ErrReqURLInvalid = errors.New("invalid request url")
 var ErrInvalidPingRequest = errors.New("invalid ping request")
 
-type PingRequestDescriptor struct {
-	Sources      []string
-	Destinations []string
-}
-
-func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc PingRequestDescriptor) (*url.URL, error) {
+func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc *pkgbot.PingRequestDescriptor) (*url.URL, error) {
 	fullPath := provider.APIPrefix + "/ping"
 	urlObj, err := url.Parse(fullPath)
 	if err != nil {
@@ -65,6 +60,14 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc PingRequestD
 	pingRequest.PktTimeoutMilliseconds = defaultPktTiemoutMs
 	ipInfoPr := defaultIPInfoProviderName
 	pingRequest.IPInfoProviderName = &ipInfoPr
+
+	preferV6 := pingRequestDesc.PreferV6
+	preferV4 := pingRequestDesc.PreferV4
+	if preferV6 && !preferV4 {
+		pingRequest.PreferV6 = &preferV6
+	} else if preferV4 && !preferV6 {
+		pingRequest.PreferV4 = &preferV4
+	}
 
 	totalPkts := provider.PacketCount
 	if totalPkts <= 0 {
@@ -92,14 +95,11 @@ func (provider *CloudPingEventsProvider) GetLocationsURL() (*url.URL, error) {
 	return urlObj, nil
 }
 
-func (provider *CloudPingEventsProvider) GetEventsByLocationCodeAndDestination(ctx context.Context, code string, destination string) <-chan pkgbot.PingEvent {
+func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
 	dataCh := make(chan pkgbot.PingEvent, 1)
 	go func() {
 		defer close(dataCh)
-		pingRequest := PingRequestDescriptor{
-			Sources:      []string{code},
-			Destinations: []string{destination},
-		}
+
 		urlObj, err := provider.GetPingURL(pingRequest)
 		if err != nil {
 			dataCh <- pkgbot.PingEvent{
