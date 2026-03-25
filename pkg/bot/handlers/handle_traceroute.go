@@ -451,7 +451,7 @@ func (statsBuilder *TraceStatsBuilder) GetTraceStats() *TraceStats {
 // Design:
 //
 // ```
-// Hop  Peer           RTTs (Min/Avg/Max)   Stats (Rx/Tx/Loss)
+// Hop  Peer           RTTs (Last Min/Avg/Max)   Stats (Rx/Tx/Loss)
 //      (IP address)   ASN Network, City,Country
 
 // 1.   homelab.local  1ms 1ms/2ms/3ms      2/3/33%
@@ -503,28 +503,33 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 				sb.WriteString("   ") // indent for additional peers at same hop
 			}
 
-			// Peer name (RDNS or IP if no RDNS)
-			peerName := peerStats.PeerRDNS
-			if peerName == "" {
-				peerName = peerStats.Peer
-			}
-			if peerName == "" || peerName == "*" {
-				peerName = "*"
+			// Peer name: [TIMEOUT] for timed out peers, RDNS or IP otherwise
+			peerName := ""
+			if peerStats.ReceivedCount == 0 && peerStats.LossCount > 0 {
+				peerName = "[TIMEOUT]"
+			} else {
+				peerName = peerStats.PeerRDNS
+				if peerName == "" {
+					peerName = peerStats.Peer
+				}
+				if peerName == "" || peerName == "*" {
+					peerName = "*"
+				}
 			}
 			sb.WriteString(fmt.Sprintf("  %s", peerName))
 
-			// RTT stats: first_rtt min/avg/max
+			// RTT stats: last_rtt min/avg/max
 			if peerStats.ReceivedCount > 0 && len(peerStats.Events) > 0 {
-				// Find first non-timeout event for first RTT
-				firstRTT := 0
-				for _, ev := range peerStats.Events {
-					if !ev.Timeout {
-						firstRTT = ev.RTTMs
+				// Find last non-timeout event for last RTT (events are sorted by seq, so last = most recent)
+				lastRTT := 0
+				for i := len(peerStats.Events) - 1; i >= 0; i-- {
+					if !peerStats.Events[i].Timeout {
+						lastRTT = peerStats.Events[i].RTTMs
 						break
 					}
 				}
 				avgRTT := peerStats.TotalRTT / peerStats.ReceivedCount
-				sb.WriteString(fmt.Sprintf("  %dms %dms/%dms/%dms", firstRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT))
+				sb.WriteString(fmt.Sprintf("  %dms %dms/%dms/%dms", lastRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT))
 			} else {
 				sb.WriteString("  * */*/*")
 			}
@@ -540,7 +545,7 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 
 			// Line 2: IP address, ASN/ISP, Location
 			sb.WriteString("     ")
-			if peerStats.Peer == "" || peerStats.Peer == "*" {
+			if peerStats.Peer == "" || peerStats.Peer == "*" || peerStats.ReceivedCount == 0 {
 				sb.WriteString("(*)")
 			} else {
 				sb.WriteString(fmt.Sprintf("(%s)", peerStats.Peer))
