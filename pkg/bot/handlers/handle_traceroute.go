@@ -448,19 +448,37 @@ func (statsBuilder *TraceStatsBuilder) GetTraceStats() *TraceStats {
 	return statsBuilder.stats
 }
 
+type Row struct {
+	Cells []string
+}
+
+type Table struct {
+	Rows []Row
+}
+
+func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
+	// todo
+	return ""
+}
+
 // Design:
 //
 // ```
 // Hop  Peer           RTTs (Last Min/Avg/Max)   Stats (Rx/Tx/Loss)
 //      (IP address)   ASN Network, City,Country
 
-// 1.   homelab.local  1ms 1ms/2ms/3ms      2/3/33%
+// 1.   homelab.local  1ms 1ms/2ms/3ms         2/3/33%
 //      (192.168.1.1)
 
-// 2.   a.example.com  10ms 10ms/10ms/10ms  3/3/0%
+// 2.   a.example.com  10ms 10ms/10ms/10ms     3/3/0%
 //      (17.18.19.20)  AS12345 Example LLC, HongKong,HK
-//      b.example.com  11ms 11ms/12ms/13ms  3/3/0%
+//      b.example.com  11ms 11ms/12ms/13ms     3/3/0%
 //      (17.18.19.21)  AS12345 Example LLC, HongKong,HK
+//
+// 3.   [TIMEOUT]
+//      (*)
+//
+// 4.   google.com     100ms 100ms/100ms/100ms 1/1/0%
 // ```
 
 // Note:
