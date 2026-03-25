@@ -25,7 +25,7 @@ type PingCLI struct {
 type PingCommandHandler struct{}
 
 func (handler *PingCommandHandler) GetUsage() string {
-	return "/ping [-4] [-6] [-c <count>] <destination>"
+	return "/ping [-4] [-6] <destination>"
 }
 
 func (handler *PingCommandHandler) parseCLIString(cliString string) (*PingCLI, *kong.Context, error) {

@@ -66,9 +66,9 @@ func (e *PingEvent) String() string {
 
 	// Handle normal events
 	if e.PeerRDNS != "" {
-		return fmt.Sprintf("%d bytes from %s (%s): icmp_seq=%d ttl=64 time=%d ms",
-			e.IPPacketSize, e.Peer, e.PeerRDNS, e.Seq, e.RTTMs)
+		return fmt.Sprintf("%d bytes from %s (%s): icmp_seq=%d ttl=%d time=%d ms",
+			e.IPPacketSize, e.Peer, e.PeerRDNS, e.Seq, e.TTL, e.RTTMs)
 	}
-	return fmt.Sprintf("%d bytes from %s: icmp_seq=%d ttl=64 time=%d ms",
-		e.IPPacketSize, e.Peer, e.Seq, e.RTTMs)
+	return fmt.Sprintf("%d bytes from %s: icmp_seq=%d ttl=%d time=%d ms",
+		e.IPPacketSize, e.Peer, e.Seq, e.TTL, e.RTTMs)
 }
