@@ -10,9 +10,10 @@ CloudPing is a web-based ping & traceroute project, providing easy to use interf
 - HTTP Probe (HTTP/1.1, HTTP/2 and HTTP/3)
 - DN42 Dual Stack support, Internet support
 - Basic IP information display (like ASN, Country, and probably Lat Lon)
-- API-first design, CLI friendly (can access through http clients like `curl`)
+- API-first design, CLI friendly (can be access through http clients like `curl`)
 - QUIC for hub-agent communication support and NAT-traversal
 - JWT authentication
+- Telegram Bot (currently supports: `/ping`, `/traceroute`, docs are on the way)
 - Mobile friendly
 - Prometheus Metrics
 
@@ -180,7 +181,16 @@ JWT_TOKEN=<jwt_token>
 
 Grab the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), with command `/token`.
 
+## Credits
+
+Thanks the following GeoIP datasources, in no particular order:
+
+- [dn42-geoip](https://github.com/Xe-iu/dn42-geoip)
+- [IP2Location](https://www.ip2location.io/)
+
 ## Todo List
 
 - Key Revocation List
+- Web admin page
+- Issue fixes
 - More probe types: SMTP, IMAP, SSH, etc.
