@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ func (handler *TracerouteCommandHandler) parseCallbackQuery(pingCallbackData str
 
 func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
-	statsWriter := &PingStatisticsBuilder{}
+	statsWriter := &TraceStatsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
@@ -176,7 +177,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
 	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
-	statsWriter := &PingStatisticsBuilder{}
+	statsWriter := &TraceStatsBuilder{}
 
 	activeLocationCode := handler.parseCallbackQuery(update.CallbackQuery.Data)
 
@@ -271,4 +272,257 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 			<-time.After(streamInterval)
 		}
 	}
+}
+
+// PeerStats holds statistics and events for a single peer (IP address) at a hop
+type PeerStats struct {
+	Peer          string
+	PeerRDNS      string
+	ASN           string
+	ISP           string
+	City          string
+	CountryAlpha2 string
+	Events        []pkgbot.PingEvent // sorted by seq
+
+	// Calculated stats
+	ReceivedCount int
+	LossCount     int
+	MinRTT        int
+	MaxRTT        int
+	TotalRTT      int
+}
+
+// AvgRTT returns the average RTT for this peer
+func (ps *PeerStats) AvgRTT() int {
+	if ps.ReceivedCount == 0 {
+		return 0
+	}
+	return ps.TotalRTT / ps.ReceivedCount
+}
+
+// HopGroup holds statistics for a single hop (TTL level)
+type HopGroup struct {
+	TTL       int
+	Peers     map[string]*PeerStats // keyed by peer IP address
+	PeerOrder []string              // order of peers for consistent output
+}
+
+// TraceStats holds the complete traceroute statistics
+type TraceStats struct {
+	Hops     map[int]*HopGroup // keyed by OriginTTL
+	HopOrder []int             // sorted order of TTLs for output
+}
+
+// TraceStatsBuilder builds TraceStats from ping events
+type TraceStatsBuilder struct {
+	stats *TraceStats
+}
+
+// NewTraceStatsBuilder creates a new TraceStatsBuilder
+func NewTraceStatsBuilder() *TraceStatsBuilder {
+	return &TraceStatsBuilder{
+		stats: &TraceStats{
+			Hops: make(map[int]*HopGroup),
+		},
+	}
+}
+
+// WriteEvent adds a ping event to the traceroute statistics
+func (statsBuilder *TraceStatsBuilder) WriteEvent(ev pkgbot.PingEvent) {
+	stats := statsBuilder.stats
+
+	// Get or create hop group
+	hopTTL := ev.OriginTTL
+	if hopTTL <= 0 {
+		// Fallback for events without OriginTTL (shouldn't happen in traceroute)
+		hopTTL = 1
+	}
+
+	hop, exists := stats.Hops[hopTTL]
+	if !exists {
+		hop = &HopGroup{
+			TTL:       hopTTL,
+			Peers:     make(map[string]*PeerStats),
+			PeerOrder: []string{},
+		}
+		stats.Hops[hopTTL] = hop
+		// Update hop order
+		stats.HopOrder = append(stats.HopOrder, hopTTL)
+		// Keep hops sorted by TTL
+		sort.Ints(stats.HopOrder)
+	}
+
+	// Determine peer key (use "*" for timeouts)
+	peerKey := ev.Peer
+	if ev.Timeout || peerKey == "" {
+		peerKey = "*"
+	}
+
+	// Get or create peer stats
+	peerStats, exists := hop.Peers[peerKey]
+	if !exists {
+		peerStats = &PeerStats{
+			Peer:   ev.Peer,
+			Events: []pkgbot.PingEvent{},
+			MinRTT: -1, // -1 indicates not set yet
+			MaxRTT: -1,
+		}
+		hop.Peers[peerKey] = peerStats
+		hop.PeerOrder = append(hop.PeerOrder, peerKey)
+	}
+
+	// Add event to peer stats
+	peerStats.Events = append(peerStats.Events, ev)
+
+	// Update peer metadata (use latest non-timeout event's data)
+	if !ev.Timeout {
+		// Update stats
+		peerStats.ReceivedCount++
+		peerStats.TotalRTT += ev.RTTMs
+
+		if peerStats.MinRTT == -1 || ev.RTTMs < peerStats.MinRTT {
+			peerStats.MinRTT = ev.RTTMs
+		}
+		if peerStats.MaxRTT == -1 || ev.RTTMs > peerStats.MaxRTT {
+			peerStats.MaxRTT = ev.RTTMs
+		}
+
+		// Update metadata
+		if ev.PeerRDNS != "" {
+			peerStats.PeerRDNS = ev.PeerRDNS
+		}
+		if ev.ASN != "" {
+			peerStats.ASN = ev.ASN
+		}
+		if ev.ISP != "" {
+			peerStats.ISP = ev.ISP
+		}
+		if ev.City != "" {
+			peerStats.City = ev.City
+		}
+		if ev.CountryAlpha2 != "" {
+			peerStats.CountryAlpha2 = ev.CountryAlpha2
+		}
+	} else {
+		peerStats.LossCount++
+	}
+
+	// Sort events by seq
+	sort.Slice(peerStats.Events, func(i, j int) bool {
+		return peerStats.Events[i].Seq < peerStats.Events[j].Seq
+	})
+
+	// Sort PeerOrder by max seq (descending) - peer with latest packets first
+	sort.Slice(hop.PeerOrder, func(i, j int) bool {
+		peerI := hop.Peers[hop.PeerOrder[i]]
+		peerJ := hop.Peers[hop.PeerOrder[j]]
+		if peerI == nil || len(peerI.Events) == 0 {
+			return false
+		}
+		if peerJ == nil || len(peerJ.Events) == 0 {
+			return true
+		}
+		// Max seq is the last event (events are already sorted by seq)
+		maxSeqI := peerI.Events[len(peerI.Events)-1].Seq
+		maxSeqJ := peerJ.Events[len(peerJ.Events)-1].Seq
+		return maxSeqI > maxSeqJ // descending order
+	})
+}
+
+// GetTraceStats returns the current traceroute statistics
+func (statsBuilder *TraceStatsBuilder) GetTraceStats() *TraceStats {
+	return statsBuilder.stats
+}
+
+// GetHumanReadableText returns a formatted traceroute report
+func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
+	stats := statsBuilder.stats
+	if len(stats.HopOrder) == 0 {
+		return "No traceroute data available"
+	}
+
+	var sb strings.Builder
+
+	for _, hopTTL := range stats.HopOrder {
+		hop := stats.Hops[hopTTL]
+		if hop == nil {
+			continue
+		}
+
+		// First peer gets the hop number
+		isFirstPeer := true
+		for _, peerKey := range hop.PeerOrder {
+			peerStats := hop.Peers[peerKey]
+			if peerStats == nil {
+				continue
+			}
+
+			if isFirstPeer {
+				sb.WriteString(fmt.Sprintf("%2d  ", hopTTL))
+				isFirstPeer = false
+			} else {
+				sb.WriteString("    ") // indent for additional peers at same hop
+			}
+
+			// Format peer address
+			if peerStats.Peer == "" || peerStats.Peer == "*" {
+				sb.WriteString("*")
+			} else {
+				if peerStats.PeerRDNS != "" {
+					sb.WriteString(fmt.Sprintf("%s (%s)", peerStats.PeerRDNS, peerStats.Peer))
+				} else {
+					sb.WriteString(peerStats.Peer)
+				}
+			}
+
+			// Add location info if available
+			if peerStats.City != "" || peerStats.CountryAlpha2 != "" {
+				sb.WriteString(" [")
+				if peerStats.City != "" {
+					sb.WriteString(peerStats.City)
+				}
+				if peerStats.City != "" && peerStats.CountryAlpha2 != "" {
+					sb.WriteString(", ")
+				}
+				if peerStats.CountryAlpha2 != "" {
+					sb.WriteString(peerStats.CountryAlpha2)
+				}
+				sb.WriteString("]")
+			}
+
+			// Add ASN/ISP info if available
+			if peerStats.ASN != "" || peerStats.ISP != "" {
+				sb.WriteString(" (")
+				if peerStats.ASN != "" {
+					sb.WriteString(peerStats.ASN)
+				}
+				if peerStats.ASN != "" && peerStats.ISP != "" {
+					sb.WriteString(", ")
+				}
+				if peerStats.ISP != "" {
+					sb.WriteString(peerStats.ISP)
+				}
+				sb.WriteString(")")
+			}
+
+			// Format RTT values
+			if len(peerStats.Events) > 0 {
+				sb.WriteString("  ")
+				for i, ev := range peerStats.Events {
+					if i > 0 {
+						sb.WriteString("  ")
+					}
+					if ev.Timeout {
+						sb.WriteString("*")
+					} else {
+						sb.WriteString(fmt.Sprintf("%d ms", ev.RTTMs))
+					}
+				}
+			}
+
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
 }
