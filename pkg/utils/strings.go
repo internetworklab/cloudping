@@ -28,3 +28,15 @@ func Alpha2CountryCodeToUnicode(alpha2 string) string {
 	// Combine them to form the flag emoji
 	return string(flag1) + string(flag2)
 }
+
+func SplitBySpace(s string) []string {
+	cliSegsRaw := strings.Split(s, " ")
+	cliSegs := make([]string, 0)
+	for _, x := range cliSegsRaw {
+		x = strings.TrimSpace(x)
+		if len(x) > 0 {
+			cliSegs = append(cliSegs, x)
+		}
+	}
+	return cliSegs
+}

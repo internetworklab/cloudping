@@ -130,18 +130,22 @@ func (botCmd *BotCmd) Run() error {
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyPingEVProvider, pingEVProvider)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyConversationManager, convMngr)
 
+	botPingCmdHandler := &pkgbothandlers.PingCommandHandler{}
+	traceCmdHandler := &pkgbothandlers.TracerouteCommandHandler{}
+
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), pkgbothandlers.HandleStart)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), pkgbothandlers.HandlePing)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/traceroute`), pkgbothandlers.HandleTraceroute)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), botPingCmdHandler.HandlePing)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/traceroute`), traceCmdHandler.HandleTraceroute)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), pkgbothandlers.HandleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
-	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), pkgbothandlers.HandlePingQueryCallback)
-	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), pkgbothandlers.HandleTraceQueryCallback)
+	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
+	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
 
 	_, err = b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
 		Commands: []models.BotCommand{
 			{Command: "/start", Description: "No op, just a placeholder."},
-			{Command: "/ping", Description: "Usage: /ping <destination>"},
+			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
+			{Command: "/traceroute", Description: "Usage: /traceroute <destination>"},
 		},
 	})
 	if err != nil {
