@@ -457,47 +457,64 @@ type Table struct {
 }
 
 func (tb *Table) GetHumanReadableText(colGap int, rowGap int) string {
-	// todo
-	return ""
-}
-
-// Design:
-//
-// ```
-// Hop  Peer           RTTs (Last Min/Avg/Max)   Stats (Rx/Tx/Loss)
-//      (IP address)   ASN Network, City,Country
-
-// 1.   homelab.local  1ms 1ms/2ms/3ms         2/3/33%
-//      (192.168.1.1)
-
-// 2.   a.example.com  10ms 10ms/10ms/10ms     3/3/0%
-//      (17.18.19.20)  AS12345 Example LLC, HongKong,HK
-//      b.example.com  11ms 11ms/12ms/13ms     3/3/0%
-//      (17.18.19.21)  AS12345 Example LLC, HongKong,HK
-//
-// 3.   [TIMEOUT]
-//      (*)
-//
-// 4.   google.com     100ms 100ms/100ms/100ms 1/1/0%
-// ```
-
-// Note:
-
-// 1. If RDNS is empty string, use IP address as RDNS
-// 2. A one-line space is between each hop
-// GetHumanReadableText returns a formatted traceroute report
-func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
-	stats := statsBuilder.stats
-	if len(stats.HopOrder) == 0 {
-		return "No traceroute data available"
+	if len(tb.Rows) == 0 {
+		return "(No data)"
 	}
 
 	var sb strings.Builder
 
-	for hopIdx, hopTTL := range stats.HopOrder {
-		// Add blank line between hops
-		if hopIdx > 0 {
+	// Write header rows
+	headerRow1 := Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}}
+	headerRow2 := Row{Cells: []string{"", "(IP address)", "ASN Network, City,Country", ""}}
+
+	for colIdx, cell := range headerRow1.Cells {
+		sb.WriteString(cell)
+		if colIdx < len(headerRow1.Cells)-1 && colGap > 0 {
+			sb.WriteString(strings.Repeat(" ", colGap))
+		}
+	}
+	sb.WriteString("\n")
+
+	for colIdx, cell := range headerRow2.Cells {
+		sb.WriteString(cell)
+		if colIdx < len(headerRow2.Cells)-1 && colGap > 0 {
+			sb.WriteString(strings.Repeat(" ", colGap))
+		}
+	}
+	sb.WriteString("\n")
+
+	for rowIdx, row := range tb.Rows {
+		// Add row gap between hops (blank rows)
+		if rowIdx > 0 && len(row.Cells) == 0 {
 			sb.WriteString("\n")
+			continue
+		}
+
+		for colIdx, cell := range row.Cells {
+			sb.WriteString(cell)
+			if colIdx < len(row.Cells)-1 && colGap > 0 {
+				sb.WriteString(strings.Repeat(" ", colGap))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// ToTable converts the traceroute statistics to a Table struct
+func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
+	stats := statsBuilder.stats
+	table := &Table{Rows: []Row{}}
+
+	if len(stats.HopOrder) == 0 {
+		return table
+	}
+
+	for hopIdx, hopTTL := range stats.HopOrder {
+		// Add blank row between hops
+		if hopIdx > 0 {
+			table.Rows = append(table.Rows, Row{Cells: []string{}})
 		}
 
 		hop := stats.Hops[hopTTL]
@@ -505,7 +522,6 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 			continue
 		}
 
-		// First peer gets the hop number
 		isFirstPeer := true
 		for _, peerKey := range hop.PeerOrder {
 			peerStats := hop.Peers[peerKey]
@@ -513,12 +529,11 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 				continue
 			}
 
-			// Line 1: Hop number, Peer name, RTT stats, Packet stats
+			// Row 1: Hop number, Peer name, RTT stats, Packet stats
+			hopCell := ""
 			if isFirstPeer {
-				sb.WriteString(fmt.Sprintf("%d.", hopTTL))
+				hopCell = fmt.Sprintf("%d.", hopTTL)
 				isFirstPeer = false
-			} else {
-				sb.WriteString("   ") // indent for additional peers at same hop
 			}
 
 			// Peer name: [TIMEOUT] for timed out peers, RDNS or IP otherwise
@@ -534,11 +549,10 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 					peerName = "*"
 				}
 			}
-			sb.WriteString(fmt.Sprintf("  %s", peerName))
 
 			// RTT stats: last_rtt min/avg/max
+			rttCell := "* */*/*"
 			if peerStats.ReceivedCount > 0 && len(peerStats.Events) > 0 {
-				// Find last non-timeout event for last RTT (events are sorted by seq, so last = most recent)
 				lastRTT := 0
 				for i := len(peerStats.Events) - 1; i >= 0; i-- {
 					if !peerStats.Events[i].Timeout {
@@ -547,9 +561,7 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 					}
 				}
 				avgRTT := peerStats.TotalRTT / peerStats.ReceivedCount
-				sb.WriteString(fmt.Sprintf("  %dms %dms/%dms/%dms", lastRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT))
-			} else {
-				sb.WriteString("  * */*/*")
+				rttCell = fmt.Sprintf("%dms %dms/%dms/%dms", lastRTT, peerStats.MinRTT, avgRTT, peerStats.MaxRTT)
 			}
 
 			// Packet stats: received/total/loss%
@@ -558,15 +570,16 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 			if totalPkts > 0 {
 				lossPercent = float64(peerStats.LossCount) / float64(totalPkts) * 100
 			}
-			sb.WriteString(fmt.Sprintf("  %d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent))
-			sb.WriteString("\n")
+			statsCell := fmt.Sprintf("%d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent)
 
-			// Line 2: IP address, ASN/ISP, Location
-			sb.WriteString("     ")
-			if peerStats.Peer == "" || peerStats.Peer == "*" || peerStats.ReceivedCount == 0 {
-				sb.WriteString("(*)")
-			} else {
-				sb.WriteString(fmt.Sprintf("(%s)", peerStats.Peer))
+			table.Rows = append(table.Rows, Row{
+				Cells: []string{hopCell, peerName, rttCell, statsCell},
+			})
+
+			// Row 2: IP address, ASN/ISP, Location
+			ipCell := "(*)"
+			if peerStats.Peer != "" && peerStats.Peer != "*" && peerStats.ReceivedCount > 0 {
+				ipCell = fmt.Sprintf("(%s)", peerStats.Peer)
 			}
 
 			// ASN/ISP and Location info
@@ -600,12 +613,43 @@ func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 				infoParts = append(infoParts, loc)
 			}
 
-			if len(infoParts) > 0 {
-				sb.WriteString("  " + strings.Join(infoParts, ", "))
-			}
-			sb.WriteString("\n")
+			infoCell := strings.Join(infoParts, ", ")
+
+			table.Rows = append(table.Rows, Row{
+				Cells: []string{"", ipCell, infoCell, ""},
+			})
 		}
 	}
 
-	return sb.String()
+	return table
+}
+
+// Design:
+//
+// ```
+// Hop  Peer           RTTs (Last Min/Avg/Max)   Stats (Rx/Tx/Loss)
+//      (IP address)   ASN Network, City,Country
+
+// 1.   homelab.local  1ms 1ms/2ms/3ms         2/3/33%
+//      (192.168.1.1)
+
+// 2.   a.example.com  10ms 10ms/10ms/10ms     3/3/0%
+//      (17.18.19.20)  AS12345 Example LLC, HongKong,HK
+//      b.example.com  11ms 11ms/12ms/13ms     3/3/0%
+//      (17.18.19.21)  AS12345 Example LLC, HongKong,HK
+//
+// 3.   [TIMEOUT]
+//      (*)
+//
+// 4.   google.com     100ms 100ms/100ms/100ms 1/1/0%
+// ```
+
+// Note:
+
+// 1. If RDNS is empty string, use IP address as RDNS
+// 2. A one-line space is between each hop
+// GetHumanReadableText returns a formatted traceroute report
+func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
+	table := statsBuilder.ToTable()
+	return table.GetHumanReadableText(2, 0)
 }
