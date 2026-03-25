@@ -22,7 +22,7 @@ const (
 
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.
-func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgbot.PingEventsProvider, numCols int) *models.InlineKeyboardMarkup {
+func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgbot.PingEventsProvider, numCols int, callbackQueryFormatter func(loc pkgbot.LocationDescriptor) string) *models.InlineKeyboardMarkup {
 	allLocations, err := provider.GetAllLocations(ctx)
 	if err != nil {
 		log.Printf("can't get locations: %s", err.Error())
@@ -39,7 +39,7 @@ func GetLocationButtons(ctx context.Context, selectedLocationCode string, provid
 		// Add button to the current row
 		currentRow := &buttons[len(buttons)-1]
 		*currentRow = append(*currentRow, models.InlineKeyboardButton{
-			Text: getLocationButtonText(loc, selectedLocationCode), CallbackData: pkgbot.FormatPingCallbackData(loc.Id),
+			Text: getLocationButtonText(loc, selectedLocationCode), CallbackData: callbackQueryFormatter(loc),
 		})
 	}
 
