@@ -29,13 +29,13 @@ func (handler *TracerouteCommandHandler) GetUsage() string {
 	return "/traceroute [-4] [-6] [-c <count>] <destination>"
 }
 
-func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*PingCLI, *kong.Context, error) {
+func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*TracerouteCLI, *kong.Context, error) {
 	cliSegs := pkgutils.SplitBySpace(cliString)
 	if len(cliSegs) == 0 {
 		return nil, nil, errors.New("no arguments provided")
 	}
 
-	pingCLI := new(PingCLI)
+	pingCLI := new(TracerouteCLI)
 	parser, err := kong.New(pingCLI)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kong parser: %w", err)
@@ -682,17 +682,20 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 //
 // 4.   google.com     100ms 100ms/100ms/100ms  1/1/0%
 // ```
-
+//
 // Note:
-
+//
 // 1. If RDNS is empty string, use IP address as RDNS
 // 2. A one-line space is between each hop
+
+const defaultMaxColWidth int = 24
+
 // GetHumanReadableText returns a formatted traceroute report
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	table := statsBuilder.ToTable()
 	// *table = getExampleTable()
-	maxColWidth := 30
-	return table.GetHumanReadableText(2, 0, maxColWidth)
+
+	return table.GetHumanReadableText(2, 0, defaultMaxColWidth)
 }
 
 func getExampleTable() Table {
