@@ -3,6 +3,8 @@ package bot
 import (
 	"context"
 	"fmt"
+
+	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 )
 
 // Bot text display models
@@ -24,8 +26,9 @@ type PingEvent struct {
 	// Network name of the reply packet sender, useful for rendering traceroute
 	ISP string
 
-	// todo: parse it from the json stream
-	ExactLocation interface{}
+	CountryAlpha2 string
+	City          string
+	ExactLocation *pkgipinfo.ExactLocation
 
 	// The TTL of the reply IP packet, usually this is less matter than the OriginTTL
 	TTL int

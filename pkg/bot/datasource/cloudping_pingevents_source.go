@@ -223,12 +223,45 @@ func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent,
 
 	botEV.Timeout = len(icmpEntry.ReceivedAt) == 0
 
+	// OriginTTL is the TTL of the original outbound IP packet
+	botEV.OriginTTL = icmpEntry.TTL
+
 	if len(icmpEntry.Raw) > 0 {
-		botEV.Peer = icmpEntry.Raw[0].Peer
-		if len(icmpEntry.Raw[0].PeerRDNS) > 0 {
-			botEV.PeerRDNS = icmpEntry.Raw[0].PeerRDNS[0]
+		rawEntry := icmpEntry.Raw[0]
+		botEV.Peer = rawEntry.Peer
+		if len(rawEntry.PeerRDNS) > 0 {
+			botEV.PeerRDNS = rawEntry.PeerRDNS[0]
 		}
-		botEV.IPPacketSize = icmpEntry.Raw[0].Size
+		botEV.IPPacketSize = rawEntry.Size
+		botEV.TTL = rawEntry.TTL
+		botEV.LastHop = rawEntry.LastHop
+
+		// Extract IP info fields
+		if rawEntry.PeerIPInfo != nil {
+			ipInfo := rawEntry.PeerIPInfo
+			botEV.ASN = ipInfo.ASN
+			botEV.ISP = ipInfo.ISP
+			if ipInfo.City != nil {
+				botEV.City = *ipInfo.City
+			}
+			if ipInfo.ISO3166Alpha2 != nil {
+				botEV.CountryAlpha2 = *ipInfo.ISO3166Alpha2
+			}
+			if ipInfo.Exact != nil {
+				botEV.ExactLocation = ipInfo.Exact
+			}
+		}
+
+		// Fallback to direct peer fields if PeerIPInfo is not available
+		if botEV.ASN == "" && rawEntry.PeerASN != nil {
+			botEV.ASN = *rawEntry.PeerASN
+		}
+		if botEV.ISP == "" && rawEntry.PeerISP != nil {
+			botEV.ISP = *rawEntry.PeerISP
+		}
+		if botEV.ExactLocation == nil && rawEntry.PeerExactLocation != nil {
+			botEV.ExactLocation = rawEntry.PeerExactLocation
+		}
 	}
 
 	return &botEV, nil
