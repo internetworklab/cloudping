@@ -17,9 +17,13 @@ CloudPing is a web-based ping & traceroute project, providing easy to use interf
 - Mobile friendly
 - Prometheus Metrics
 
-## Build
+## Try
 
 If you are in a hurry, just go straight to try our deployed instance at [here](https://ping2.sh), or [here](http://ping.dn42)(DN42). Which is ready to use, and doesn't require you to build or install anything.
+
+Telegram Bot service is available via [@as4242421771_bot](http://t.me/as4242421771_bot).
+
+## Build
 
 Make sure golang of newer version is already installed, if not, go visit [go.dev/doc/install](https://go.dev/doc/install) to download and un-tar a tarball, and make sure that $GOPATH/bin, and /usr/local/go/bin are in the $PATH.
 
@@ -32,7 +36,7 @@ go build -o bin/globalping ./cmd/globalping
 
 Now the binary `bin/globalping` can serve as an agent or a hub depending on the CLI arguments provided.
 
-## Try or Debugging
+## Debugging
 
 After the binary is built, to see how it goes, try launch a testing purpose localhost agent:
 
