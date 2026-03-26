@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
@@ -55,13 +56,7 @@ func throttleTicker(ctx context.Context, src <-chan time.Time, rateLimit pkgrate
 	return tick
 }
 
-func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context) (net.IP, int, error) {
-	destination := pinger.PingRequest.Destination
-	if destination == "" {
-		if len(pinger.PingRequest.Targets) > 0 {
-			destination = pinger.PingRequest.Targets[0]
-		}
-	}
+func (pinger *TCPSYNPinger) getHostAndPort(ctx context.Context, destination string) (net.IP, int, error) {
 	destination = strings.TrimSpace(destination)
 	if destination == "" {
 		return nil, 0, fmt.Errorf("destination is required")
@@ -117,149 +112,161 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 	// pre-allocate 1 slot for error reporting, so that it can exit once there is an error
 	evCh := make(chan PingEvent, 1)
 	go func() {
-		defer close(evCh)
+		wg := sync.WaitGroup{}
+		defer func(wg *sync.WaitGroup) {
+			wg.Wait()
+			close(evCh)
+		}(&wg)
 
-		dstIP, dstPort, err := pinger.getHostAndPort(ctx)
-		if err != nil {
-			evCh <- PingEvent{Error: fmt.Errorf("failed to get host and port: %v", err)}
-			return
-		}
+		for _, destination := range pinger.PingRequest.Targets {
+			wg.Add(1)
+			go func(destination string) {
+				defer wg.Done()
 
-		var sender pkgtcping.Sender
-		senderConfig := &pkgtcping.TCPSYNSenderConfig{
-			OnSent: pinger.OnSent,
-		}
-		if dstIP.To4() == nil {
-			sender6, err := pkgtcping.NewTCPSYNSender6(ctx, senderConfig)
-			if err != nil {
-				evCh <- PingEvent{Error: fmt.Errorf("failed to create ipv6 tcp syn sender: %v", err)}
-				return
-			}
-			defer sender6.Close()
-			sender = sender6
-		} else {
-			sender4, err := pkgtcping.NewTCPSYNSender(ctx, senderConfig)
-			if err != nil {
-				evCh <- PingEvent{Error: fmt.Errorf("failed to create ipv4 tcp syn sender: %v", err)}
-				return
-			}
-			defer sender4.Close()
-			sender = sender4
-		}
-
-		trackerConfig := &pkgtcping.TrackerConfig{}
-		tracker := pkgtcping.NewTracker(trackerConfig)
-		tracker.Run(ctx)
-
-		resolver := pkgutils.NewCustomResolver(pinger.PingRequest.Resolver, 10*time.Second)
-
-		intvMs := pinger.PingRequest.IntvMilliseconds
-		ticker := time.NewTicker(time.Duration(intvMs) * time.Millisecond)
-		tick := ticker.C
-		if pinger.RateLimiter != nil {
-			tick = throttleTicker(ctx, ticker.C, pinger.RateLimiter)
-		}
-
-		pktTimeoutMs := pinger.PingRequest.PktTimeoutMilliseconds
-		pktTimeout := time.Duration(pktTimeoutMs) * time.Millisecond
-
-		defer ticker.Stop()
-		allConfirmedCh := make(chan interface{})
-		defer func() {
-			log.Printf("Waiting for all un-acked tcp syn packets to be acked")
-			<-allConfirmedCh
-			log.Printf("All un-acked tcp syn packets are acked")
-		}()
-
-		go func() {
-			defer log.Printf("Exiting tcp syn filtering goroutine")
-
-			requireSYN := true
-			requireACK := true
-			filteredCh := pkgtcping.FilterPackets(sender.GetPackets(), &pkgtcping.FilterRequirements{
-				SYN:     &requireSYN,
-				ACK:     &requireACK,
-				SrcPort: &dstPort,
-			})
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case pkgInfo, ok := <-filteredCh:
-					if !ok {
-						return
-					}
-					tracker.MarkReceived(pkgInfo)
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case event, ok := <-tracker.EventC:
-				if !ok {
-					return
-				}
-				if event.Type != pkgtcping.TrackerEVReceived && event.Type != pkgtcping.TrackerEVTimeout {
-					log.Printf("received unexpected event type: %v", event.Type)
-					continue
-				}
-
-				if event.Type == pkgtcping.TrackerEVReceived && event.Details != nil {
-					var err error
-					event.Details.ReceivedPkt, err = postProcessReceivedPkt(ctx, event.Details.ReceivedPkt, resolver, pinger.IPInfoAdapter)
-					if err != nil {
-						log.Printf("failed to post process received pkt: %v", err)
-					}
-
-					if receivedPkt := event.Details.ReceivedPkt; receivedPkt != nil && pinger.OnReceived != nil {
-						pinger.OnReceived(
-							ctx,
-							receivedPkt.SrcIP,
-							int(receivedPkt.TCP.SrcPort),
-							receivedPkt.DstIP,
-							int(receivedPkt.TCP.DstPort),
-							receivedPkt.Size,
-						)
-					}
-				}
-
-				evCh <- PingEvent{Data: event}
-
-				if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
-					if *totalPkts == event.Details.Seq+1 {
-						close(allConfirmedCh)
-						return
-					}
-				}
-			case _, ok := <-tick:
-				if !ok {
-					return
-				}
-				initSeqNum := rand.Uint32()
-				synRequest := &pkgtcping.TCPSYNRequest{
-					DstIP:   dstIP,
-					DstPort: dstPort,
-					Timeout: pktTimeout,
-					Seq:     initSeqNum,
-					Ack:     0,
-					Window:  0xffff,
-				}
-				receipt, err := sender.Send(ctx, synRequest, tracker)
+				dstIP, dstPort, err := pinger.getHostAndPort(ctx, destination)
 				if err != nil {
-					evCh <- PingEvent{Error: fmt.Errorf("failed to send tcp syn: %v", err)}
+					evCh <- PingEvent{Error: fmt.Errorf("failed to get host and port: %v", err)}
 					return
 				}
 
-				if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
-					if receipt.Seq+1 == *totalPkts {
-						log.Printf("No more tcp syn packets to send")
-						ticker.Stop()
+				var sender pkgtcping.Sender
+				senderConfig := &pkgtcping.TCPSYNSenderConfig{
+					OnSent: pinger.OnSent,
+				}
+				if dstIP.To4() == nil {
+					sender6, err := pkgtcping.NewTCPSYNSender6(ctx, senderConfig)
+					if err != nil {
+						evCh <- PingEvent{Error: fmt.Errorf("failed to create ipv6 tcp syn sender: %v", err)}
+						return
+					}
+					defer sender6.Close()
+					sender = sender6
+				} else {
+					sender4, err := pkgtcping.NewTCPSYNSender(ctx, senderConfig)
+					if err != nil {
+						evCh <- PingEvent{Error: fmt.Errorf("failed to create ipv4 tcp syn sender: %v", err)}
+						return
+					}
+					defer sender4.Close()
+					sender = sender4
+				}
+
+				trackerConfig := &pkgtcping.TrackerConfig{}
+				tracker := pkgtcping.NewTracker(trackerConfig)
+				tracker.Run(ctx)
+
+				resolver := pkgutils.NewCustomResolver(pinger.PingRequest.Resolver, 10*time.Second)
+
+				intvMs := pinger.PingRequest.IntvMilliseconds
+				ticker := time.NewTicker(time.Duration(intvMs) * time.Millisecond)
+				tick := ticker.C
+				if pinger.RateLimiter != nil {
+					tick = throttleTicker(ctx, ticker.C, pinger.RateLimiter)
+				}
+
+				pktTimeoutMs := pinger.PingRequest.PktTimeoutMilliseconds
+				pktTimeout := time.Duration(pktTimeoutMs) * time.Millisecond
+
+				defer ticker.Stop()
+				allConfirmedCh := make(chan interface{})
+				defer func() {
+					log.Printf("Waiting for all un-acked tcp syn packets to be acked")
+					<-allConfirmedCh
+					log.Printf("All un-acked tcp syn packets are acked")
+				}()
+
+				go func() {
+					defer log.Printf("Exiting tcp syn filtering goroutine")
+
+					requireSYN := true
+					requireACK := true
+					filteredCh := pkgtcping.FilterPackets(sender.GetPackets(), &pkgtcping.FilterRequirements{
+						SYN:     &requireSYN,
+						ACK:     &requireACK,
+						SrcPort: &dstPort,
+					})
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case pkgInfo, ok := <-filteredCh:
+							if !ok {
+								return
+							}
+							tracker.MarkReceived(pkgInfo)
+						}
+					}
+				}()
+
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case event, ok := <-tracker.EventC:
+						if !ok {
+							return
+						}
+						if event.Type != pkgtcping.TrackerEVReceived && event.Type != pkgtcping.TrackerEVTimeout {
+							log.Printf("received unexpected event type: %v", event.Type)
+							continue
+						}
+
+						if event.Type == pkgtcping.TrackerEVReceived && event.Details != nil {
+							var err error
+							event.Details.ReceivedPkt, err = postProcessReceivedPkt(ctx, event.Details.ReceivedPkt, resolver, pinger.IPInfoAdapter)
+							if err != nil {
+								log.Printf("failed to post process received pkt: %v", err)
+							}
+
+							if receivedPkt := event.Details.ReceivedPkt; receivedPkt != nil && pinger.OnReceived != nil {
+								pinger.OnReceived(
+									ctx,
+									receivedPkt.SrcIP,
+									int(receivedPkt.TCP.SrcPort),
+									receivedPkt.DstIP,
+									int(receivedPkt.TCP.DstPort),
+									receivedPkt.Size,
+								)
+							}
+						}
+
+						evCh <- PingEvent{Data: event}
+
+						if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
+							if *totalPkts == event.Details.Seq+1 {
+								close(allConfirmedCh)
+								return
+							}
+						}
+					case _, ok := <-tick:
+						if !ok {
+							return
+						}
+						initSeqNum := rand.Uint32()
+						synRequest := &pkgtcping.TCPSYNRequest{
+							DstIP:   dstIP,
+							DstPort: dstPort,
+							Timeout: pktTimeout,
+							Seq:     initSeqNum,
+							Ack:     0,
+							Window:  0xffff,
+						}
+						receipt, err := sender.Send(ctx, synRequest, tracker)
+						if err != nil {
+							evCh <- PingEvent{Error: fmt.Errorf("failed to send tcp syn: %v", err)}
+							return
+						}
+
+						if totalPkts := pinger.PingRequest.TotalPkts; totalPkts != nil {
+							if receipt.Seq+1 == *totalPkts {
+								log.Printf("No more tcp syn packets to send")
+								ticker.Stop()
+							}
+						}
 					}
 				}
-			}
+
+			}(destination)
 		}
 
 	}()

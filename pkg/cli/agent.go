@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -173,7 +174,7 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	commonLabels := prometheus.Labels{
 		pkgmyprom.PromLabelFrom:   strings.Join(pingRequest.From, ","),
-		pkgmyprom.PromLabelTarget: pingRequest.Destination,
+		pkgmyprom.PromLabelTarget: strings.Join(pingRequest.Targets, ","),
 		pkgmyprom.PromLabelClient: pkgutils.GetRemoteAddr(r),
 	}
 
@@ -184,17 +185,20 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		counterStore.ServedDurationMs.With(commonLabels).Add(float64(servedDurationMs))
 	}()
 
-	if len(ph.DomainRespondRange) > 0 && net.ParseIP(pingRequest.Destination) == nil {
-		hit := false
-		for _, domainPattern := range ph.DomainRespondRange {
-			if domainPattern.MatchString(pingRequest.Destination) {
-				hit = true
-				break
+	if len(ph.DomainRespondRange) > 0 {
+		// if domain respond range is explicitly specified, check if there are any domain vialation
+		for _, dest := range pingRequest.Targets {
+			if ipObj := net.ParseIP(dest); ipObj != nil {
+				// skip non-domain (i.e. IP address) targets
+				continue
 			}
-		}
-		if !hit {
-			json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("domain %s does not match any pattern in the domain respond range", pingRequest.Destination).Error()})
-			return
+
+			if hit := slices.ContainsFunc(ph.DomainRespondRange, func(domainPattern regexp.Regexp) bool {
+				return domainPattern.MatchString(dest)
+			}); !hit {
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("domain %s does not match any pattern in the domain respond range", dest).Error()})
+				return
+			}
 		}
 	}
 

@@ -34,7 +34,6 @@ const (
 
 type SimplePingRequest struct {
 	From                       []string
-	Destination                string
 	Targets                    []string
 	IntvMilliseconds           int
 	PktTimeoutMilliseconds     int
@@ -59,7 +58,7 @@ type SimplePingRequest struct {
 func (pingReq *SimplePingRequest) DeriveAsPingRequest(from string, target string) *SimplePingRequest {
 	derivedPingRequest := new(SimplePingRequest)
 	*derivedPingRequest = *pingReq
-	derivedPingRequest.Destination = target
+	derivedPingRequest.Targets = []string{target}
 	derivedPingRequest.From = []string{from}
 	return derivedPingRequest
 }
@@ -187,8 +186,7 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	}
 
 	if targetsStr := r.URL.Query().Get(ParamTargets); targetsStr != "" {
-		targets := strings.Split(targetsStr, ",")
-		for _, target := range targets {
+		for target := range strings.SplitSeq(targetsStr, ",") {
 			target = strings.TrimSpace(target)
 			if target == "" {
 				continue
@@ -198,8 +196,7 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 	}
 
 	if fromStr := r.URL.Query().Get(ParamFrom); fromStr != "" {
-		froms := strings.Split(fromStr, ",")
-		for _, from := range froms {
+		for from := range strings.SplitSeq(fromStr, ",") {
 			from = strings.TrimSpace(from)
 			if from == "" {
 				continue
@@ -280,24 +277,7 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 		result.Resolver = &resolver
 	}
 
-	destination := r.URL.Query().Get(ParamDestination)
-	if destination == "" {
-		result.Destination = getFirstNonEmpty(result.Targets)
-	} else {
-		result.Destination = destination
-	}
-
 	return result, nil
-}
-
-func getFirstNonEmpty(tgts []string) string {
-	for _, tgt := range tgts {
-		s := strings.TrimSpace(tgt)
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 func (pr *SimplePingRequest) ToURLValues() url.Values {
@@ -311,7 +291,6 @@ func (pr *SimplePingRequest) ToURLValues() url.Values {
 		vals.Add(ParamFrom, strings.Join(pr.From, ","))
 	}
 
-	vals.Add(ParamDestination, pr.Destination)
 	vals.Add(ParamIntvMs, strconv.Itoa(pr.IntvMilliseconds))
 	vals.Add(ParamPktTimeoutMs, strconv.Itoa(pr.PktTimeoutMilliseconds))
 	if pr.PreferV4 != nil {
