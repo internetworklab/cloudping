@@ -99,7 +99,10 @@ const ParamPreferV4 = "preferV4"
 const ParamPreferV6 = "preferV6"
 const ParamResolver = "resolver"
 const ParamRandomPayloadSize = "randomPayloadSize"
+
+// Deprecated, for backward compatibility only.
 const ParamDestination = "destination"
+
 const ParamResolveTimeoutMilliseconds = "resolveTimeoutMilliseconds"
 const ParamsIPInfoProviderName = "ipInfoProviderName"
 const ParamL4PacketType = "l4PacketType"
@@ -283,8 +286,17 @@ func ParseSimplePingRequest(r *http.Request) (*SimplePingRequest, error) {
 func (pr *SimplePingRequest) ToURLValues() url.Values {
 	vals := url.Values{}
 
-	if pr.Targets != nil {
+	if len(pr.Targets) > 0 {
 		vals.Add(ParamTargets, strings.Join(pr.Targets, ","))
+		if firstTgt := pr.Targets[0]; firstTgt != "" {
+			firstTgt := strings.TrimSpace(firstTgt)
+			if firstTgt != "" {
+				// Note: the `destination=` query parameter is DEPRECATED!
+				// we do so is solely for backward compatibility.
+				// that is, some agents still recognize `destination=` only
+				vals.Set(ParamDestination, firstTgt)
+			}
+		}
 	}
 
 	if pr.From != nil {

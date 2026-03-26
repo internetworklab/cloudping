@@ -66,7 +66,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 	outputEVChan := make(chan PingEvent)
 
 	go func() {
-		wg := sync.WaitGroup{}
+		wg := &sync.WaitGroup{}
 		defer func() {
 			wg.Wait()
 			close(outputEVChan)

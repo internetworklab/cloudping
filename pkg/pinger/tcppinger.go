@@ -112,11 +112,11 @@ func (pinger *TCPSYNPinger) Ping(ctx context.Context) <-chan PingEvent {
 	// pre-allocate 1 slot for error reporting, so that it can exit once there is an error
 	evCh := make(chan PingEvent, 1)
 	go func() {
-		wg := sync.WaitGroup{}
+		wg := &sync.WaitGroup{}
 		defer func(wg *sync.WaitGroup) {
 			wg.Wait()
 			close(evCh)
-		}(&wg)
+		}(wg)
 
 		for _, destination := range pinger.PingRequest.Targets {
 			wg.Add(1)
