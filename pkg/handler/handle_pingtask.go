@@ -245,41 +245,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	pingersFlat := make([]pkgpinger.Pinger, 0)
 	for _, from := range form.From {
-		if remotePingable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyPingCapability); remotePingable != nil {
-			for _, target := range form.Targets {
-				if !checkRemotePingerPolicy(ctx, remotePingable, target, handler.Resolver, handler.OutOfRespondRangePolicy) {
-					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to check remote pinger policy for ping target: %v", err).Error()})
-					continue
-				}
-
-				remotePingerEndpoint, quicClient := getTransport(remotePingable)
-				if remotePingerEndpoint == nil && quicClient == nil {
-					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to check remote pinger policy for ping target: %v", err).Error()})
-					continue
-				}
-
-				sp := &pkgpinger.SimpleRemotePinger{
-					Request:            *form.DeriveAsPingRequest(from, target),
-					ClientTLSConfig:    handler.ClientTLSConfig,
-					ExtraRequestHeader: extraRequestHeader,
-					QUICClient:         quicClient,
-					NodeName:           from,
-				}
-
-				if remotePingerEndpoint != nil {
-					log.Printf("Sending ping to remote pinger %s via http endpoint %+v", from, remotePingerEndpoint)
-					sp.Endpoint = *remotePingerEndpoint
-				}
-
-				var remotePinger pkgpinger.Pinger = sp
-				if _, ok := pingers[from]; !ok {
-					pingers[from] = make(map[string]pkgpinger.Pinger, 0)
-				}
-				pingers[from][target] = remotePinger
-			}
-		}
-
-		if dnsProbeable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyDNSProbeCapability); dnsProbeable != nil {
+		if dnsProbeable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyDNSProbeCapability); dnsProbeable != nil && form.L7PacketType != nil && *form.L7PacketType == pkgpinger.L7ProtoDNS {
 			for _, dnsTarget := range form.DNSTargets {
 				corrId := dnsTarget.CorrelationID
 				if corrId == "" {
@@ -320,9 +286,7 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 				}
 				pingers[from][corrId] = remotePinger
 			}
-		}
-
-		if httpProbeable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyHTTPProbeCapability); httpProbeable != nil {
+		} else if httpProbeable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyHTTPProbeCapability); httpProbeable != nil && form.L7PacketType != nil && *form.L7PacketType == pkgpinger.L7ProtoHTTP {
 			for _, tgt := range form.HTTPTargets {
 				urlObj, err := url.Parse(tgt.URL)
 				if err != nil {
@@ -355,14 +319,48 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 				log.Printf("Sending http probe to remote pinger %s via http endpoint %+v", from, remotePingerEndpoint)
 				sp.Endpoint = *remotePingerEndpoint
 			}
+
 			pingersFlat = append(pingersFlat, WithMetadata(remotePinger, map[string]string{
 				pkgpinger.MetadataKeyFrom: from,
 			}))
+		} else if remotePingable := getConnWithCapability(handler.ConnRegistry, from, pkgnodereg.AttributeKeyPingCapability); remotePingable != nil {
+			for _, target := range form.Targets {
+				if !checkRemotePingerPolicy(ctx, remotePingable, target, handler.Resolver, handler.OutOfRespondRangePolicy) {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to check remote pinger policy for ping target: %v", err).Error()})
+					continue
+				}
+
+				remotePingerEndpoint, quicClient := getTransport(remotePingable)
+				if remotePingerEndpoint == nil && quicClient == nil {
+					json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to check remote pinger policy for ping target: %v", err).Error()})
+					continue
+				}
+
+				sp := &pkgpinger.SimpleRemotePinger{
+					Request:            *form.DeriveAsPingRequest(from, target),
+					ClientTLSConfig:    handler.ClientTLSConfig,
+					ExtraRequestHeader: extraRequestHeader,
+					QUICClient:         quicClient,
+					NodeName:           from,
+				}
+
+				if remotePingerEndpoint != nil {
+					log.Printf("Sending ping to remote pinger %s via http endpoint %+v", from, remotePingerEndpoint)
+					sp.Endpoint = *remotePingerEndpoint
+				}
+
+				var remotePinger pkgpinger.Pinger = sp
+				if _, ok := pingers[from]; !ok {
+					pingers[from] = make(map[string]pkgpinger.Pinger, 0)
+				}
+				pingers[from][target] = remotePinger
+			}
 		}
 	}
 
 	for from, submap := range pingers {
 		for target, remotePinger := range submap {
+
 			pingersFlat = append(pingersFlat, WithMetadata(remotePinger, map[string]string{
 				pkgpinger.MetadataKeyFrom:   from,
 				pkgpinger.MetadataKeyTarget: target,

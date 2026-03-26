@@ -5,7 +5,7 @@ script_dir=$(dirname $script_path)
 
 cd $script_dir/..
 
-bin/globalping agent \
+go run ./cmd/globalping agent \
   --quic-server-address="globalping-hub.exploro.one:18449" \
   --node-name="lax1" \
   --exact-location-lat-lon="48.1952,16.3503" \
@@ -14,4 +14,5 @@ bin/globalping agent \
   --asn="AS35916" \
   --isp="MULTACOM" \
   --dn42-asn="AS4242421771" \
-  --dn42-isp="DUSTSTARS"
+  --dn42-isp="DUSTSTARS" \
+  --http-listen-address=":8085"

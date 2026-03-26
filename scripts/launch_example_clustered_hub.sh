@@ -5,7 +5,7 @@ script_dir=$(dirname $script_path)
 
 cd $script_dir/..
 
-bin/globalping hub \
+go run ./cmd/globalping hub \
   --peer-ca=https://github.com/internetworklab/cloudping/raw/refs/heads/master/confed/hub/ca.pem \
   --peer-ca=https://github.com/internetworklab/cloudping/raw/refs/heads/master/confed/jason/ca.pem \
   --peer-ca=https://github.com/internetworklab/cloudping/raw/refs/heads/master/confed/moohr/ca.pem \
