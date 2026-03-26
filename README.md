@@ -47,7 +47,7 @@ scripts/launch_example_agent.sh
 It binds on 127.0.0.1:8084, listens for plaintext HTTP requests, you can call the API with whaever HTTP client you like, for example:
 
 ```shell
-curl --url-query destination=1.1.1.1 --url-query count=3 localhost:8084/simpleping
+curl --url-query targets=1.1.1.1 --url-query count=3 localhost:8084/simpleping
 ```
 
 Doing so cause it send out 3 icmp echo request packets to the destination specified, 1.1.1.1, and the response will be stream to stdout in realtime in JSON line format.
@@ -80,7 +80,7 @@ Parameters are encoded as URL search params. For available parameters and their 
 **Example (curl):**
 ```shell
 # Agent - single target
-curl --url-query destination=1.1.1.1 --url-query count=3 localhost:8084/simpleping
+curl --url-query targets=1.1.1.1 --url-query count=3 localhost:8084/simpleping
 
 # Hub - multiple targets
 curl --url-query targets=1.1.1.1,8.8.8.8 localhost:8080/ping
