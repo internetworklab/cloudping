@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"slices"
@@ -42,93 +41,59 @@ func DoSend(sendRequest *SMTPSendRequest, client *mail.Client) error {
 	return client.DialAndSend(message)
 }
 
-func Receive(c *imapclient.Client, personalNs *imap.NamespaceDescriptor) error {
+const defaultIDLEWakeUpIntv time.Duration = 30 * time.Second
 
-	if personalNs == nil {
-		log.Printf("Personal NS is nil, probing")
-		caps, err := c.Capability().Wait()
+func Receive(c *imapclient.Client, watchingInboxes []string) error {
+
+	for _, inbox := range watchingInboxes {
+
+		if _, err := c.Select(inbox, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+			log.Printf("Failed to select mailbox %s: %s", inbox, err.Error())
+			continue
+		}
+
+		supFlgs := make([]string, 0)
+		for _, flg := range c.Mailbox().Flags {
+			supFlgs = append(supFlgs, string(flg))
+		}
+		log.Printf("Looking at inbox %s, supported flags: %q ...", inbox, strings.Join(supFlgs, ","))
+
+		if slices.IndexFunc(c.Mailbox().Flags, func(flg imap.Flag) bool { return flg == imap.FlagSeen }) == -1 {
+			log.Printf("Inbox %s does not support the SEEN flag", inbox)
+			continue
+		}
+
+		searchData, err := c.UIDSearch(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait()
 		if err != nil {
-			return fmt.Errorf("failed to get capabilities: %w", err)
+			log.Printf("failed to search inbox %s: %s", inbox, err.Error())
+			continue
 		}
-		if !caps.Has(imap.CapNamespace) {
-			return fmt.Errorf("Personal NS is nil while NAMESPACE capability is not supported")
-		}
-		namespaceDesc, err := c.Namespace().Wait()
+
+		fetchBuf, err := c.Fetch(searchData.All, &imap.FetchOptions{Envelope: true}).Collect()
 		if err != nil {
-			return fmt.Errorf("failed to get namespace: %w", err)
+			log.Printf("failed to fetch emails in %s: %s", inbox, err.Error())
+			continue
 		}
-		if namespaceDesc == nil {
-			return fmt.Errorf("namespace is nil")
-		}
-		personalNs = &namespaceDesc.Personal[0]
-		log.Printf("personal namespace: prefix=%q, delim=%q", personalNs.Prefix, personalNs.Delim)
-	}
+		for _, msg := range fetchBuf {
+			senders := make([]string, 0)
+			for _, sd := range msg.Envelope.Sender {
+				senders = append(senders, sd.Addr())
+			}
 
-	listData, err := c.List("", "*", nil).Collect()
-	if err != nil {
-		return fmt.Errorf("failed to list folders: %w", err)
-	}
-	personalFolderIdx := slices.IndexFunc(listData, func(folder *imap.ListData) bool {
-		return strings.HasPrefix(personalNs.Prefix, folder.Mailbox)
-	})
-	if personalFolderIdx == -1 {
-		return fmt.Errorf("personal folder not found")
-	}
-	personalFolder := listData[personalFolderIdx]
-	log.Printf("personal folder: name=%q", personalFolder.Mailbox)
+			replyTo := make([]string, 0)
+			for _, sd := range msg.Envelope.ReplyTo {
+				replyTo = append(replyTo, sd.Addr())
+			}
 
-	if _, err := c.Select(personalFolder.Mailbox, nil).Wait(); err != nil {
-		return fmt.Errorf("failed to select folder: %w", err)
-	}
+			froms := make([]string, 0)
+			for _, sd := range msg.Envelope.From {
+				froms = append(froms, sd.Addr())
+			}
 
-	searchData, err := c.UIDSearch(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait()
-	if err != nil {
-		return fmt.Errorf("failed to search folder: %w", err)
-	}
-
-	fetchResult := c.Fetch(searchData.All, &imap.FetchOptions{Envelope: true, Flags: true, InternalDate: true})
-	for {
-		item := fetchResult.Next()
-		if item == nil {
-			break
-		}
-		buf, err := item.Collect()
-		if err != nil {
-			return fmt.Errorf("failed to collect fetch item: %w", err)
-		}
-		if evl := buf.Envelope; evl != nil {
-			fmt.Printf("Subject: %s, Date: %v\n", evl.Subject, evl.Date.Format(time.RFC3339))
+			log.Printf("Found message in %s: subject=%q, date=%q, senders=%q, replyTo=%q, froms=%q", inbox, msg.Envelope.Subject, msg.Envelope.Date, strings.Join(senders, ","), strings.Join(replyTo, ","), strings.Join(froms, ","))
 		}
 	}
 
-	// // Start idling
-	// idleCmd, err := c.Idle()
-	// if err != nil {
-	// 	log.Fatalf("IDLE command failed: %v", err)
-	// }
-	// defer idleCmd.Close()
-
-	// done := make(chan error, 1)
-	// go func() {
-	// 	done <- idleCmd.Wait()
-	// }()
-
-	// // Wait for 30s to receive updates from the server, then stop idling
-	// t := time.NewTimer(30 * time.Second)
-	// defer t.Stop()
-	// select {
-	// case <-t.C:
-	// 	if err := idleCmd.Close(); err != nil {
-	// 		log.Fatalf("failed to stop idling: %v", err)
-	// 	}
-	// 	if err := <-done; err != nil {
-	// 		log.Fatalf("IDLE command failed: %v", err)
-	// 	}
-	// case err := <-done:
-	// 	if err != nil {
-	// 		log.Fatalf("IDLE command failed: %v", err)
-	// 	}
-	// }
 	return nil
 }
 
@@ -141,21 +106,9 @@ func main() {
 	imapPasswd := os.Getenv("IMAP_PASSWORD")
 	// smtpUsername := os.Getenv("SMTP_USER")
 	// smtpPasswd := os.Getenv("SMTP_PASS")
+	//
 
-	options := imapclient.Options{
-		UnilateralDataHandler: &imapclient.UnilateralDataHandler{
-			Expunge: func(seqNum uint32) {
-				log.Printf("message %v has been expunged", seqNum)
-			},
-			Mailbox: func(data *imapclient.UnilateralDataMailbox) {
-				if data.NumMessages != nil {
-					log.Printf("a new message has been received")
-				}
-			},
-		},
-	}
-
-	c, err := imapclient.DialTLS(imapServerPort, &options)
+	c, err := imapclient.DialTLS(imapServerPort, nil)
 	if err != nil {
 		log.Fatalf("failed to dial IMAP server: %v", err)
 	}
@@ -175,11 +128,7 @@ func main() {
 	}
 	log.Printf("Logged in to IMAP server")
 
-	personalNs := imap.NamespaceDescriptor{
-		Prefix: "INBOX/",
-		Delim:  '/',
-	}
-	if err := Receive(c, &personalNs); err != nil {
+	if err := Receive(c, []string{"INBOX", "Junk E-Mail"}); err != nil {
 		log.Fatal(err)
 	}
 
