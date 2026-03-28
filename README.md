@@ -1,6 +1,6 @@
 # CloudPing
 
-CloudPing is a web-based ping & traceroute project, providing easy to use interface, helping users to have an intuitive view about miscellaneous network informations like how the IP packets get routed through or how well is the round-trip latency. We believe that publish these network tracing & diagnosis capabilities via cloud is a good idea, hence the name 'CloudPing'.
+CloudPing is a web-based ping and traceroute tool that provides an easy-to-use interface, giving users an intuitive view of network information such as how IP packets are routed and what the round-trip latency looks like. We believe that making these network tracing and diagnostic capabilities available via the cloud is a great idea — hence the name "CloudPing".
 
 ## Features
 
