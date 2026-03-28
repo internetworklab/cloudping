@@ -12,6 +12,24 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const defaultJWTCookieKey = "jwt"
+
+func extractJWTFromRequest(r *http.Request) string {
+	tokenString := r.Header.Get("Authorization")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	tokenString = strings.TrimPrefix(tokenString, "bearer ")
+
+	if tokenString != "" {
+		return tokenString
+	}
+
+	if cookie, err := r.Cookie(defaultJWTCookieKey); err == nil {
+		return cookie.Value
+	}
+
+	return ""
+}
+
 func QuicValidateJWT(tokenString *string, secret []byte) (bool, *jwt.Token, error) {
 	if tokenString == nil {
 		return false, nil, fmt.Errorf("token string is nil")
@@ -43,9 +61,7 @@ func WithJWTAuth(handler http.Handler, secret []byte, rejectInvalid bool) http.H
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		tokenString = strings.TrimPrefix(tokenString, "bearer ")
+		tokenString := extractJWTFromRequest(r)
 
 		rejectWithErr := func(nextHandler http.Handler, rejectInvalid bool) {
 			if rejectInvalid {
