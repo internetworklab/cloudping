@@ -205,6 +205,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
+	muxerPublic.Handle("/count", pkgauth.WithJWTAuth(pkghandler.NewCountHandler(0), jwtSec, false))
 
 	var publicHandler http.Handler = muxerPublic
 	sessionManager := pkgsession.NewInMemorySessionManager(hubCmd.SessionTTL)
