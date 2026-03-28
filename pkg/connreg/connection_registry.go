@@ -55,14 +55,14 @@ const (
 )
 
 type ConnRegistryData struct {
-	NodeName       *string              `json:"node_name,omitempty"`
-	ConnectedAt    uint64               `json:"connected_at"`
-	RegisteredAt   *uint64              `json:"registered_at,omitempty"`
-	LastHeartbeat  *uint64              `json:"last_heartbeat,omitempty"`
-	Attributes     ConnectionAttributes `json:"attributes,omitempty"`
-	QUICConn       *quicGo.Conn         `json:"-"`
-	Claims         jwt.MapClaims        `json:"-"`
-	Authentication AuthenticationType   `json:"authentication"`
+	NodeName       *string               `json:"node_name,omitempty"`
+	ConnectedAt    uint64                `json:"connected_at"`
+	RegisteredAt   *uint64               `json:"registered_at,omitempty"`
+	LastHeartbeat  *uint64               `json:"last_heartbeat,omitempty"`
+	Attributes     ConnectionAttributes  `json:"attributes,omitempty"`
+	QUICConn       *quicGo.Conn          `json:"-"`
+	Claims         *jwt.RegisteredClaims `json:"-"`
+	Authentication AuthenticationType    `json:"authentication"`
 }
 
 func (regData *ConnRegistryData) Clone() *ConnRegistryData {
@@ -110,7 +110,7 @@ func (cr *ConnRegistry) CloseConnection(key string) {
 	cr.datastore.Delete(key)
 }
 
-func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims jwt.MapClaims) error {
+func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims *jwt.RegisteredClaims) error {
 	log.Printf("Registering connection from %s, node name: %s", key, payload.NodeName)
 
 	_, found := cr.datastore.Get(key, func(valany interface{}) error {

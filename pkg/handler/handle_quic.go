@@ -33,7 +33,7 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 	}
 
 	if payload.Register != nil {
-		var mapClaims jwt.MapClaims = nil
+		var registeredClaims *jwt.RegisteredClaims = nil
 		if handler.ShouldValidateJWT {
 			valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
 			if err != nil {
@@ -49,13 +49,13 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 			}
 
 			var ok bool
-			mapClaims, ok = token.Claims.(jwt.MapClaims)
+			registeredClaims, ok = token.Claims.(*jwt.RegisteredClaims)
 			if !ok {
-				return fmt.Errorf("couldn't convert JWT claims to map claims of peer %s", key)
+				return fmt.Errorf("couldn't convert JWT claims to registered claims of peer %s", key)
 			}
 		}
 
-		if err := cr.Register(key, *payload.Register, mapClaims); err != nil {
+		if err := cr.Register(key, *payload.Register, registeredClaims); err != nil {
 			return fmt.Errorf("failed to register connection from %s: %v", key, err)
 		}
 	}
