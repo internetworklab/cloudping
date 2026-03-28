@@ -18,6 +18,7 @@ import (
 	pkghandler "example.com/rbmq-demo/pkg/handler"
 	pkgproxy "example.com/rbmq-demo/pkg/proxy"
 	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
+	pkgsession "example.com/rbmq-demo/pkg/session"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/gorilla/websocket"
 	quicGo "github.com/quic-go/quic-go"
@@ -50,8 +51,10 @@ type HubCmd struct {
 	PktCountClamp           *int   `help:"The maximum number of packets to send for a single ping task"`
 	HTTPResponseBodyClamp   *int   `name:"http-response-body-clamp" help:"To restrict the maximum http body size to read in unit of bytes when such limit didn't appear in the requesting HTTP probe task"`
 
-	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
-	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	JWTAuthSecretFromEnv  string        `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
+	JWTAuthSecretFromFile string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	JWTIssuerId           string        `name:"jwt-issuer-id" help:"The issuer ID to use when issuing JWT tokens" default:"cloudping-hub"`
+	SessionTTL            time.Duration `name:"session-ttl" help:"The time-to-live for issued sessions" default:"1h"`
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
@@ -204,6 +207,9 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
 
 	var publicHandler http.Handler = muxerPublic
+	sessionManager := pkgsession.NewInMemorySessionManager(hubCmd.SessionTTL)
+	jwtIssuer := pkgauth.NewSessionBasedJWTIssuer(sessionManager, jwtSec, hubCmd.JWTIssuerId, nil)
+	publicHandler = pkgauth.WithJWTCookieIssue(publicHandler, jwtIssuer)
 	publicHandler = pkghandler.WithSlidingWindowRatelimit(publicHandler, hubCmd.PublicSlidingWindowRateLimitWindowLength, hubCmd.PublicSlidingWindowRateLimitNumRequests, pkgutils.GetRemoteAddr)
 
 	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {

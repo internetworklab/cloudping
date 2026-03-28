@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"example.com/rbmq-demo/pkg/session"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -96,4 +97,73 @@ func WithJWTAuth(handler http.Handler, secret []byte, rejectInvalid bool) http.H
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+type JWTIssuer interface {
+	IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+}
+
+func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenString := extractJWTFromRequest(r)
+
+		if tokenString == "" {
+			if err := issuer.IssueToken(r.Context(), w, r); err != nil {
+				log.Printf("WithJWTCookieIssue: remote %s failed to issue token: %v", pkgutils.GetRemoteAddr(r), err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "failed to issue token"})
+				return
+			}
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+}
+
+type SessionBasedJWTIssuer struct {
+	sessionManager session.SessionManager
+	secret         []byte
+	issuer         string
+	cookieModifier func(*http.Cookie) *http.Cookie
+}
+
+func NewSessionBasedJWTIssuer(sessionManager session.SessionManager, secret []byte, issuer string, cookieModifier func(*http.Cookie) *http.Cookie) *SessionBasedJWTIssuer {
+	return &SessionBasedJWTIssuer{
+		sessionManager: sessionManager,
+		secret:         secret,
+		issuer:         issuer,
+		cookieModifier: cookieModifier,
+	}
+}
+
+func (s *SessionBasedJWTIssuer) IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	descriptor, err := s.sessionManager.CreateSession(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    s.issuer,
+		IssuedAt:  jwt.NewNumericDate(descriptor.StartedAt),
+		ExpiresAt: jwt.NewNumericDate(descriptor.ExpiredAt),
+		ID:        descriptor.Id,
+	})
+
+	tokenString, err := token.SignedString(s.secret)
+	if err != nil {
+		return fmt.Errorf("failed to sign token: %v", err)
+	}
+
+	cookie := &http.Cookie{
+		Name:     defaultJWTCookieKey,
+		Value:    tokenString,
+		HttpOnly: true,
+		Path:     "/",
+	}
+	if s.cookieModifier != nil {
+		cookie = s.cookieModifier(cookie)
+	}
+	http.SetCookie(w, cookie)
+
+	return nil
 }
