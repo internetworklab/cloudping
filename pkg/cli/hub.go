@@ -60,7 +60,7 @@ type HubCmd struct {
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
 
 	PublicSlidingWindowRateLimitWindowLength time.Duration `name:"public-sw-rl-window-len" help:"The window length for the public sliding window rate limiter" default:"15s"`
-	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"100"`
+	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"300"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
