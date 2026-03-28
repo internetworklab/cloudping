@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// It holds a slice of timestamps (one per request)
 type SlidingWindowRateLimitEntry struct {
 	RequestTimestamps []time.Time
 }
@@ -17,25 +18,32 @@ type SlidingWindowRateLimitEntry struct {
 // Returns nil when ratelimit exceeded,
 // returns a  non-nil and brand new `*SlidingWindowRateLimitEntry` with request timestamp inserted otherwise
 func (swRLEnt *SlidingWindowRateLimitEntry) TryAppend(windowLength time.Duration, numRequestsLimit int) *SlidingWindowRateLimitEntry {
+	now := time.Now()
+
 	if swRLEnt == nil {
 		ent := &SlidingWindowRateLimitEntry{
 			RequestTimestamps: make([]time.Time, 0),
 		}
-		ent.RequestTimestamps = append(ent.RequestTimestamps, time.Now())
+		ent.RequestTimestamps = append(ent.RequestTimestamps, now)
 		return ent
 	}
 
-	since := time.Now().Add(-windowLength)
-	idx := slices.IndexFunc(swRLEnt.RequestTimestamps, func(tx time.Time) bool { return tx.Before(since) })
-	if idx == -1 {
+	since := now.Add(-windowLength)
+
+	// we are tying to find the first timestamp sample that is WITHIN the sliding window,
+	// so that we can count how many timestamps are fall into the range of the sliding window.
+	firstInWindowTimestampIdx := slices.IndexFunc(swRLEnt.RequestTimestamps, func(tx time.Time) bool { return !tx.Before(since) })
+
+	if firstInWindowTimestampIdx == -1 {
+		// all timestamp samples are out of the range of the sliding window
 		newRLEnt := &SlidingWindowRateLimitEntry{
-			RequestTimestamps: make([]time.Time, len(swRLEnt.RequestTimestamps)),
+			RequestTimestamps: make([]time.Time, 0),
 		}
-		copy(newRLEnt.RequestTimestamps, swRLEnt.RequestTimestamps)
-		newRLEnt.RequestTimestamps = append(newRLEnt.RequestTimestamps, time.Now())
+		newRLEnt.RequestTimestamps = append(newRLEnt.RequestTimestamps, now)
 		return newRLEnt
 	} else {
-		numRequests := len(swRLEnt.RequestTimestamps) - idx
+		// some samples are within the range of the sliding window
+		numRequests := len(swRLEnt.RequestTimestamps) - firstInWindowTimestampIdx
 		if numRequests >= numRequestsLimit {
 			// ratelimit exceeded
 			return nil
@@ -43,14 +51,15 @@ func (swRLEnt *SlidingWindowRateLimitEntry) TryAppend(windowLength time.Duration
 		newRLEnt := &SlidingWindowRateLimitEntry{
 			RequestTimestamps: make([]time.Time, numRequests),
 		}
-		copy(newRLEnt.RequestTimestamps, swRLEnt.RequestTimestamps[idx:])
-		newRLEnt.RequestTimestamps = append(newRLEnt.RequestTimestamps, time.Now())
+		copy(newRLEnt.RequestTimestamps, swRLEnt.RequestTimestamps[firstInWindowTimestampIdx:])
+		newRLEnt.RequestTimestamps = append(newRLEnt.RequestTimestamps, now)
 		return newRLEnt
 	}
 }
 
 // `SlidingWindowRateLimitPool` an implementation of the `RateLimitPool` interface
 // It doesn't support `WaitForRefresh` feature for now.
+// It also maintains a a sync.Map that maps rate-limit keys → atomic.Pointer[SlidingWindowRateLimitEntry]
 type SlidingWindowRateLimitPool struct {
 	// this map is dictinary that maps rate limit key to request timestamps
 	requestTimestamps *sync.Map
