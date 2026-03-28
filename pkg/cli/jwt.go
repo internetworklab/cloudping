@@ -10,10 +10,11 @@ import (
 )
 
 type JWTSignCommand struct {
-	Issuer                string `help:"The issuer of the JWT token" default:"globalping-hub"`
-	Subject               string `help:"The subject of the JWT token" default:"administrator"`
-	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
-	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	Issuer                string        `help:"The issuer of the JWT token" default:"cloudping-hub"`
+	Subject               string        `help:"The subject of the JWT token" default:"administrator"`
+	JWTValidTTL           time.Duration `name:"jwt-valid-ttl" help:"Valid period of the JWT token (e.g. 24h, 30m)" default:"8760h"`
+	JWTAuthSecretFromEnv  string        `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret" default:"JWT_SECRET"`
+	JWTAuthSecretFromFile string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
 }
 
 func getJWTSecFromSomewhere(envVar string, filePath string) ([]byte, error) {
@@ -50,11 +51,14 @@ func (jwtSignCmd *JWTSignCommand) Run() error {
 		return fmt.Errorf("failed to get JWT secret: %v", err)
 	}
 
+	now := time.Now()
 	tokenObject := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:   jwtSignCmd.Issuer,
-		Subject:  jwtSignCmd.Subject,
-		IssuedAt: jwt.NewNumericDate(time.Now()),
-		ID:       uuid.New().String(),
+		Issuer:    jwtSignCmd.Issuer,
+		Subject:   jwtSignCmd.Subject,
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(jwtSignCmd.JWTValidTTL)),
+		ID:        uuid.New().String(),
 	})
 	tokenString, err := tokenObject.SignedString(secret)
 	if err != nil {

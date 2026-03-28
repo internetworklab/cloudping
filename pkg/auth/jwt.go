@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 
 	"example.com/rbmq-demo/pkg/session"
@@ -138,6 +139,7 @@ func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
 				return
 			}
 			ctx = context.WithValue(ctx, pkgutils.CtxKeyJustIssuedJWTToken, tokenString)
+			log.Printf("WithJWTCookieIssue: remote %s issued token", pkgutils.GetRemoteAddr(r))
 		} else {
 			var renewed bool
 			renewed, tokenString, err = issuer.RefreshToken(ctx, w, r, tokenString)
@@ -149,6 +151,7 @@ func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
 			}
 			if renewed {
 				ctx = context.WithValue(ctx, pkgutils.CtxKeyJustIssuedJWTToken, tokenString)
+				log.Printf("WithJWTCookieIssue: remote %s renewed token", pkgutils.GetRemoteAddr(r))
 			}
 		}
 
@@ -172,12 +175,15 @@ func NewSessionBasedJWTIssuer(sessionManager session.SessionManager, secret []by
 	}
 }
 
+const AudSession string = "session"
+
 func (s *SessionBasedJWTIssuer) signTokenFromDescriptor(descriptor *session.SessionDescriptor) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
 		Issuer:    s.issuer,
 		IssuedAt:  jwt.NewNumericDate(descriptor.StartedAt),
 		ExpiresAt: jwt.NewNumericDate(descriptor.ExpiredAt),
 		ID:        descriptor.Id,
+		Audience:  jwt.ClaimStrings{AudSession},
 	})
 	return token.SignedString(s.secret)
 }
@@ -215,28 +221,24 @@ func (s *SessionBasedJWTIssuer) RefreshToken(ctx context.Context, w http.Respons
 		return s.secret, nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		return false, "", fmt.Errorf("failed to parse token: %v", err)
+		token, err := s.IssueToken(ctx, w, r)
+		return true, token, err
 	}
 
 	claims, ok := token.Claims.(*jwt.RegisteredClaims)
 	if !ok || claims.ID == "" {
+		token, err := s.IssueToken(ctx, w, r)
+		return true, token, err
+	}
+
+	if slices.Index([]string(claims.Audience), AudSession) == -1 {
 		return false, currentToken, nil
 	}
 
-	if s.sessionManager.ValidateSession(ctx, claims.ID) {
-		return false, currentToken, nil
+	if !s.sessionManager.ValidateSession(ctx, claims.ID) {
+		token, err := s.IssueToken(ctx, w, r)
+		return true, token, err
 	}
 
-	descriptor, err := s.sessionManager.CreateSession(ctx)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to create session: %v", err)
-	}
-
-	tokenString, err := s.signTokenFromDescriptor(descriptor)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to sign token: %v", err)
-	}
-
-	s.setJWTCookie(w, tokenString)
-	return true, tokenString, nil
+	return false, currentToken, nil
 }
