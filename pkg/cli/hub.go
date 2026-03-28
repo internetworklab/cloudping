@@ -52,6 +52,9 @@ type HubCmd struct {
 
 	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
 	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+
+	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
+	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -162,7 +165,13 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		log.Printf("Loaded client certificate: %s and key: %s", hubCmd.ClientCert, hubCmd.ClientCertKey)
 	}
 	resolver := pkgutils.NewCustomResolver(&hubCmd.ResolverAddress, 10*time.Second)
-	pingHandler := &pkghandler.PingTaskHandler{
+
+	jwtSec, err := hubCmd.getJWTSecret()
+	if err != nil {
+		return fmt.Errorf("failed to get JWT secret: %v", err)
+	}
+
+	var pingHandler http.Handler = &pkghandler.PingTaskHandler{
 		ConnRegistry:            cr,
 		ClientTLSConfig:         clientTLSConfig,
 		Resolver:                resolver,
@@ -172,17 +181,13 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		PktCountClamp:           hubCmd.PktCountClamp,
 		HTTPResponseBodyClamp:   hubCmd.HTTPResponseBodyClamp,
 	}
-
-	jwtSec, err := hubCmd.getJWTSecret()
-	if err != nil {
-		return fmt.Errorf("failed to get JWT secret: %v", err)
-	}
+	pingHandler = pkgauth.WithJWTAuth(pingHandler, jwtSec, false)
 
 	var proxyHandler http.Handler = &pkgproxy.IP2LocationProxyHandler{
-		BackendEndpoint: "https://api.ip2location.io/v2/",
-		APIKey:          os.Getenv("IP2LOCATION_API_KEY"),
+		BackendEndpoint: hubCmd.UpstreamIP2LocationAPIEndpoint,
+		APIKey:          os.Getenv(hubCmd.UpstreamIP2LocationAPIKeyEnv),
 	}
-	proxyHandler = pkgauth.WithJWTAuth(proxyHandler, jwtSec)
+	proxyHandler = pkgauth.WithJWTAuth(proxyHandler, jwtSec, true)
 
 	// muxerPrivate is for privileged rw operations
 	muxerPrivate := http.NewServeMux()

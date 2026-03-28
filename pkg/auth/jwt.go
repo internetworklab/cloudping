@@ -37,28 +37,30 @@ func QuicValidateJWT(tokenString *string, secret []byte) (bool, *jwt.Token, erro
 	return true, token, nil
 }
 
-func WithJWTAuth(handler http.Handler, secret []byte) http.Handler {
+func WithJWTAuth(handler http.Handler, secret []byte, rejectInvalid bool) http.Handler {
+	if secret == nil {
+		panic("WithJWTAuth: JWT secret must not be nil")
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenString := r.Header.Get("Authorization")
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		tokenString = strings.TrimPrefix(tokenString, "bearer ")
 
-		rejectWithErr := func() {
-			unAuthErr := pkgutils.ErrorResponse{Error: "Unauthorized"}
-			remote := pkgutils.GetRemoteAddr(r)
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(unAuthErr)
-			log.Printf("Remote peer %s is rejected by JWT middleware", remote)
+		rejectWithErr := func(nextHandler http.Handler, rejectInvalid bool) {
+			if rejectInvalid {
+				unAuthErr := pkgutils.ErrorResponse{Error: "Unauthorized"}
+				remote := pkgutils.GetRemoteAddr(r)
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(unAuthErr)
+				log.Printf("Remote peer %s is rejected by JWT middleware", remote)
+			} else {
+				nextHandler.ServeHTTP(w, r)
+			}
 		}
 
 		if tokenString == "" {
-			rejectWithErr()
-			return
-		}
-
-		if secret == nil {
-			log.Printf("WARN: JWT middleware is applied but no JWT secret is found in context")
-			handler.ServeHTTP(w, r)
+			rejectWithErr(handler, rejectInvalid)
 			return
 		}
 
@@ -68,7 +70,7 @@ func WithJWTAuth(handler http.Handler, secret []byte) http.Handler {
 
 		valid, token, err := QuicValidateJWT(&tokenString, secret)
 		if err != nil || !valid || token == nil {
-			rejectWithErr()
+			rejectWithErr(handler, rejectInvalid)
 			return
 		}
 
