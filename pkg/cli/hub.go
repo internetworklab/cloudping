@@ -187,13 +187,11 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		PktCountClamp:           hubCmd.PktCountClamp,
 		HTTPResponseBodyClamp:   hubCmd.HTTPResponseBodyClamp,
 	}
-	pingHandler = pkgauth.WithJWTAuth(pingHandler, jwtSec, false)
 
 	var proxyHandler http.Handler = &pkgproxy.IP2LocationProxyHandler{
 		BackendEndpoint: hubCmd.UpstreamIP2LocationAPIEndpoint,
 		APIKey:          os.Getenv(hubCmd.UpstreamIP2LocationAPIKeyEnv),
 	}
-	proxyHandler = pkgauth.WithJWTAuth(proxyHandler, jwtSec, true)
 
 	// muxerPrivate is for privileged rw operations
 	muxerPrivate := http.NewServeMux()
@@ -205,11 +203,15 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
-	muxerPublic.Handle("/count", pkgauth.WithJWTAuth(pkghandler.NewCountHandler(0), jwtSec, false))
+	muxerPublic.Handle("/count", pkghandler.NewCountHandler(0))
 
 	var publicHandler http.Handler = muxerPublic
 	sessionManager := pkgsession.NewInMemorySessionManager(hubCmd.SessionTTL)
 	jwtIssuer := pkgauth.NewSessionBasedJWTIssuer(sessionManager, jwtSec, hubCmd.JWTIssuerId, nil)
+
+	// the middlewares would be triggered in the reverse order of how they were chained,
+	// the last chained middleware would get call first.
+	publicHandler = pkgauth.WithJWTAuth(publicHandler, jwtSec, false)
 	publicHandler = pkgauth.WithJWTCookieIssue(publicHandler, jwtIssuer)
 	publicHandler = pkghandler.WithSlidingWindowRatelimit(publicHandler, hubCmd.PublicSlidingWindowRateLimitWindowLength, hubCmd.PublicSlidingWindowRateLimitNumRequests, pkgutils.GetRemoteAddr)
 

@@ -9,7 +9,6 @@ import (
 
 	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
 	pkgutils "example.com/rbmq-demo/pkg/utils"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 type IP2LocationProxyHandler struct {
@@ -18,19 +17,15 @@ type IP2LocationProxyHandler struct {
 }
 
 func (h *IP2LocationProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.Context().Value(pkgutils.CtxKeyJWTToken).(*jwt.Token)
-	if token == nil {
+
+	subjAny := r.Context().Value(pkgutils.CtxKeySubjectId)
+	if subjAny == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "unauthorized"})
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("unauthorized, can not get subject context")})
 		return
 	}
 
-	subj, err := token.Claims.GetSubject()
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("unauthorized, can not get subject from token claims: %v", err)})
-		return
-	}
+	subj := subjAny.(string)
 
 	log.Printf("IP2Location proxy handle request for %s, remote: %s, query ip: %s", subj, pkgutils.GetRemoteAddr(r), r.URL.Query().Get("ip"))
 

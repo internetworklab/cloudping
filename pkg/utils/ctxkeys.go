@@ -8,7 +8,6 @@ const (
 	CtxKeyStartedAt               = CtxKey("started_at")
 	CtxKeySharedRateLimitEnforcer = CtxKey("shared_rate_limit_enforcer")
 	CtxKeyJWTSecret               = CtxKey("jwt_secret")
-	CtxKeyJWTToken                = CtxKey("jwt_token")
 	CtxKeyJustIssuedJWTToken      = CtxKey("just_issued_jwt_token")
 	CtxKeySessionId               = CtxKey("session_id")
 	CtxKeySubjectId               = CtxKey("subject_id") // it's basically the globally unique user id
