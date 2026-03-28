@@ -97,10 +97,17 @@ func WithJWTAuth(handler http.Handler, secret []byte, rejectInvalid bool) http.H
 		}
 
 		ctx := r.Context()
-		ctx = context.WithValue(ctx, pkgutils.CtxKeyJWTToken, token)
-
-		if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && claims.ID != "" {
-			ctx = context.WithValue(ctx, pkgutils.CtxKeySessionId, claims.ID)
+		if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok {
+			if claims.ID != "" {
+				ctx = context.WithValue(ctx, pkgutils.CtxKeySessionId, claims.ID)
+			}
+			if claims.Subject != "" {
+				ctx = context.WithValue(ctx, pkgutils.CtxKeySubjectId, claims.Subject)
+			}
+		} else {
+			// if the user is authenticated, and the type of claims map isn't like what is expected,
+			// it's definitely something wrong with the code, so it's a unrecoverable error.
+			log.Panicf("the token claims map wasn't parsed as *jwt.RegisteredClaims! it's %T", token.Claims)
 		}
 
 		r = r.WithContext(ctx)
