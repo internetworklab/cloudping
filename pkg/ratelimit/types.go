@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 )
 
 type Keyable interface {
@@ -14,6 +15,8 @@ type RateLimiter interface {
 	// the input channel is closed, or when the context is done.
 	GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{})
 }
+
+var ErrUnsupportedFeature = errors.New("unsupported feature")
 
 type RateLimitPool interface {
 	// returns false when quota is exhausted, true otherwise
