@@ -14,7 +14,7 @@ func GetThrottledRequests[T any](ctx context.Context, requests []T, ratelimiter 
 			return
 		}
 
-		inC, outC, _ := ratelimiter.GetIO(ctx)
+		inC, outC := ratelimiter.GetIO(ctx)
 		go func(ctx context.Context) {
 			defer close(inC)
 			for _, req := range requests {

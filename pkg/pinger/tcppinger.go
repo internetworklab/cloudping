@@ -27,7 +27,7 @@ type TCPSYNPinger struct {
 }
 
 func throttleTicker(ctx context.Context, src <-chan time.Time, rateLimit pkgratelimit.RateLimiter) <-chan time.Time {
-	inC, outC, _ := rateLimit.GetIO(ctx)
+	inC, outC := rateLimit.GetIO(ctx)
 
 	tick := make(chan time.Time)
 

@@ -10,9 +10,9 @@ type Keyable interface {
 
 type RateLimiter interface {
 	// returns an input channel, an output channel, and an error channel
-	// the output channel and the error channel will be closed when 
+	// the output channel and the error channel will be closed when
 	// the input channel is closed, or when the context is done.
-	GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{}, chan error)
+	GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{})
 }
 
 type RateLimitPool interface {

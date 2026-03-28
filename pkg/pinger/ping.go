@@ -25,7 +25,7 @@ import (
 )
 
 func rateLimitIO(ctx context.Context, inC chan<- pkgraw.ICMPSendRequest, rl pkgratelimit.RateLimiter) chan<- pkgraw.ICMPSendRequest {
-	rlIn, rlOut, _ := rl.GetIO(ctx)
+	rlIn, rlOut := rl.GetIO(ctx)
 
 	go func() {
 		for item := range rlOut {

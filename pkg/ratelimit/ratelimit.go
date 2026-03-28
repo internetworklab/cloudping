@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 type KeyFunc func(ctx context.Context, object interface{}) (string, error)
@@ -16,14 +17,12 @@ type MemoryBasedRateLimiter struct {
 	GetKey KeyFunc
 }
 
-func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{}, chan error) {
+func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context) (chan<- interface{}, <-chan interface{}) {
 	inC := make(chan interface{})
 	outC := make(chan interface{})
-	outErrC := make(chan error, 1)
 
 	go func(ctx context.Context) {
 		defer close(outC)
-		defer close(outErrC)
 
 		for {
 			select {
@@ -36,28 +35,24 @@ func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context) (chan<- interface{}
 
 				key, err := rl.GetKey(ctx, val)
 				if err != nil {
-					outErrC <- fmt.Errorf("failed to get key: %w", err)
-					return
+					log.Fatal(fmt.Errorf("failed to get key: %w", err))
 				}
 
 				ok, err = rl.Pool.Consume(ctx, key)
 				if err != nil {
-					outErrC <- err
-					return
+					log.Fatal(fmt.Errorf("rate limiter pool error: %w", err))
 				}
 
 				if !ok {
 					for {
 						err := rl.Pool.WaitForRefresh(ctx)
 						if err != nil {
-							outErrC <- err
-							return
+							log.Fatal(fmt.Errorf("rate limiter pool error: %w", err))
 						}
 
 						ok, err = rl.Pool.Consume(ctx, key)
 						if err != nil {
-							outErrC <- err
-							return
+							log.Fatal(fmt.Errorf("rate limiter pool error: %w", err))
 						}
 
 						if ok {
@@ -71,5 +66,5 @@ func (rl *MemoryBasedRateLimiter) GetIO(ctx context.Context) (chan<- interface{}
 		}
 	}(ctx)
 
-	return inC, outC, outErrC
+	return inC, outC
 }
