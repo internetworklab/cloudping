@@ -3,8 +3,10 @@ package ratelimit
 import (
 	"context"
 	"fmt"
+	"log"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +17,14 @@ type SlidingWindowRateLimitEntry struct {
 // Returns nil when ratelimit exceeded,
 // returns a  non-nil and brand new `*SlidingWindowRateLimitEntry` with request timestamp inserted otherwise
 func (swRLEnt *SlidingWindowRateLimitEntry) TryAppend(windowLength time.Duration, numRequestsLimit int) *SlidingWindowRateLimitEntry {
+	if swRLEnt == nil {
+		ent := &SlidingWindowRateLimitEntry{
+			RequestTimestamps: make([]time.Time, 0),
+		}
+		ent.RequestTimestamps = append(ent.RequestTimestamps, time.Now())
+		return ent
+	}
+
 	since := time.Now().Add(-windowLength)
 	idx := slices.IndexFunc(swRLEnt.RequestTimestamps, func(tx time.Time) bool { return tx.Before(since) })
 	if idx == -1 {
@@ -43,7 +53,7 @@ func (swRLEnt *SlidingWindowRateLimitEntry) TryAppend(windowLength time.Duration
 // It doesn't support `WaitForRefresh` feature for now.
 type SlidingWindowRateLimitPool struct {
 	// this map is dictinary that maps rate limit key to request timestamps
-	requestTimestamps sync.Map
+	requestTimestamps *sync.Map
 
 	windowLength     time.Duration
 	numRequestsLimit int
@@ -58,8 +68,11 @@ func NewSlidingWindowRateLimitPool(windowLength time.Duration, numRequestsLimit 
 		return nil, fmt.Errorf("invalid num requests limit: %v", numRequestsLimit)
 	}
 
-	// todo
-	return nil, nil
+	return &SlidingWindowRateLimitPool{
+		windowLength:      windowLength,
+		numRequestsLimit:  numRequestsLimit,
+		requestTimestamps: &sync.Map{},
+	}, nil
 }
 
 // Block until refresh
@@ -68,9 +81,27 @@ func (swRL *SlidingWindowRateLimitPool) WaitForRefresh(ctx context.Context) erro
 	return ErrUnsupportedFeature
 }
 
+func (swRL *SlidingWindowRateLimitPool) tryInsertRequestTimestampToRLEntStore(key string, rlEntStorePtr *atomic.Pointer[SlidingWindowRateLimitEntry]) bool {
+	for {
+		originStore := rlEntStorePtr.Load()
+		newStore := originStore.TryAppend(swRL.windowLength, swRL.numRequestsLimit)
+		if newStore == nil {
+			// ratelimit exceeded
+			return false
+		}
+		if rlEntStorePtr.CompareAndSwap(originStore, newStore) {
+			return true
+		}
+		log.Printf("retrying to insert key %s into rl entry store", key)
+		continue
+	}
+}
+
 // returns false when quota is exhausted, true otherwise
 // the second return value is error, if any, such as, when timeout occurs
 func (swRL *SlidingWindowRateLimitPool) Consume(ctx context.Context, key string) (bool, error) {
-	// todo
-	return false, nil
+
+	perKeyStoreAny, _ := swRL.requestTimestamps.LoadOrStore(key, &atomic.Pointer[SlidingWindowRateLimitEntry]{})
+
+	return swRL.tryInsertRequestTimestampToRLEntStore(key, perKeyStoreAny.(*atomic.Pointer[SlidingWindowRateLimitEntry])), nil
 }
