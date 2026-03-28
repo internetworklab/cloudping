@@ -538,7 +538,7 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	var muxedHandler http.Handler = muxer
 	muxedHandler = pkgmyprom.WithCounterStoreHandler(muxedHandler, counterStore)
-	muxedHandler = pkgratelimit.WithRatelimiters(muxedHandler, sharedRateLimitPool, sharedRateLimitEnforcer)
+	muxedHandler = pkgratelimit.WithRatelimiters(muxedHandler, sharedRateLimitEnforcer)
 
 	if promListenAddr := agentCmd.MetricsListenAddress; promListenAddr != "" {
 		prometheusListener, err := net.Listen("tcp", promListenAddr)
