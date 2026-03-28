@@ -55,6 +55,9 @@ type HubCmd struct {
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
+
+	PublicSlidingWindowRateLimitWindowLength time.Duration `name:"public-sw-rl-window-len" help:"The window length for the public sliding window rate limiter" default:"15s"`
+	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"100"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -200,6 +203,9 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
 	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
 
+	var publicHandler http.Handler = muxerPublic
+	publicHandler = pkghandler.WithSlidingWindowRatelimit(publicHandler, hubCmd.PublicSlidingWindowRateLimitWindowLength, hubCmd.PublicSlidingWindowRateLimitNumRequests, pkgutils.GetRemoteAddr)
+
 	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {
 		privateListener, err := tls.Listen("tcp", listenAddress, privateServerSideTLSCfg)
 		if err != nil {
@@ -229,7 +235,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		go func() {
 			log.Printf("Listening and serving on %s for public operations", listenAddress)
 			publicServer := http.Server{
-				Handler: muxerPublic,
+				Handler: publicHandler,
 			}
 			err = publicServer.Serve(publicListener)
 			if err != nil {
