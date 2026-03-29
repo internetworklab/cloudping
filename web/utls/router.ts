@@ -4,9 +4,13 @@ export interface Route {
   prefixLength: number;
 }
 
-export interface NodeEntry {
+interface NodeEntryNextHeader {
   segmentLength: number;
   seg2SubTrees: Record<string, NodeEntry | undefined>;
+}
+
+interface NodeEntry {
+  nextHeader?: NodeEntryNextHeader;
   routes?: Route[];
 }
 
@@ -18,6 +22,10 @@ export enum IPAddressFamily {
 export interface IPAddrLike {
   toMask(prefixLen: number): IPAddrLike;
   getFamily(): IPAddressFamily;
+
+  // Note: IPv4 addr must return a Uint8Array of byteLength 4,
+  // while an IPv6 addr must return a Uint8Array of byteLength 16.
+  getBytes(): Uint8Array;
   getMaskedValue(bitOffset: number, nbits: number): bigint;
 }
 
@@ -42,21 +50,23 @@ function doLookup(
     routes: tableEntry.routes,
     matchedPrefixLen: matchedPrefixLen,
   };
-  if (matchedPrefixLen === maxBits) {
+  const nextHeader = tableEntry.nextHeader;
+  if (matchedPrefixLen === maxBits || !nextHeader) {
     return currentDefault;
   }
+
   if (
-    tableEntry.segmentLength <= 0 ||
-    tableEntry.segmentLength + matchedPrefixLen > maxBits
+    nextHeader.segmentLength <= 0 ||
+    nextHeader.segmentLength + matchedPrefixLen > maxBits
   ) {
     throw new Error("Invalid segment length");
   }
 
   const segment = ipAddress.getMaskedValue(
     matchedPrefixLen,
-    tableEntry.segmentLength,
+    nextHeader.segmentLength,
   );
-  const nextTb = tableEntry.seg2SubTrees[segment.toString()];
+  const nextTb = nextHeader.seg2SubTrees[segment.toString()];
   if (!nextTb) {
     return currentDefault;
   }
@@ -64,7 +74,7 @@ function doLookup(
   const lookupResult = doLookup(
     nextTb,
     ipAddress,
-    matchedPrefixLen + tableEntry.segmentLength,
+    matchedPrefixLen + nextHeader.segmentLength,
     maxBits,
   );
 
@@ -93,4 +103,73 @@ export function lookup(
     prefixLength: matchedPrefixLen,
     routes: routes,
   };
+}
+
+function getTrieTreeSegmentLengths(routes: Route[]): number[] {
+  if (routes.length === 0) {
+    return [];
+  }
+
+  let segmentLengths: number[] = routes
+    .map((r) => r.prefixLength)
+    .sort((a, b) => a - b);
+
+  for (let i = 1; i < segmentLengths.length; i++) {
+    segmentLengths[i] = segmentLengths[i] - segmentLengths[i - 1];
+  }
+  segmentLengths = segmentLengths.filter((seg) => seg > 0);
+  // the trie tree wouldn't have a 'zero-length' segment.
+
+  return segmentLengths;
+}
+
+// a tableRoot of undefined means the table is empty
+function doInsertRoute(
+  tableRoot: NodeEntry | undefined,
+  route: Route,
+  segments: number[],
+  levelIndex: number,
+  eatenPrefixLen: number,
+): NodeEntry {
+  tableRoot = {
+    ...(tableRoot ?? {}),
+  } as NodeEntry;
+
+  const segment =
+    levelIndex < segments.length ? segments[levelIndex] : undefined;
+  if (segment === undefined || eatenPrefixLen + segment > route.prefixLength) {
+    tableRoot.routes = [...(tableRoot.routes ?? []), route];
+    return tableRoot;
+  }
+
+  const seg = route.networkAddr
+    .getMaskedValue(eatenPrefixLen, segment)
+    .toString();
+  tableRoot.nextHeader = {
+    ...(tableRoot.nextHeader ?? { seg2SubTrees: {}, segmentLength: segment }),
+    segmentLength: segment,
+    seg2SubTrees: {
+      ...(tableRoot.nextHeader?.seg2SubTrees ?? {}),
+      [seg]: doInsertRoute(
+        tableRoot.nextHeader?.seg2SubTrees?.[seg],
+        route,
+        segments,
+        levelIndex + 1,
+        eatenPrefixLen + segment,
+      ),
+    },
+  };
+  return tableRoot;
+}
+
+export function buildTable(routes: Route[]): NodeEntry | undefined {
+  if (routes.length === 0) {
+    return undefined;
+  }
+  let table: NodeEntry | undefined = undefined;
+  const segments = getTrieTreeSegmentLengths(routes);
+  for (const route of routes) {
+    table = doInsertRoute(table, route, segments, 0, 0);
+  }
+  return table;
 }
