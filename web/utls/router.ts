@@ -21,22 +21,34 @@ export interface IPAddrLike {
   getMaskedValue(bitOffset: number, nbits: number): bigint;
 }
 
-function doLookup4(
+function getMaxBits(ipAddr: IPAddrLike) {
+  const family = ipAddr.getFamily();
+  if (family === IPAddressFamily.IPv4) {
+    return 32;
+  } else if (family === IPAddressFamily.IPv6) {
+    return 128;
+  } else {
+    throw new Error("Invalid IP address family");
+  }
+}
+
+function doLookup(
   tableEntry: NodeEntry,
   ipAddress: IPAddrLike,
   matchedPrefixLen: number,
+  maxBits: number,
 ): { routes?: Route[]; matchedPrefixLen: number } {
-  if (matchedPrefixLen > 32) {
-    throw new Error("Invalid prefix length");
-  }
   const currentDefault = {
     routes: tableEntry.routes,
     matchedPrefixLen: matchedPrefixLen,
   };
-  if (matchedPrefixLen === 32) {
+  if (matchedPrefixLen === maxBits) {
     return currentDefault;
   }
-  if (tableEntry.segmentLength <= 0) {
+  if (
+    tableEntry.segmentLength <= 0 ||
+    tableEntry.segmentLength + matchedPrefixLen > maxBits
+  ) {
     throw new Error("Invalid segment length");
   }
 
@@ -49,10 +61,11 @@ function doLookup4(
     return currentDefault;
   }
 
-  const lookupResult = doLookup4(
+  const lookupResult = doLookup(
     nextTb,
     ipAddress,
     matchedPrefixLen + tableEntry.segmentLength,
+    maxBits,
   );
 
   return lookupResult.routes && lookupResult.routes.length > 0
@@ -60,7 +73,7 @@ function doLookup4(
     : currentDefault;
 }
 
-export function lookup4(
+export function lookup(
   table: NodeEntry,
   ipAddress: IPAddrLike,
 ): {
@@ -68,7 +81,13 @@ export function lookup4(
   networkAddress: IPAddrLike;
   prefixLength: number;
 } {
-  const { matchedPrefixLen, routes } = doLookup4(table, ipAddress, 0);
+  const { matchedPrefixLen, routes } = doLookup(
+    table,
+    ipAddress,
+    0,
+    getMaxBits(ipAddress),
+  );
+
   return {
     networkAddress: ipAddress.toMask(matchedPrefixLen),
     prefixLength: matchedPrefixLen,
