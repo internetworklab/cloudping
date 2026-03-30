@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { isValidCIDR, parseCIDR } from "ipaddr.js";
 import { IPAddr } from "@/utls/ipaddr";
-import { IPAddressFamily, Route, buildTable, lookup } from "@/utls/router";
+import { IPAddressFamily, Route, buildTable } from "@/utls/router";
 import {
   NetworkDescriptor,
   DomainDescriptor,
@@ -47,9 +47,9 @@ export function useAddressClassify(input: string) {
   });
 
   const lookupResult =
-    parsed && data?.table ? lookup(data.table, parsed) : undefined;
+    parsed && data?.table ? data.table.lookup(parsed) : undefined;
   const matchedRouteIds = new Set<string>(
-    lookupResult?.routes?.map((r) => (r.value as NetworkDescriptor).id) ?? [],
+    lookupResult?.map((r) => (r.value as NetworkDescriptor).id) ?? [],
   );
 
   const matchedDomainIds = new Set<string>(

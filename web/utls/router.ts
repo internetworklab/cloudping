@@ -5,6 +5,10 @@ export interface Route {
   value?: unknown;
 }
 
+export interface RouteTableLike {
+  lookup(ipAddress: IPAddrLike): Route[];
+}
+
 interface NodeEntryNextHeader {
   segmentLength: number;
   seg2SubTrees: Record<string, NodeEntry | undefined>;
@@ -84,28 +88,6 @@ function doLookup(
     : currentDefault;
 }
 
-export function lookup(
-  table: NodeEntry,
-  ipAddress: IPAddrLike,
-): {
-  routes?: Route[];
-  networkAddress: IPAddrLike;
-  prefixLength: number;
-} {
-  const { matchedPrefixLen, routes } = doLookup(
-    table,
-    ipAddress,
-    0,
-    getMaxBits(ipAddress),
-  );
-
-  return {
-    networkAddress: ipAddress.toMask(matchedPrefixLen),
-    prefixLength: matchedPrefixLen,
-    routes: routes,
-  };
-}
-
 function getTrieTreeSegmentLengths(routes: Route[]): number[] {
   if (routes.length === 0) {
     return [];
@@ -163,14 +145,55 @@ function doInsertRoute(
   return tableRoot;
 }
 
-export function buildTable(routes: Route[]): NodeEntry | undefined {
-  if (routes.length === 0) {
-    return undefined;
+class RouteTableWrapper {
+  constructor(
+    private table4: NodeEntry | undefined,
+    private table6: NodeEntry | undefined,
+  ) {}
+
+  lookup(ipAddress: IPAddrLike): Route[] {
+    let table: NodeEntry | undefined;
+    const family = ipAddress.getFamily();
+    if (family === IPAddressFamily.IPv4) {
+      table = this.table4;
+    } else if (family === IPAddressFamily.IPv6) {
+      table = this.table6;
+    } else {
+      throw new Error(`Unsupported IP address family: ${family}`);
+    }
+    if (!table) {
+      return [];
+    }
+
+    const { routes } = doLookup(table, ipAddress, 0, getMaxBits(ipAddress));
+    return routes ?? [];
   }
-  let table: NodeEntry | undefined = undefined;
-  const segments = getTrieTreeSegmentLengths(routes);
-  for (const route of routes) {
-    table = doInsertRoute(table, route, segments, 0, 0);
+}
+
+export function buildTable(routes: Route[]): RouteTableLike {
+  let table4: NodeEntry | undefined = undefined;
+  let table6: NodeEntry | undefined = undefined;
+
+  const routes4 = routes.filter(
+    (r) => r.networkAddr.getFamily() === IPAddressFamily.IPv4,
+  );
+  const routes6 = routes.filter(
+    (r) => r.networkAddr.getFamily() === IPAddressFamily.IPv6,
+  );
+
+  if (routes4) {
+    const segments = getTrieTreeSegmentLengths(routes4);
+    for (const route of routes4) {
+      table4 = doInsertRoute(table4, route, segments, 0, 0);
+    }
   }
-  return table;
+
+  if (routes6) {
+    const segments = getTrieTreeSegmentLengths(routes6);
+    for (const route of routes6) {
+      table6 = doInsertRoute(table6, route, segments, 0, 0);
+    }
+  }
+
+  return new RouteTableWrapper(table4, table6);
 }
