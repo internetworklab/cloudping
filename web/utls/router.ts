@@ -2,6 +2,7 @@ export interface Route {
   // e.g.: 2001:db8:1234::/48 -> networkAddr=2001:db8:1234::, prefixLength=48
   networkAddr: IPAddrLike;
   prefixLength: number;
+  value?: unknown;
 }
 
 interface NodeEntryNextHeader {
