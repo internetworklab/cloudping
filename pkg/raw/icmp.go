@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"golang.org/x/net/icmp"

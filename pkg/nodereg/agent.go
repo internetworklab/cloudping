@@ -11,8 +11,8 @@ import (
 	"slices"
 	"time"
 
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
-	pkgframing "example.com/rbmq-demo/pkg/framing"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
+	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	quicGo "github.com/quic-go/quic-go"

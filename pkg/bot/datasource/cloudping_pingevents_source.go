@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	pkgbot "example.com/rbmq-demo/pkg/bot"
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
-	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
-	pkgpinger "example.com/rbmq-demo/pkg/pinger"
-	pkgraw "example.com/rbmq-demo/pkg/raw"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
+	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
+	pkgraw "github.com/internetworklab/cloudping/pkg/raw"
 )
 
 // CloudPingEventsProvider is an implementation

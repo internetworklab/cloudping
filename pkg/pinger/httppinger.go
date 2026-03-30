@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	pkghttpprobe "example.com/rbmq-demo/pkg/httpprobe"
-	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
+	pkghttpprobe "github.com/internetworklab/cloudping/pkg/httpprobe"
+	pkgratelimit "github.com/internetworklab/cloudping/pkg/ratelimit"
 )
 
 type HTTPPinger struct {

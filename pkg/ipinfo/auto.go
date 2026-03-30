@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pkgrouting "example.com/rbmq-demo/pkg/routing"
+	pkgrouting "github.com/internetworklab/cloudping/pkg/routing"
 )
 
 type AutoIPInfoDispatcher struct {

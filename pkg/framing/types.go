@@ -1,7 +1,7 @@
 package framing
 
 import (
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 )
 
 type MessagePayload struct {

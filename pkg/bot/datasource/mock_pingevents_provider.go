@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	pkgbot "example.com/rbmq-demo/pkg/bot"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 )
 
 // MockPingEventsProvider is an implementation

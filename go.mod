@@ -1,4 +1,4 @@
-module example.com/rbmq-demo
+module github.com/internetworklab/cloudping
 
 go 1.25.0
 

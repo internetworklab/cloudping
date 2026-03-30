@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	pkgbot "example.com/rbmq-demo/pkg/bot"
-	pkgbotdata "example.com/rbmq-demo/pkg/bot/datasource"
-	pkgbothandlers "example.com/rbmq-demo/pkg/bot/handlers"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgbotdata "github.com/internetworklab/cloudping/pkg/bot/datasource"
+	pkgbothandlers "github.com/internetworklab/cloudping/pkg/bot/handlers"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )

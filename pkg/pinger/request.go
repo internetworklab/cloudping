@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
-	pkghttpprobe "example.com/rbmq-demo/pkg/httpprobe"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgdnsprobe "github.com/internetworklab/cloudping/pkg/dnsprobe"
+	pkghttpprobe "github.com/internetworklab/cloudping/pkg/httpprobe"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type L4PacketTypeOption string

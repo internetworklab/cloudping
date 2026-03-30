@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
-	pkgnodereg "example.com/rbmq-demo/pkg/nodereg"
-	pkgpinger "example.com/rbmq-demo/pkg/pinger"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
+	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	quicHttp3 "github.com/quic-go/quic-go/http3"
 )
 

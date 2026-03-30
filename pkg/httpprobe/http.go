@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	quicGo "github.com/quic-go/quic-go"
 	quicHTTP3 "github.com/quic-go/quic-go/http3"
 )

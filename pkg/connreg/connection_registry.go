@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	pkgsafemap "example.com/rbmq-demo/pkg/safemap"
+	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	"github.com/golang-jwt/jwt/v5"
 	quicGo "github.com/quic-go/quic-go"
 )

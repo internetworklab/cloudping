@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"example.com/rbmq-demo/pkg/ratelimit"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"github.com/internetworklab/cloudping/pkg/ratelimit"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 // slidingWindowRateLimiterMiddleware wraps an http.Handler with per-key rate limiting
