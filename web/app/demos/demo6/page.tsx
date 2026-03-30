@@ -1,11 +1,15 @@
 "use client";
 
 import { Box, TextField } from "@mui/material";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { IPAddr } from "@/utls/ipaddr";
 import { IPAddressFamily, Route, buildTable, lookup } from "@/utls/router";
 import { isValidCIDR, parseCIDR } from "ipaddr.js";
-import { NetworkDescriptor } from "@/apis/nwdesc";
+import {
+  NetworkDescriptor,
+  DomainDescriptor,
+  domainDescriptorLookup,
+} from "@/apis/nwdesc";
 import { useQuery } from "@tanstack/react-query";
 
 export default function Page() {
@@ -38,10 +42,25 @@ export default function Page() {
     },
   });
 
+  const { data: domainData, isLoading: domainIsLoading } = useQuery({
+    queryKey: ["domain-descriptors"],
+    queryFn: async () => {
+      const res = await fetch("/domaindescriptor.json");
+      const descriptors: DomainDescriptor[] = await res.json();
+      return { descriptors };
+    },
+  });
+
   const lookupResult =
     parsed && data?.table ? lookup(data.table, parsed) : undefined;
   const matchedIds = new Set<string>(
     lookupResult?.routes?.map((r) => (r.value as NetworkDescriptor).id) ?? [],
+  );
+
+  const matchedDomainIds = new Set<string>(
+    !parsed && input && domainData?.descriptors
+      ? domainDescriptorLookup(domainData.descriptors, input).map((d) => d.id)
+      : [],
   );
 
   return (
@@ -79,6 +98,33 @@ export default function Page() {
               >
                 {matched ? "▸ " : ""}
                 {desc.prefix} — {desc.name}
+                {desc.description && `: ${desc.description}`}
+              </Box>
+            );
+          })
+        )}
+      </Box>
+      <Box mt={2}>
+        <Box fontWeight="bold">
+          Loaded Domain Descriptors ({domainData?.descriptors.length ?? 0}):
+        </Box>
+        {domainIsLoading ? (
+          <Box ml={1}>Loading...</Box>
+        ) : (
+          (domainData?.descriptors ?? []).map((desc, i) => {
+            const matched = matchedDomainIds.has(desc.id);
+            return (
+              <Box
+                key={i}
+                sx={{
+                  ml: 1,
+                  fontWeight: matched ? "bold" : "normal",
+                  outline: matched ? "2px solid" : "none",
+                  outlineOffset: "2px",
+                }}
+              >
+                {matched ? "▸ " : ""}
+                {desc.zone} — {desc.name}
                 {desc.description && `: ${desc.description}`}
               </Box>
             );

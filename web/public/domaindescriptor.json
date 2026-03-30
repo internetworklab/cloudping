@@ -1,0 +1,14 @@
+[
+  {
+    "id": "dn42",
+    "zone": "dn42.",
+    "name": "DN42",
+    "description": "The DN42 network DNS zone"
+  },
+  {
+    "id": "neo",
+    "zone": "neo.",
+    "name": "NeoNetwork",
+    "description": "The NeoNetwork DNS zone"
+  }
+]
