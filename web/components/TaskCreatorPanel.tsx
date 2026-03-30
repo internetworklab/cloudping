@@ -37,13 +37,14 @@ import {
   SetStateAction,
   useTransition,
 } from "react";
-import { testIP } from "@/components/testip";
 import { TaskConfirmDialog } from "@/components/taskconfirm";
 import {
   HTTPProbeTaskPanel,
   HTTPProbeTransportSelect,
 } from "./HTTPProbeTransportSelect";
 import { defaultResolver } from "@/apis/resolver";
+import { useAddressClassify } from "@/apis/useAddressClassify";
+import { NetworkDescriptor } from "@/apis/nwdesc";
 
 function TaskTypeSelector(props: {
   pendingTask: PendingTask;
@@ -96,9 +97,19 @@ function DefaultTaskTargetInput(props: {
     setPendingTask((prev) => ({ ...prev, targetsInput: v }));
   };
   const taskType = pendingTask.type;
-  const targetAttributes = testIP(targetsInput);
-  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
-  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
+  const { domainDescriptors, routes, matchedRouteIds, matchedDomainIds } =
+    useAddressClassify(targetsInput);
+
+  const domainMatch = domainDescriptors.find((d) => matchedDomainIds.has(d.id));
+  const routeMatch = routes.find(
+    (r) => r.value && matchedRouteIds.has((r.value as NetworkDescriptor).id),
+  );
+
+  const specialTargetLabel = domainMatch
+    ? domainMatch.name
+    : routeMatch
+      ? (routeMatch.value as NetworkDescriptor).name
+      : "";
 
   return (
     <TextField
@@ -114,11 +125,9 @@ function DefaultTaskTargetInput(props: {
       label={
         taskType === "ping"
           ? "Targets"
-          : isDN42
-            ? "DN42 Target"
-            : isNeo
-              ? "NeoNetwork Target"
-              : "Target"
+          : specialTargetLabel
+            ? `${specialTargetLabel} Target`
+            : "Target"
       }
       value={targetsInput}
       onChange={(e) => setTargetsInput(e.target.value)}

@@ -70,9 +70,15 @@ export type TracerouteReportISP = {
 
   // usually in the format like 'AS12345'
   asn: string;
+
+  // take precedence, display asn and network all together
+  network?: string;
 };
 
 function renderISP(isp?: TracerouteReportISP): string {
+  if (isp?.network) {
+    return isp.network;
+  }
   if (!isp) {
     return "";
   }
@@ -355,7 +361,7 @@ function renderPingReport(report: PingReport): {
 
 function exportCanvasBitmap(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
-  fname: string
+  fname: string,
 ): Promise<void> {
   const canvasEle = canvasRef.current;
   if (!canvasEle) {
@@ -421,7 +427,7 @@ export function TracerouteReportPreviewDialog(props: {
                   const fname = `trace-${new Date(date).toISOString()}.png`;
                   setExporting(true);
                   exportCanvasBitmap(canvasRef, fname).finally(() =>
-                    setExporting(false)
+                    setExporting(false),
                   );
                 }
               }}
@@ -482,7 +488,7 @@ export function PingReportPreviewDialog(props: {
                   const fname = `ping-${new Date(date).toISOString()}.png`;
                   setExporting(true);
                   exportCanvasBitmap(canvasRef, fname).finally(() =>
-                    setExporting(false)
+                    setExporting(false),
                   );
                 }
               }}

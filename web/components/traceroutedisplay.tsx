@@ -53,7 +53,6 @@ import {
 import MapIcon from "@mui/icons-material/Map";
 import { useQuery } from "@tanstack/react-query";
 import { getNodeGroups } from "@/apis/utils";
-import { testIP } from "./testip";
 import {
   TracerouteReport,
   TracerouteReportHop,
@@ -515,9 +514,6 @@ function DisplayCurrentNode(props: {
   if (!currentNode) {
     return <Fragment></Fragment>;
   }
-  const targetAttributes = testIP(target);
-  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
-  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
 
   const city: string | undefined = currentNode?.attributes?.[NodeAttrCityName];
   const countryAlpha2: string | undefined =
@@ -529,34 +525,29 @@ function DisplayCurrentNode(props: {
   const dn42ISPName: string | undefined =
     currentNode?.attributes?.[NodeAttrDN42ISP];
 
-  if (isNeo || isDN42) {
-    return (
-      <Box sx={{ padding: 2 }}>
-        <Typography variant="body2">
-          From:{" "}
-          {[
-            ["Node", currentNode.node_name?.toUpperCase()],
-            [dn42ISPASN, dn42ISPName],
-            [city, countryAlpha2],
-          ]
-            .map((word) => word.filter((s) => !!s).join(" "))
-            .join(", ")}
-        </Typography>
-        <Typography variant="body2">To: {target}</Typography>
-      </Box>
+  const nodeDisplayName = currentNode.node_name?.toUpperCase();
+
+  const nodeInfos: string[][] = [];
+  if (nodeDisplayName) {
+    nodeInfos.push(["Node", nodeDisplayName]);
+  }
+  if (ispASN) {
+    nodeInfos.push(ispName ? [ispASN, ispName] : [ispASN]);
+  }
+  if (countryAlpha2) {
+    nodeInfos.push(city ? [city, countryAlpha2] : [countryAlpha2]);
+  }
+  if (dn42ISPASN) {
+    nodeInfos.push(
+      dn42ISPName ? ["DN42", dn42ISPASN, dn42ISPName] : ["DN42", dn42ISPASN],
     );
   }
+
   return (
     <Box sx={{ padding: 2 }}>
       <Typography variant="body2">
         From:{" "}
-        {[
-          ["Node", currentNode.node_name?.toUpperCase()],
-          [ispASN, ispName],
-          [city, countryAlpha2],
-        ]
-          .map((word) => word.filter((s) => !!s).join(" "))
-          .join(", ")}
+        {nodeInfos.map((word) => word.filter((s) => !!s).join(" ")).join(", ")}
       </Typography>
       <Typography variant="body2">To: {target}</Typography>
     </Box>
@@ -638,22 +629,17 @@ function buildTracerouteReport(
   mode: TracerouteReportMode,
 ): TracerouteReport {
   const now = new Date();
-  const targetAttributes = testIP(target);
-  const isNeo = targetAttributes.isNeoIP || targetAttributes.isNeoDomain;
-  const isDN42 = targetAttributes.isDN42IP || targetAttributes.isDN42Domain;
-  const dn42ISP = from?.attributes?.[NodeAttrDN42ISP];
-  const dn42ASN = from?.attributes?.[NodeAttrDN42ASN];
-  const isp = from?.attributes?.[NodeAttrISP];
-  const asn = from?.attributes?.[NodeAttrASN];
 
-  let usedISP = "";
-  let usedASN = "";
-  if (isNeo || isDN42) {
-    usedISP = dn42ISP || "unknown";
-    usedASN = dn42ASN || "unknown";
-  } else {
-    usedISP = isp || "unknown";
-    usedASN = asn || "unknown";
+  const isp = from?.attributes?.[NodeAttrISP];
+  let asn = from?.attributes?.[NodeAttrASN];
+  if (asn && isp) {
+    asn = asn + " " + isp;
+  }
+
+  let dn42ASN = from?.attributes?.[NodeAttrDN42ASN];
+  const dn42ISP = from?.attributes?.[NodeAttrDN42ISP];
+  if (dn42ASN || dn42ISP) {
+    dn42ASN = dn42ASN + " " + dn42ISP;
   }
 
   const report: TracerouteReport = {
@@ -662,8 +648,9 @@ function buildTracerouteReport(
       {
         nodeName: from.node_name?.toUpperCase() || "unknown",
         isp: {
-          ispName: usedISP,
-          asn: usedASN,
+          ispName: "",
+          asn: "",
+          network: [asn, dn42ASN].filter((s) => !!s).join(" | "),
         },
         loc: {
           city: from?.attributes?.[NodeAttrCityName] || "unknown",
