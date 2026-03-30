@@ -1,0 +1,38 @@
+[
+  {
+    "id": "rfc1918-192.168",
+    "prefix": "192.168.0.0/16",
+    "name": "RFC1918",
+    "description": "RFC1918 192.168/16"
+  },
+  {
+    "id": "rfc1918-172.16",
+    "prefix": "172.16.0.0/12",
+    "name": "RFC1918",
+    "description": "RFC1918 172.16/12"
+  },
+  {
+    "id": "dn42-172.20",
+    "prefix": "172.20.0.0/14",
+    "name": "DN42",
+    "description": "An experimental interconnected BGP network"
+  },
+  {
+    "id": "neo-10.127",
+    "prefix": "10.127.0.0/16",
+    "name": "NeoNetwork",
+    "description": "Yet another BGP network interconnected with DN42"
+  },
+  {
+    "id": "ipv6-ula-fd00",
+    "prefix": "fd00::/8",
+    "name": "IPv6-ULA",
+    "description": "IPv6 ULA as defined in RFC4193"
+  },
+  {
+    "id": "ipv6-ll-fe80",
+    "prefix": "fe80::/64",
+    "name": "IPv6-LL",
+    "description": "IPv6 link-local addresses for link scope communication"
+  }
+]
