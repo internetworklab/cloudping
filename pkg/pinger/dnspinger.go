@@ -6,9 +6,9 @@ import (
 	"errors"
 	"sync"
 
-	pkgdnsprobe "example.com/rbmq-demo/pkg/dnsprobe"
-	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgdnsprobe "github.com/internetworklab/cloudping/pkg/dnsprobe"
+	pkgratelimit "github.com/internetworklab/cloudping/pkg/ratelimit"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type DNSPinger struct {

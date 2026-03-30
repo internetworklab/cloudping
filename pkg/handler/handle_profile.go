@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"example.com/rbmq-demo/pkg/utils"
+	"github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type ProfileHandler struct{}

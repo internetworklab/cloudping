@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 )
 
 // Bot text display models

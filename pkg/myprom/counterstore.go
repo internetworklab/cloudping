@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )

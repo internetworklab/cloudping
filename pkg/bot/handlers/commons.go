@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	pkgbot "example.com/rbmq-demo/pkg/bot"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/go-telegram/bot/models"
 )
 

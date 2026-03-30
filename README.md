@@ -191,10 +191,3 @@ Thanks the following GeoIP datasources, in no particular order:
 
 - [dn42-geoip](https://github.com/Xe-iu/dn42-geoip)
 - [IP2Location](https://www.ip2location.io/)
-
-## Todo List
-
-- Key Revocation List
-- Web admin page
-- Issue fixes
-- More probe types: SMTP, IMAP, SSH, etc.

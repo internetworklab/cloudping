@@ -5,5 +5,3 @@ node_modules/*
 .git
 .git/
 .git/*
-
-.env

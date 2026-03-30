@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 )
 
 type ICMPSendRequest struct {

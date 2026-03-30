@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type CountHandler struct {

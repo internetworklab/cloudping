@@ -8,9 +8,9 @@ import (
 	"log"
 	"time"
 
-	pkgauth "example.com/rbmq-demo/pkg/auth"
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
-	pkgframing "example.com/rbmq-demo/pkg/framing"
+	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
+	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	quicGo "github.com/quic-go/quic-go"

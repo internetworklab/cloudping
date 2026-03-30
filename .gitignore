@@ -14,3 +14,4 @@ pnpm-lock.yaml
 .env
 .env.inside
 .version.txt
+.DS_Store

@@ -7,7 +7,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	pkgctx "example.com/rbmq-demo/pkg/ctx"
+	pkgctx "github.com/internetworklab/cloudping/pkg/ctx"
 	"github.com/google/uuid"
 )
 

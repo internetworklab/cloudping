@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
-	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
-	pkgtcping "example.com/rbmq-demo/pkg/tcping"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgratelimit "github.com/internetworklab/cloudping/pkg/ratelimit"
+	pkgtcping "github.com/internetworklab/cloudping/pkg/tcping"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type TCPSYNPinger struct {

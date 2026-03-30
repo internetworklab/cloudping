@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	pkgconnreg "example.com/rbmq-demo/pkg/connreg"
+	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 )
 
 type ConnsHandler struct {

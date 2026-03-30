@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 func NewVersionHandler(sharedCtx *pkgutils.GlobalSharedContext) http.Handler {

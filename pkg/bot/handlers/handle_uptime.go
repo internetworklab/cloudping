@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )

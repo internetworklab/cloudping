@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"example.com/rbmq-demo/pkg/session"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	"github.com/internetworklab/cloudping/pkg/session"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
 )
 

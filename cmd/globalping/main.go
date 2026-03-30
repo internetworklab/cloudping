@@ -7,8 +7,8 @@ import (
 
 	_ "embed"
 
-	pkgcli "example.com/rbmq-demo/pkg/cli"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgcli "github.com/internetworklab/cloudping/pkg/cli"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/alecthomas/kong"
 	"github.com/joho/godotenv"
 )

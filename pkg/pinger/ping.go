@@ -12,14 +12,14 @@ import (
 
 	cryptoRand "crypto/rand"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
-	pkgratelimit "example.com/rbmq-demo/pkg/ratelimit"
-	pkgraw "example.com/rbmq-demo/pkg/raw"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgratelimit "github.com/internetworklab/cloudping/pkg/ratelimit"
+	pkgraw "github.com/internetworklab/cloudping/pkg/raw"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	pkgmyprom "example.com/rbmq-demo/pkg/myprom"
+	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
 	"github.com/google/gopacket/layers"
 	"github.com/prometheus/client_golang/prometheus"
 )

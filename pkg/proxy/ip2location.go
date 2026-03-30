@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
-	pkgipinfo "example.com/rbmq-demo/pkg/ipinfo"
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type IP2LocationProxyHandler struct {

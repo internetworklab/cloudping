@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	pkgutils "example.com/rbmq-demo/pkg/utils"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 func WithRatelimiters(originalHandler http.Handler, enforcer RateLimiter) http.Handler {
