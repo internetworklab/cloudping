@@ -40,6 +40,8 @@ Now the binary `bin/globalping` can serve as an agent or a hub depending on the 
 
 ## Debugging
 
+For how to generate self-signed certs (and CA) for testing, see [Notes.md](./Notes.md).
+
 After the binary is built, to see how it goes, try launch a testing purpose localhost agent:
 
 Open a terminal window, launch the testing hub in foreground:
@@ -88,12 +90,15 @@ Parameters are encoded as URL search params. For available parameters and their 
 - [pkg/pinger/ping.go](pkg/pinger/ping.go) - Parameter effects
 
 **Example (curl):**
-```shell
-# Agent - single target
-curl --url-query targets=1.1.1.1 --url-query count=3 localhost:8084/simpleping
 
-# Hub - multiple targets
-curl --url-query targets=1.1.1.1,8.8.8.8 localhost:8080/ping
+Bring up the testing hub and agent(s) as described in the [Debugging](##Debugging) section
+
+```shell
+# Agent
+curl --url-query targets=1.1.1.1 --url-query count=3 localhost:8085/simpleping
+
+# Hub
+curl --url-query from=us-lax1 --url-query targets=1.1.1.1 --url-query count=3 localhost:8084/ping
 ```
 
 > Note: `--url-query` is curl syntax sugar for encoding URL search params.
