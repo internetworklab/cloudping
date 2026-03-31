@@ -1,0 +1,101 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: internetworklab/cloudping
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            suffix: amd64
+          - runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version info
+        run: |
+          {
+            echo "HEAD: $(git rev-parse HEAD)"
+            echo "tags: $(git --no-pager tag --points-at HEAD || true)"
+            echo "branch: ${{ github.ref_name }}"
+            echo "buildDate: $(date -u --iso-8601=seconds)"
+          } > .version.txt
+          tee cmd/globalping/.version.txt < .version.txt
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          docker build --tag "${IMAGE}:${{ matrix.suffix }}" .
+          docker push "${IMAGE}:${{ matrix.suffix }}"
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          docker manifest create "${IMAGE}:latest" \
+            "${IMAGE}:amd64" \
+            "${IMAGE}:arm64"
+
+          docker manifest annotate "${IMAGE}:latest" "${IMAGE}:amd64" --arch amd64
+          docker manifest annotate "${IMAGE}:latest" "${IMAGE}:arm64" --arch arm64
+
+          docker manifest push "${IMAGE}:latest"
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            docker manifest create "${IMAGE}:${{ github.ref_name }}" \
+              "${IMAGE}:amd64" \
+              "${IMAGE}:arm64"
+
+            docker manifest annotate "${IMAGE}:${{ github.ref_name }}" "${IMAGE}:amd64" --arch amd64
+            docker manifest annotate "${IMAGE}:${{ github.ref_name }}" "${IMAGE}:arm64" --arch arm64
+
+            docker manifest push "${IMAGE}:${{ github.ref_name }}"
+          fi
+
+      - name: Inspect image
+        run: |
+          docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

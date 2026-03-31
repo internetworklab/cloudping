@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Note: after this is updated,
+# .github/workflows/build.yaml should be updated as well
+
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
 cd $script_dir
