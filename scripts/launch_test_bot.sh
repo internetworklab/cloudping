@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Note: our telegram bot implementation currently only
+# supports webhook, so you need to have a public domain before
+# you can test it.
+#
+# In our example, I have configured a cloudflared tunnel that
+# publish localhost:8084 to https://test-bot.ping2.sh .
+
 go run ./cmd/globalping bot \
  --listen-address=":8084" \
  --public-endpoint="https://test-bot.ping2.sh" \

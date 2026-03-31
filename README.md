@@ -29,9 +29,9 @@ Telegram Bot service is available via [@as4242421771_bot](http://t.me/as42424217
 
 Make sure golang of newer version is already installed, if not, go visit [go.dev/doc/install](https://go.dev/doc/install) to download and un-tar a tarball, and make sure that $GOPATH/bin, and /usr/local/go/bin are in the $PATH.
 
-Recursively clone the repo, cd into the project root, then
-
 ```shell
+git clone https://github.com/internetworklab/cloudping
+cd cloudping
 ./buildversion.sh # to generate version metadata dependence
 go build -o bin/globalping ./cmd/globalping
 ```
@@ -42,8 +42,16 @@ Now the binary `bin/globalping` can serve as an agent or a hub depending on the 
 
 After the binary is built, to see how it goes, try launch a testing purpose localhost agent:
 
+Open a terminal window, launch the testing hub in foreground:
+
 ```shell
-scripts/launch_example_agent.sh
+scripts/launch_example_clustered_hub.sh
+```
+
+Then open one or more terminal winodws, launch the testing agent(s) in foreground:
+
+```shell
+scripts/launch_example_clustered_agent_1.sh # ls scripts/*.sh to see all
 ```
 
 It binds on 127.0.0.1:8084, listens for plaintext HTTP requests, you can call the API with whaever HTTP client you like, for example:

@@ -5,14 +5,18 @@ script_dir=$(dirname $script_path)
 
 cd $script_dir/..
 
+HUB_SERVER_NAME=cloudping-hub.example.com
+
 go run ./cmd/globalping agent \
-  --quic-server-address="globalping-hub.exploro.one:18449" \
-  --node-name="lax1" \
-  --exact-location-lat-lon="48.1952,16.3503" \
+  --quic-server-address="127.0.0.1:18449" \
+  --server-name="${HUB_SERVER_NAME}" \
+  --peer-ca="test/certs/ca.pem" \
+  --node-name="us-lax1" \
+  --exact-location-lat-lon="34.0200392,-118.7413874" \
   --country-code="US" \
   --city-name="Los Angeles" \
-  --asn="AS35916" \
-  --isp="MULTACOM" \
-  --dn42-asn="AS4242421771" \
-  --dn42-isp="DUSTSTARS" \
+  --asn="AS12345" \
+  --isp="Example LLC" \
+  --dn42-asn="AS4242421234" \
+  --dn42-isp="EXAMPLE-DN42" \
   --http-listen-address=":8085"

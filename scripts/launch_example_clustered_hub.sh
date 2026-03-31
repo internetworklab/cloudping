@@ -6,7 +6,6 @@ script_dir=$(dirname $script_path)
 cd $script_dir/..
 
 go run ./cmd/globalping hub \
-  --peer-ca=test/certs/ca.pem \
   --server-cert="test/certs/peer.pem" \
   --server-cert-key="test/certs/peer-key.pem" \
   --public-http-listen-address=":8084" \
