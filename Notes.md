@@ -7,22 +7,32 @@ bin/globalping jwt sign 2>/dev/null
 
 # How to Generate Self-signed CA and cert pairs for m-TLS ?
 
-We have some example cfssl JSON files in `certs/manifests`, you can generate example
-self-signed CA cert pair and peer cert pairs with commands:
+If you don't have `cfssl*` binaries install, get it from [github.com/cloudflare/cfssl](https://github.com/cloudflare/cfssl), build and install them first.
 
 ```shell
-cd certs
-./gen-ca.pem
-./gen-cert-pair.sh manifests/hub.json
-./gen-cert-pair.sh manifests/agent1.json
-```
-
-If you haven't installed cfssl executables, install them first:
-
-```shell
+git clone https://github.com/cloudflare/cfssl
 cd cfssl
 make
 make install
+```
+
+Once you have `cfssl*` binaries installed, cd into the certs directory, generate certs:
+
+```shell
+cd confed/hub/manifests
+jq -c -n  --arg ca_cname cloudping-hub -f './ca.json.template' > ca.json
+jq -c -n  --argjson cname '"cloudping-hub"' --argjson hosts '[ "yourdomain.com", "cloudping-hub.example.com" ]' -f ./peer.json.template >peer.json 
+cd ../
+./gen-ca.sh
+./gen-cert-pair.sh manifests/peer.json
+```
+
+Then, `ca.pem`, `ca-key.pem`, `peer.pem` and `peer-key.pem` would be in current working directory, you can move them the the directory dedicated for placing certs.
+
+```shell
+mv ca.pem ../../test/certs/ca.pem
+mv peer.pem ../../test/certs/peer.pem
+mv peer-key.pem ../../test/certs/peer-key.pem
 ```
 
 # How to Prepare the Development Environment ?
