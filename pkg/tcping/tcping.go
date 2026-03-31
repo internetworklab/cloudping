@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"time"
 
-	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/google/btree"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -272,7 +272,12 @@ func encodePort(port int) []byte {
 func buildKey(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int) []byte {
 	key := make([]byte, 0)
 	if srcIP.To4() == nil {
-		// ipv6, todo
+		srcIP = srcIP.To16()
+		dstIP = dstIP.To16()
+		key = append(key, srcIP...)
+		key = append(key, encodePort(srcPort)...)
+		key = append(key, dstIP...)
+		key = append(key, encodePort(dstPort)...)
 	} else {
 		srcIP = srcIP.To4()
 		dstIP = dstIP.To4()
