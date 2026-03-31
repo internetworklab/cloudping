@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgbotdata "github.com/internetworklab/cloudping/pkg/bot/datasource"
 	pkgbothandlers "github.com/internetworklab/cloudping/pkg/bot/handlers"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 )
 
 // Please note, sensitive data such as token are provided via env, not presented in the command line.
@@ -63,7 +63,7 @@ func (botCmd *BotCmd) getTGWebhookSecret() (string, error) {
 	return tgWebSocketSecret, nil
 }
 
-func (botCmd *BotCmd) Run() error {
+func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	// the parent command's Run() method already loaded the .env file,
 	// so it's not needed to repeat that here.
 
@@ -121,6 +121,7 @@ func (botCmd *BotCmd) Run() error {
 
 	startedAt := time.Now()
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
+	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyBuildVersion, sharedCtx.BuildVersion)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyJWTSecret, secret)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyTxtStreamIntv, botCmd.TextStreamInterval)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyIssuerName, botCmd.JWTIssuerName)
@@ -136,6 +137,7 @@ func (botCmd *BotCmd) Run() error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/traceroute`), traceCmdHandler.HandleTraceroute)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), pkgbothandlers.HandleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), pkgbothandlers.HandleVersion)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
 
@@ -144,6 +146,7 @@ func (botCmd *BotCmd) Run() error {
 			{Command: "/start", Description: "No op, just a placeholder."},
 			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
 			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
+			{Command: "/version", Description: "Show build version information."},
 		},
 	})
 	if err != nil {
