@@ -19,8 +19,10 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
+            platform: linux/amd64
             suffix: amd64
           - runner: ubuntu-24.04-arm
+            platform: linux/arm64
             suffix: arm64
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -46,15 +48,21 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Build and push
-        run: |
-          IMAGE="${{ env.REGISTRY }}/internetworklab/cloudping"
-          docker build --tag "${IMAGE}:${{ matrix.suffix }}" .
-          docker push "${IMAGE}:${{ matrix.suffix }}"
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/internetworklab/cloudping:${{ matrix.suffix }}
 
   merge-server:
     runs-on: ubuntu-latest
@@ -67,7 +75,7 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -105,8 +113,10 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
+            platform: linux/amd64
             suffix: amd64
           - runner: ubuntu-24.04-arm
+            platform: linux/arm64
             suffix: arm64
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -133,15 +143,22 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Build and push
-        run: |
-          IMAGE="${{ env.REGISTRY }}/internetworklab/cloudping-web"
-          docker build --target prod-nginx --tag "${IMAGE}:${{ matrix.suffix }}" ./web
-          docker push "${IMAGE}:${{ matrix.suffix }}"
+        uses: docker/build-push-action@v7
+        with:
+          context: ./web
+          platforms: ${{ matrix.platform }}
+          push: true
+          target: prod-nginx
+          provenance: false
+          tags: ${{ env.REGISTRY }}/internetworklab/cloudping-web:${{ matrix.suffix }}
 
   merge-web:
     runs-on: ubuntu-latest
@@ -154,7 +171,7 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY || 'ghcr.io' }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
