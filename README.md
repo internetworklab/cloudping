@@ -103,6 +103,15 @@ curl --url-query from=us-lax1 --url-query targets=1.1.1.1 --url-query count=3 lo
 
 > Note: `--url-query` is curl syntax sugar for encoding URL search params.
 
+**Prometheus Metrics:**
+
+Agents can expose Prometheus metrics by setting `--metrics-listen-address` (e.g. `:2112`). The metrics path defaults to `/metrics`.
+
+```shell
+# Agent (requires --metrics-listen-address to be set when launching the agent)
+curl localhost:2112/metrics
+```
+
 ### Response Format
 
 Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimiter.
