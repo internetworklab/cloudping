@@ -5,4 +5,4 @@
 docker build \
   --push \
   --target prod-nginx \
-  --tag ghcr.io/internetworklab/cloudping-web:latest .
+  --tag ghcr.io/internetworklab/cloudping-web:nginx .
