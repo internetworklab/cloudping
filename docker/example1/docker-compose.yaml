@@ -1,0 +1,350 @@
+name: cloudping-demo
+
+volumes:
+  caddydata-vol:
+
+networks:
+  cloudping-demo:
+    name: "cloudping-demo"
+    driver: bridge
+    enable_ipv4: true
+    enable_ipv6: true
+
+services:
+  cloudflared:
+    container_name: cloudping-demo-cfd
+    pull_policy: never
+    image: docker.io/cloudflare/cloudflared:latest
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./cfd_credentials.json:/app/cfd_credentials.json:ro"
+      - "./cloudflared.conf.yaml:/app/cloudflared.conf.yaml:ro"
+    command:
+      - "tunnel"
+      - "--no-autoupdate"
+      - "--config=/app/cloudflared.conf.yaml"
+      - "--edge-ip-version=6"
+      - "run"
+
+  web:
+    container_name: cloudping-demo-web
+    environment:
+      CADDY_ADMIN_ADDR: "unix//var/run/caddy/caddy-admin.sock"
+    hostname: cloudping-demo-web
+    image: ghcr.io/internetworklab/cloudping-web:latest
+    pull_policy: always
+    restart: unless-stopped
+    volumes:
+      - "./caddy.json:/caddy.json:ro"
+      - "./caddy-socks:/var/run/caddy"
+      - "caddydata-vol:/caddydata"
+    networks:
+      - cloudping-demo
+    command:
+      - "caddy"
+      - "run"
+      - "--config=/caddy.json"
+
+  bot:
+    env_file:
+      - .env
+    container_name: cloudping-demo-bot
+    hostname: cloudping-demo-bot
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    volumes:
+      - "./.env:/app/globalping/.env:ro"
+    networks:
+      - "cloudping-demo"
+    command:
+      - "/usr/local/bin/globalping"
+      - "bot"
+      - "--listen-address=:8093"
+      - "--public-endpoint=https://${BOT_DOMAIN}/"
+      - "--ping-resolver=127.0.0.11:53"
+      - "--upstream-jwt-sec-env=UPSTREAM_JWT_TOKEN"
+      - "--upstream-api-prefix=http://cloudping-demo-hub:8082"
+
+  hub:
+    env_file:
+      - .env
+    container_name: cloudping-demo-hub
+    hostname: cloudping-demo-hub
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "hub"
+      - "--server-cert=/app/globalping/certs/peer.pem"
+      - "--server-cert-key=/app/globalping/certs/peer-key.pem"
+      - "--web-socket-path=/ws"
+      - "--mtls-websocket-listen-address=:8080"
+      - "--mtls-quic-listen-address=:18443"
+      - "--public-http-listen-address=:8082"
+      - "--jwt-quic-listen-address=:18448"
+      - "--min-pkt-interval=300ms"
+      - "--max-pkt-timeout=3000ms"
+      - "--jwt-auth-secret-from-env=JWT_SECRET"
+      - "--http-response-body-clamp=100"
+
+  # NOTE: These probe agents are co-located with the hub in the same docker-compose
+  # purely for convenience and simplicity of this demo setup.
+  # In a production environment, agents should be deployed at actual remote locations
+  # (e.g. on separate VPS or containers around the world) — not alongside the hub.
+
+  agent1:
+    container_name: cloudping-demo-agent1
+    hostname: agent1
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=at-vie1"
+      - "--exact-location-lat-lon=48.1952,16.3503"
+      - "--country-code=AT"
+      - "--city-name=Vienna"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent2:
+    container_name: cloudping-demo-agent2
+    hostname: agent2
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=us-nyc1"
+      - "--exact-location-lat-lon=40.7128,-74.0060"
+      - "--country-code=US"
+      - "--city-name=New York"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent3:
+    container_name: cloudping-demo-agent3
+    hostname: agent3
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=ng-los1"
+      - "--exact-location-lat-lon=6.5244,3.3792"
+      - "--country-code=NG"
+      - "--city-name=Lagos"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent4:
+    container_name: cloudping-demo-agent4
+    hostname: agent4
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=au-syd1"
+      - "--exact-location-lat-lon=-33.8688,151.2093"
+      - "--country-code=AU"
+      - "--city-name=Sydney"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent5:
+    container_name: cloudping-demo-agent5
+    hostname: agent5
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=jp-tyo1"
+      - "--exact-location-lat-lon=35.6762,139.6503"
+      - "--country-code=JP"
+      - "--city-name=Tokyo"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent6:
+    container_name: cloudping-demo-agent6
+    hostname: agent6
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=hk-hkg1"
+      - "--exact-location-lat-lon=22.3193,114.1694"
+      - "--country-code=HK"
+      - "--city-name=Hong Kong"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent7:
+    container_name: cloudping-demo-agent7
+    hostname: agent7
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=ae-dxb1"
+      - "--exact-location-lat-lon=25.2048,55.2708"
+      - "--country-code=AE"
+      - "--city-name=Dubai"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent8:
+    container_name: cloudping-demo-agent8
+    hostname: agent8
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=aq-mcm1"
+      - "--exact-location-lat-lon=-77.8460,166.6632"
+      - "--country-code=AQ"
+      - "--city-name=McMurdo Station"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m
+
+  agent9:
+    container_name: cloudping-demo-agent9
+    hostname: agent9
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    working_dir: /app/globalping
+    networks:
+      - cloudping-demo
+    volumes:
+      - "./certs:/app/globalping/certs:ro"
+      - "./.env:/app/globalping/.env:ro"
+    command:
+      - "/usr/local/bin/globalping"
+      - "agent"
+      - "--quic-server-address=cloudping-demo-hub:18448"
+      - "--server-name=${MAIN_DOMAIN}"
+      - "--peer-ca=/app/globalping/certs/ca.pem"
+      - "--node-name=ru-mow1"
+      - "--exact-location-lat-lon=55.7558,37.6173"
+      - "--country-code=RU"
+      - "--city-name=Moscow"
+      - "--asn=AS65001"
+      - "--isp=ExampleLLC"
+      - "--dn42-asn=AS4242429999"
+      - "--dn42-isp=Example-DN42"
+      - "--metrics-listen-address=:2112"
+    mem_limit: 256m

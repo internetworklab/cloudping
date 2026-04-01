@@ -1,0 +1,12 @@
+# tunnel name: cloudping-demo
+tunnel: 0c808f87-0587-40f4-9ddc-36e970b18b6b
+credentials-file: /app/cfd_credentials.json
+
+ingress:
+  # domain 'cloudping-demo-web' is resolvable within docker's user-defined network
+  - hostname: demo.ping2.sh
+    service: http://cloudping-demo-web:8080
+  - hostname: demo-bot.ping2.sh
+    service: http://cloudping-demo-bot:8093
+  # a catch-all default, using built-in 404 page
+  - service: http_status:404

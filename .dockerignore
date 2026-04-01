@@ -8,3 +8,7 @@ node_modules/*
 .git
 .git/
 .git/*
+
+# Cloudflared tunnel generated credentials
+**/cfd_tunnel.json
+**/cfd_credentials.json

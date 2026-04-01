@@ -1,0 +1,118 @@
+{
+  "admin": {
+    "listen": "{env.CADDY_ADMIN_ADDR}"
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "writer": {
+          "output": "stdout"
+        },
+        "encoder": {
+          "format": "console"
+        }
+      }
+    }
+  },
+  "storage": {
+    "module": "file_system",
+    "root": "/caddydata"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "main": {
+          "automatic_https": { "disable": true },
+          "listen": [":8080"],
+          "routes": [
+            {
+              "group": "main",
+              "match": [
+                {
+                  "path": ["/api/*"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": {
+                    "delete": ["X-Origin-Pass"],
+                    "deferred": true
+                  }
+                },
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "Access-Control-Allow-Origin": [
+                        "{http.request.header.Origin}"
+                      ],
+                      "Access-Control-Allow-Methods": [
+                        "GET, POST, PUT, DELETE, OPTIONS"
+                      ],
+                      "Access-Control-Allow-Credentials": ["true"],
+                      "Vary": ["Origin"]
+                    },
+                    "deferred": true,
+                    "require": {
+                      "headers": {
+                        "X-Origin-Pass": ["true"]
+                      }
+                    }
+                  }
+                },
+                {
+                  "handler": "map",
+                  "source": "{http.request.header.Origin}",
+                  "destinations": ["{vars.origin_pass}"],
+                  "defaults": [""],
+                  "mappings": [
+                    {
+                      "input_regexp": "^https?://localhost(:[0-9]+)?$",
+                      "outputs": ["true"]
+                    },
+                    {
+                      "input_regexp": "^https?://demo\\.ping2\\.sh(:[0-9]+)?$",
+                      "outputs": ["true"]
+                    }
+                  ]
+                },
+                {
+                  "handler": "headers",
+                  "response": {
+                    "add": {
+                      "X-Origin-Pass": ["{vars.origin_pass}"]
+                    },
+                    "deferred": true
+                  }
+                },
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [
+                    {
+                      "dial": "cloudping-demo-hub:8082"
+                    }
+                  ],
+                  "rewrite": {
+                    "strip_path_prefix": "/api"
+                  }
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "match": [],
+              "handle": [
+                {
+                  "handler": "file_server",
+                  "root": "/usr/share/nginx/html"
+                }
+              ],
+              "group": "main"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
