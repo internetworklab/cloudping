@@ -156,7 +156,7 @@ jobs:
           context: ./web
           platforms: ${{ matrix.platform }}
           push: true
-          target: prod-nginx
+          target: prod-caddy
           provenance: false
           tags: ${{ env.REGISTRY }}/internetworklab/cloudping-web:${{ matrix.suffix }}
 
