@@ -141,7 +141,7 @@ The Web UI is built with Next.js and supports the following build-time environme
 | `NEXT_PUBLIC_GITHUB_REPO` | Link to the repository website | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
 | `NEXT_PUBLIC_TG_INVITE_LINK` | Invite link for the Telegram discussion group | Just a URL |
 | `NEXT_PUBLIC_SITE_NAME` | WebUI title for self-hosted deployments | `CloudPing` |
-| `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend | `172.20.0.53` |
+| `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend | `127.0.0.11:53` |
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
