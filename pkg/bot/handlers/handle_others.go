@@ -8,17 +8,6 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func HandleDefault(ctx context.Context, b *bot.Bot, update *models.Update) {
-	if update.Message != nil {
-		if update.Message.Chat.Type == models.ChatTypePrivate {
-			// private message
-			log.Printf("Received private message from private chat %+v: %s", update.Message.Chat.Username, update.Message.Text)
-		} else if update.Message.Chat.Type == models.ChatTypeGroup || update.Message.Chat.Type == models.ChatTypeSupergroup {
-			log.Printf("Received group message from group %+v: %s", update.Message.Chat.Title, update.Message.Text)
-		}
-	}
-}
-
 func HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
 		if update.Message.Chat.Type == models.ChatTypePrivate {

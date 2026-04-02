@@ -91,7 +91,6 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	}
 
 	opts := []bot.Option{
-		bot.WithDefaultHandler(pkgbothandlers.HandleDefault),
 		bot.WithWebhookSecretToken(tgWebSocketSecret),
 	}
 
