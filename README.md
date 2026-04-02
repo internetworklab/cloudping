@@ -145,6 +145,14 @@ The Web UI is built with Next.js and supports the following build-time environme
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
+### Full Deployment (Docker Compose)
+
+A complete self-hosted deployment example is available under [`docker/example1/`](docker/example1/). It includes a [`docker-compose.yaml`](docker/example1/docker-compose.yaml) that brings up all components — web frontend (Caddy), hub, Telegram bot, probe agents, and a Cloudflare Tunnel (`cloudflared`) for public ingress — along with setup scripts for provisioning tunnels, DNS records, and self-signed mTLS certificates for securing hub-to-agent's bidirectional communication.
+
+> **Note:** This is intended as a hands-on demonstration, not a production-ready setup, for a production setup, the agents should be deployed at where they actually are.
+
+For step-by-step instructions, see [`docker/example1/README.md`](docker/example1/README.md).
+
 ## Join Agent
 
 To run your cloudping agent and join our cluster, prepare three files:
