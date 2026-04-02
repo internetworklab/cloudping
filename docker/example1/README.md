@@ -2,6 +2,10 @@
 
 This is a **demonstration deployment** of the project. It walks through setting up a Cloudflare Tunnel to expose the services to the internet. The goal is to provide a hands-on, step-by-step example of how to wire up Cloudflare Tunnel with DNS — **not** a production-ready setup.
 
+Demo page: [demo.ping2.sh](https://demo.ping2.sh/)
+
+Demo bot: [@cloudping_test_bot](http://t.me/cloudping_test_bot)
+
 Follow the steps below to get the demo running, and see the [Cleaning Up](#cleaning-up) section when you're done.
 
 # How to Setup
