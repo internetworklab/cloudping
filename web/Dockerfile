@@ -13,6 +13,7 @@ COPY . .
 
 # explicitly choose .env.prod
 COPY .env.prod .env
+ARG NEXT_PUBLIC_DEFAULT_RESOLVER=127.0.0.11:53
 RUN npm run build
 
 FROM docker.io/library/caddy:latest AS prod-caddy

@@ -3,6 +3,6 @@
 ./buildversion.sh
 
 docker build \
-  --push \
   --target prod-nginx \
-  --tag ghcr.io/internetworklab/cloudping-web:nginx .
+  --build-arg NEXT_PUBLIC_DEFAULT_RESOLVER=172.20.0.53:53 \
+  --tag cloudping-web:nginx .
