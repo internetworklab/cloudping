@@ -24,22 +24,23 @@ import {
   useState,
 } from "react";
 import { TaskCloseIconButton } from "@/components/taskclose";
-import { StopButton } from "./playpause";
+
 import { getLatencyColor } from "./colorfunc";
-import { IPDisp } from "./ipdisp";
+import { TraceEvent, TraceStats } from "@/apis/trace";
 import {
   ConnEntry,
-  generatePingSampleStream,
   getNodes,
+  getPingSampleStreamURL,
+  JSONLineDecoder,
+  LineTokenizer,
   NodeAttrASN,
   NodeAttrCityName,
   NodeAttrCountryCode,
   NodeAttrDN42ASN,
   NodeAttrDN42ISP,
   NodeAttrISP,
-  PingSample,
 } from "@/apis/globalping";
-import { PendingTask } from "@/apis/types";
+import { PendingTask, RawPingEvent, RawPingEventData } from "@/apis/types";
 import {
   LonLat,
   Marker,
@@ -55,456 +56,61 @@ import { useQuery } from "@tanstack/react-query";
 import { getNodeGroups } from "@/apis/utils";
 import {
   TracerouteReport,
-  TracerouteReportHop,
   TracerouteReportMode,
-  TracerouteReportPeer,
   TracerouteReportPreviewDialog,
 } from "@/components/traceroutereport";
 import ShareIcon from "@mui/icons-material/Share";
 import { firstLetterCap } from "./strings";
 import { defaultResolver } from "@/apis/resolver";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import PlayIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
 
-type TracerouteIPEntry = {
-  ip: string;
-  rdns?: string;
-};
-
-type TraceroutePeerEntry = {
-  seq: number;
-  ip: TracerouteIPEntry;
-  asn?: string;
-  location?: string;
-  isp?: string;
-};
-
-// unit: milliseconds
-type TracerouteRTTStatsEntry = {
-  current: number;
-  min: number;
-  median: number;
-  max: number;
-  history: number[];
-};
-
-type TracerouteStatsEntry = {
-  sent: number;
-  replied: number;
-  lost: number;
-};
-
-type HopEntryState = {
-  peers: TraceroutePeerEntry[];
-  rtts: TracerouteRTTStatsEntry;
-  stats: TracerouteStatsEntry;
-
-  // a map from peer to mtu
-  pmtu?: Record<string, number>;
-};
-
-type TabState = {
-  maxHop: number;
-  hopEntries: Record<number, HopEntryState>;
-  markers: Marker[];
-  samples: PingSample[];
-};
-type PageState = Record<string, TabState>;
-
-function sortAndDedupPeers(
-  peers: TraceroutePeerEntry[],
-): TraceroutePeerEntry[] {
-  const sorted = [...peers].sort((a, b) => b.seq - a.seq);
-  const m = new Map<string, TraceroutePeerEntry>();
-  for (const peer of sorted) {
-    if (m.has(peer.ip.ip)) {
-      continue;
-    }
-    m.set(peer.ip.ip, peer);
+// RttCell parses RTT strings like "3ms 1ms/4ms/20ms" and renders each value
+// with a color based on its latency using getLatencyColor.
+function RttCell({ value }: { value: string }) {
+  if (!value) {
+    return null;
   }
-  return Array.from(m.values()).sort((a, b) => b.seq - a.seq);
-}
 
-function getMedian(history: number[]): number {
-  if (history.length === 0) {
-    return NaN;
+  if (value === "* */*/*") {
+    return <>{value}</>;
   }
-  if (history.length % 2 === 0) {
-    const lmid_idx = history.length / 2 - 1;
-    const rmid_idx = history.length / 2;
-    return (history[lmid_idx] + history[rmid_idx]) / 2;
-  }
-  const mid_idx = Math.floor(history.length / 2);
-  return history[mid_idx];
-}
 
-function updateHopEntryState(
-  hopEntryState: HopEntryState | undefined | null,
-  pingSample: PingSample,
-): HopEntryState {
-  const newEntry = {
-    ...(hopEntryState ?? {
-      peers: [],
-      rtts: {
-        current: 0,
-        min: Infinity,
-        median: 0,
-        max: -Infinity,
-        history: [],
-      },
-      stats: {
-        sent: 0,
-        replied: 0,
-        lost: 0,
-      },
-    }),
+  const spaceIdx = value.indexOf(" ");
+  if (spaceIdx === -1) {
+    return <>{value}</>;
+  }
+
+  const lastRttStr = value.substring(0, spaceIdx);
+  const minAvgMaxStr = value.substring(spaceIdx + 1);
+
+  const parseMs = (s: string): number | null => {
+    const match = s.match(/^(\d+(?:\.\d+)?)ms$/);
+    return match ? parseFloat(match[1]) : null;
   };
 
-  if (pingSample.latencyMs !== undefined && pingSample.latencyMs !== null) {
-    newEntry.rtts.current = pingSample.latencyMs;
-    if (pingSample.latencyMs < newEntry.rtts.min) {
-      newEntry.rtts.min = pingSample.latencyMs;
-    }
-    if (pingSample.latencyMs > newEntry.rtts.max) {
-      newEntry.rtts.max = pingSample.latencyMs;
-    }
-    newEntry.rtts.history = [...newEntry.rtts.history, pingSample.latencyMs];
-    newEntry.rtts.median = getMedian(newEntry.rtts.history);
-    newEntry.stats.replied++;
-  } else {
-    newEntry.stats.lost++;
-  }
-  newEntry.stats.sent++;
+  const lastRtt = parseMs(lastRttStr);
+  const parts = minAvgMaxStr.split("/");
 
-  if (pingSample.seq !== undefined && pingSample.seq !== null) {
-    const newPeerEntry: TraceroutePeerEntry = {
-      ip: {
-        ip: pingSample.peer || "",
-        rdns: pingSample.peerRdns,
-      },
-      seq: pingSample.seq,
-      asn: pingSample.peerASN,
-      location: pingSample.peerLocation,
-      isp: pingSample.peerISP,
-    };
-    newEntry.peers = sortAndDedupPeers([...newEntry.peers, newPeerEntry]);
-    // high seq first
-    newEntry.peers.sort((a, b) => b.seq - a.seq);
-  }
-
-  if (
-    pingSample.pmtu !== undefined &&
-    pingSample.pmtu !== null &&
-    !!pingSample.peer
-  ) {
-    newEntry.pmtu = {
-      ...newEntry.pmtu,
-      [pingSample.peer]: pingSample.pmtu,
-    };
-  }
-
-  return newEntry;
-}
-
-function updateTabState(
-  tabState: TabState | undefined | null,
-  pingSample: PingSample,
-): TabState {
-  const newTabState: TabState = {
-    ...(tabState ?? {
-      maxHop: 1,
-      hopEntries: {},
-      markers: [],
-      samples: [],
-    }),
-  };
-
-  newTabState.hopEntries = updateHopEntries(
-    newTabState,
-    pingSample,
-    newTabState.hopEntries,
-  );
-
-  newTabState.markers = updateMarkers(
-    newTabState,
-    pingSample,
-    newTabState.markers,
-  );
-
-  if (pingSample.lastHop) {
-    newTabState.maxHop = pingSample.ttl;
-  }
-
-  const numSamples = newTabState.samples.length;
-  newTabState.samples = [
-    ...newTabState.samples,
-    { ...pingSample, sequenceNo: numSamples },
-  ];
-
-  return newTabState;
-}
-
-function updateHopEntries(
-  tabState: TabState,
-  pingSample: PingSample,
-  hopEntries: Record<number, HopEntryState>,
-): Record<number, HopEntryState> {
-  const newHopEntries: Record<number, HopEntryState> = { ...hopEntries };
-
-  if (pingSample.ttl !== undefined && pingSample.ttl !== null) {
-    newHopEntries[pingSample.ttl] = updateHopEntryState(
-      newHopEntries[pingSample.ttl],
-      pingSample,
-    );
-  }
-
-  return newHopEntries;
-}
-
-function updatePageState(
-  pageState: PageState,
-  pingSample: PingSample,
-): PageState {
-  return {
-    ...pageState,
-    [pingSample.from]: updateTabState(pageState[pingSample.from], pingSample),
-  };
-}
-
-type DisplayEntry = {
-  hop: number;
-  entry: HopEntryState;
-};
-
-function getDispEntries(
-  hopEntries: PageState,
-  tabValue: string,
-): DisplayEntry[] {
-  const dispEntries: DisplayEntry[] = [];
-  const currentTabEntries = hopEntries[tabValue];
-  if (currentTabEntries) {
-    for (let i = 1; i <= currentTabEntries.maxHop; i++) {
-      if (i in currentTabEntries.hopEntries) {
-        dispEntries.push({
-          hop: i,
-          entry: currentTabEntries.hopEntries[i],
-        });
-      } else {
-        dispEntries.push({
-          hop: i,
-          entry: {
-            peers: [],
-            rtts: {
-              current: 0,
-              min: Infinity,
-              median: 0,
-              max: -Infinity,
-              history: [],
-            },
-            stats: {
-              sent: 0,
-              replied: 0,
-              lost: 0,
-            },
-          },
-        });
-      }
-    }
-  }
-  return dispEntries;
-}
-
-function updateMarkers(
-  tabState: TabState,
-  pingSample: PingSample,
-  markers: Marker[] | undefined | null,
-): Marker[] {
-  let newMarkers: Marker[] = [...(markers ?? [])];
-
-  const ttl = pingSample.ttl;
-  if (ttl === undefined || ttl === null) {
-    return newMarkers;
-  }
-
-  const exact = pingSample.peerExactLocation;
-  if (exact === undefined || exact === null) {
-    return newMarkers;
-  }
-
-  const lon = exact.Longitude;
-  const lat = exact.Latitude;
-  if (lon === undefined || lon === null || lat === undefined || lat === null) {
-    return newMarkers;
-  }
-
-  const rtt = pingSample.latencyMs;
-  if (rtt === undefined || rtt === null) {
-    return newMarkers;
-  }
-
-  const lonLat: LonLat = [lon, lat];
-  const fill = getLatencyColor(rtt);
-  const radius = 8;
-  const strokeWidth = 3;
-  const stroke: CSSProperties["stroke"] = "white";
-  const tooltip: ReactNode = (
-    <Box>
-      <Box>TTL:&nbsp;{ttl}</Box>
-      <Box>IP:&nbsp;{pingSample.peer}</Box>
-      {pingSample.peerRdns && <Box>RDNS:&nbsp;{pingSample.peerRdns}</Box>}
+  return (
+    <Box component="span">
+      <Box component="span" sx={{ color: getLatencyColor(lastRtt) }}>
+        {lastRttStr}
+      </Box>{" "}
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && "/"}
+          <Box component="span" sx={{ color: getLatencyColor(parseMs(part)) }}>
+            {part}
+          </Box>
+        </Fragment>
+      ))}
     </Box>
   );
-  const index = `TTL=${ttl}, IP=${pingSample.peer}`;
-  if (newMarkers.find((marker) => marker.index === index)) {
-    newMarkers = newMarkers.filter((marker) => marker.index !== index);
-  }
-
-  const newMarker: Marker = {
-    lonLat,
-    fill,
-    radius,
-    strokeWidth,
-    stroke,
-    tooltip,
-    index,
-    metadata: { ttl },
-  };
-
-  newMarkers.push(newMarker);
-
-  newMarkers.sort((a, b) => {
-    const ttl1 = a.metadata?.ttl;
-    const ttl2 = b.metadata?.ttl;
-    if (ttl1 === undefined || ttl1 === null) {
-      return 1;
-    }
-    if (ttl2 === undefined || ttl2 === null) {
-      return -1;
-    }
-    return ttl1 - ttl2;
-  });
-
-  return newMarkers;
 }
 
-function swapIJ<T>(arr: T[], i: number, j: number): T[] {
-  const newArr = [...arr];
-  const temp = newArr[i];
-  newArr[i] = newArr[j];
-  newArr[j] = temp;
-  return newArr;
-}
-
-function updateReportPeer(
-  peer: TracerouteReportPeer | undefined,
-  sample: PingSample,
-): TracerouteReportPeer {
-  const loc = sample.peerIPInfo
-    ? {
-        city: sample.peerIPInfo.City || "",
-        countryAlpha2: sample.peerIPInfo.ISO3166Alpha2 || "",
-      }
-    : undefined;
-  const isp = sample.peerIPInfo
-    ? {
-        ispName: sample.peerIPInfo.ISP || "",
-        asn: sample.peerIPInfo.ASN || "",
-      }
-    : undefined;
-
-  const lastRTT: number | undefined = sample.latencyMs;
-
-  if (peer === undefined || peer === null) {
-    if (sample.isTimeout) {
-      return {
-        timeout: true,
-        ip: "",
-      };
-    }
-
-    return {
-      rdns: sample.peerRdns,
-      ip: sample.peer || "",
-      loc,
-      isp,
-      rtt:
-        lastRTT !== undefined
-          ? {
-              lastMs: lastRTT,
-              samples: [lastRTT],
-            }
-          : undefined,
-      stat: {
-        sent: 1,
-        replies: sample.isTimeout ? 0 : 1,
-      },
-      pmtu: sample.pmtu,
-    };
-  } else {
-    peer = { ...peer };
-
-    if (sample.isTimeout) {
-      // do nothing for timeout sample
-      peer.timeout = true;
-      return peer;
-    }
-
-    if (loc) {
-      peer.loc = loc;
-    }
-    if (isp) {
-      peer.isp = isp;
-    }
-    if (lastRTT !== undefined) {
-      peer.rtt = {
-        ...(peer.rtt || {}),
-        lastMs: lastRTT,
-        samples: [...(peer.rtt?.samples || []), lastRTT],
-      };
-    }
-    peer.stat = {
-      ...(peer.stat || {}),
-      sent: (peer.stat?.sent || 0) + 1,
-      replies: (peer.stat?.replies || 0) + (sample.isTimeout ? 0 : 1),
-    };
-    if (peer.pmtu === undefined || peer.pmtu === null) {
-      peer.pmtu = sample.pmtu;
-    } else if (
-      sample.pmtu !== undefined &&
-      sample.pmtu !== null &&
-      peer.pmtu !== sample.pmtu
-    ) {
-      peer.pmtu = sample.pmtu;
-    }
-
-    return peer;
-  }
-}
-
-function updateReportHop(
-  hop: TracerouteReportHop,
-  sample: PingSample,
-): TracerouteReportHop {
-  hop = { ...hop };
-
-  if (sample.isTimeout) {
-    const peerIdx = hop.peers.findIndex((peer) => !!peer.timeout);
-    if (peerIdx === -1) {
-      hop.peers = [{ timeout: true, ip: "" }, ...hop.peers];
-    } else {
-      hop.peers = swapIJ(hop.peers, peerIdx, 0);
-    }
-  } else if (sample.peer) {
-    const peerIdx = hop.peers.findIndex((peer) => peer.ip === sample.peer);
-    if (peerIdx === -1) {
-      hop.peers = [updateReportPeer(undefined, sample), ...hop.peers];
-    } else {
-      // swapIJ() always create a new array, so it's still immutable.
-      hop.peers = swapIJ(hop.peers, peerIdx, 0);
-      hop.peers[0] = updateReportPeer(hop.peers[peerIdx], sample);
-    }
-  }
-
-  return hop;
-}
+const worldMapFill: CSSProperties["fill"] = "#676767";
 
 function DisplayCurrentNode(props: {
   currentNode: ConnEntry | undefined;
@@ -554,76 +160,121 @@ function DisplayCurrentNode(props: {
   );
 }
 
-function getTracerouteHops(samples: PingSample[]): TracerouteReportHop[] {
-  const samplesByTTL: Record<string, PingSample[]> = {};
-  for (const sample of samples) {
-    const ttl = sample.ttl;
-    if (ttl === undefined || ttl === null || ttl === 0) {
-      continue;
-    }
-    if (sample.sequenceNo === undefined || sample.sequenceNo === null) {
-      continue;
-    }
-    if (!(ttl in samplesByTTL)) {
-      samplesByTTL[ttl] = [];
-    }
-    samplesByTTL[ttl].push(sample);
+function getMarkersAndPaths(
+  traceStats: TraceStats | undefined,
+  showMap: boolean,
+  sourceMarkers: Marker[],
+  ratio: number,
+): { markers: Marker[]; extraPaths: Path[] | undefined } {
+  if (!showMap || !traceStats) {
+    return { markers: [], extraPaths: undefined };
   }
 
-  type SamplesGroup = {
-    ttl: number;
-    samples: PingSample[];
-  };
+  const sampleMarkers: Marker[] = [];
+  for (const hopTTL of traceStats.HopOrder) {
+    const hop = traceStats.Hops.get(hopTTL);
+    if (!hop) continue;
 
-  const samplesGroups: SamplesGroup[] = [];
+    for (const peerKey of hop.PeerOrder) {
+      const peerStats = hop.Peers.get(peerKey);
+      if (!peerStats) continue;
+      if (peerStats.ReceivedCount === 0) continue;
 
-  for (const key in samplesByTTL) {
-    try {
-      const ttl = parseInt(key);
-      if (Number.isNaN(ttl) || !Number.isFinite(ttl) || ttl <= 0) {
-        continue;
+      // Find location from the first non-timeout event
+      let exactLoc: { Longitude: number; Latitude: number } | null = null;
+      for (const ev of peerStats.Events) {
+        if (ev.ExactLocation && !ev.Timeout) {
+          exactLoc = ev.ExactLocation;
+          break;
+        }
       }
-      const samples = [...samplesByTTL[key]];
-      samples.sort((a, b) => a.sequenceNo! - b.sequenceNo!);
-      samplesGroups.push({
-        ttl: ttl,
-        samples,
+      if (!exactLoc) continue;
+
+      const lonLat: LonLat = [exactLoc.Longitude, exactLoc.Latitude];
+      const rtt = peerStats.AvgRTT();
+      const fill = getLatencyColor(rtt);
+      const index = `TTL=${hopTTL}, IP=${peerStats.Peer}`;
+      const tooltip: ReactNode = (
+        <Box>
+          <Box>TTL:&nbsp;{hopTTL}</Box>
+          <Box>IP:&nbsp;{peerStats.Peer}</Box>
+          {peerStats.PeerRDNS && <Box>RDNS:&nbsp;{peerStats.PeerRDNS}</Box>}
+        </Box>
+      );
+
+      sampleMarkers.push({
+        lonLat,
+        fill,
+        radius: 8,
+        strokeWidth: 3,
+        stroke: "white" as CSSProperties["stroke"],
+        tooltip,
+        index,
+        metadata: { ttl: hopTTL },
       });
-    } catch (e) {
-      console.error(e);
     }
   }
 
-  samplesGroups.sort((a, b) => a.ttl - b.ttl);
-
-  const hopsData: TracerouteReportHop[] = [];
-
-  for (const samplesGroup of samplesGroups) {
-    let hopData: TracerouteReportHop = {
-      ttl: samplesGroup.ttl,
-      peers: [],
-    };
-
-    for (const sample of samplesGroup.samples) {
-      hopData = updateReportHop(hopData, sample);
-    }
-
-    hopsData.push(hopData);
-
-    if (
-      samplesGroup.samples.length > 0 &&
-      !!samplesGroup.samples.find((sample) => !!sample.lastHop)
-    ) {
-      // last hop reached, skip all subsequent samples (of higher TTLs)
-      break;
+  // Build paths between consecutive sample markers
+  const samplePaths: Path[] = [];
+  if (sampleMarkers.length > 1) {
+    for (let j = 1; j < sampleMarkers.length; j++) {
+      const fromMarker = sampleMarkers[j - 1];
+      const toMarker = sampleMarkers[j];
+      if (fromMarker && toMarker && fromMarker.lonLat && toMarker.lonLat) {
+        const paths = toGeodesicPaths(
+          [fromMarker.lonLat[1], fromMarker.lonLat[0]],
+          [toMarker.lonLat[1], toMarker.lonLat[0]],
+          200,
+        );
+        for (const path of paths) {
+          samplePaths.push({
+            ...path,
+            stroke: "green",
+            strokeWidth: 4 * ratio,
+          });
+        }
+      }
     }
   }
 
-  return hopsData;
+  // Prepend source markers and apply ratio scaling to all markers
+  const markers = [...sourceMarkers, ...sampleMarkers].map((m) => ({
+    ...m,
+    radius: m.radius ? m.radius * ratio : undefined,
+    strokeWidth: m.strokeWidth ? m.strokeWidth * ratio : undefined,
+  }));
+
+  // Build source-to-first-hop path
+  const srcPaths: Path[] = [];
+  if (sourceMarkers.length > 0 && sampleMarkers.length > 0) {
+    const src = sourceMarkers[0];
+    const first = sampleMarkers[0];
+    if (src.lonLat && first.lonLat) {
+      const paths = toGeodesicPaths(
+        [src.lonLat[1], src.lonLat[0]],
+        [first.lonLat[1], first.lonLat[0]],
+        200,
+      );
+      for (const path of paths) {
+        srcPaths.push({
+          ...path,
+          stroke: "green",
+          strokeWidth: 4 * ratio,
+        });
+      }
+    }
+  }
+
+  const extraPaths: Path[] | undefined =
+    srcPaths.length > 0 || samplePaths.length > 0
+      ? [...srcPaths, ...samplePaths]
+      : undefined;
+
+  return { markers, extraPaths };
 }
 
 function buildTracerouteReport(
-  samples: PingSample[],
   from: ConnEntry,
   target: string,
   mode: TracerouteReportMode,
@@ -660,10 +311,150 @@ function buildTracerouteReport(
     ],
     destination: target,
     mode: mode,
-    hops: getTracerouteHops(samples),
   };
 
   return report;
+}
+
+export class TraceEventAdapter extends TransformStream<
+  unknown,
+  [RawPingEvent<RawPingEventData>, TraceEvent]
+> {
+  constructor() {
+    super({
+      transform(
+        chunk: unknown,
+        controller: TransformStreamDefaultController<unknown>,
+      ) {
+        const rawEventObj = chunk as RawPingEvent<RawPingEventData>;
+        if (!rawEventObj) {
+          console.error("skipping nil raw ping event:", rawEventObj);
+          return;
+        }
+        const evObj = TraceEvent.fromRaw(rawEventObj);
+        if (evObj) {
+          controller.enqueue([rawEventObj, evObj]);
+        } else {
+          console.error("Ignore raw ping event:", rawEventObj);
+        }
+      },
+    });
+  }
+}
+
+function useTraceEventsRead(task: PendingTask): {
+  traceStatsMap: Record<string, TraceStats>;
+  stopTick: () => void;
+  resumeTick: () => void;
+  isRunning: boolean;
+  paused: boolean;
+} {
+  const [traceStatsMap, setTraceStatsMap] = useState<
+    Record<string, TraceStats>
+  >({});
+  const [snapshop, setSnapshop] = useState<
+    Record<string, TraceStats> | undefined
+  >(undefined);
+
+  // isRunning is for indicating whether it's actually running
+  const [isRunning, setIsRunning] = useState(false);
+
+  // paused is for inicating whether is's been manually paused
+  const [paused, setPaused] = useState(false);
+
+  const resumeTick = (abortController: AbortController, task: PendingTask) => {
+    const url = getPingSampleStreamURL({
+      sources: task.sources,
+      targets: task.targets.slice(0, 1),
+      intervalMs: 300,
+      pktTimeoutMs: 3000,
+      ttl: "auto",
+      resolver: defaultResolver,
+      ipInfoProviderName: "auto",
+      preferV4: task.preferV4,
+      preferV6: task.preferV6,
+      l4PacketType: !!task.useUDP ? "udp" : "icmp",
+      randomPayloadSize: task.pmtu ? 1500 : undefined,
+    });
+
+    fetch(url, { signal: abortController.signal })
+      .then((r) => r.body)
+      .then((r) => {
+        return r
+          ?.pipeThrough(new TextDecoderStream())
+          .pipeThrough(new LineTokenizer())
+          .pipeThrough(new JSONLineDecoder())
+          .pipeThrough(new TraceEventAdapter())
+          .getReader();
+      })
+      .then(async (reader) => {
+        if (!reader) {
+          return;
+        }
+        setIsRunning(true);
+        while (true) {
+          try {
+            const { value, done } = await reader.read();
+            if (done) {
+              setIsRunning(false);
+              return;
+            }
+
+            const raw = value[0];
+            const ev = value[1];
+            const from = raw.metadata?.from;
+            if (from) {
+              setTraceStatsMap((prev) => {
+                const stat = prev[from] ?? new TraceStats();
+                return { ...prev, [from]: stat.WriteEvent(ev) };
+              });
+            }
+          } catch (err) {
+            console.error("failed to read:", err);
+            return;
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name === "AbortError") {
+          console.log("Stream stopped by user or component unmount.");
+        } else {
+          console.error("Stream error:", err);
+        }
+      });
+  };
+  const abortControllerRef = useRef<AbortController>(new AbortController());
+
+  useEffect(() => {
+    if (paused) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    resumeTick(abortController, task);
+    abortControllerRef.current = abortController;
+
+    return () => {
+      abortController.abort();
+      setIsRunning(false);
+      setTraceStatsMap({});
+    };
+  }, [task, paused]);
+
+  return {
+    traceStatsMap: snapshop || traceStatsMap,
+    isRunning,
+    stopTick: () => {
+      setSnapshop(traceStatsMap);
+      setPaused(true);
+      abortControllerRef.current?.abort();
+    },
+    resumeTick: () => {
+      setPaused(false);
+      setSnapshop(undefined);
+    },
+    paused,
+  };
 }
 
 export function TracerouteResultDisplay(props: {
@@ -672,96 +463,9 @@ export function TracerouteResultDisplay(props: {
 }) {
   const { task, onDeleted } = props;
 
-  const initPageState: PageState = {};
-  const pageStateRef = useRef<PageState>(initPageState);
-  const [pageState, setPageState] = useState<PageState>(initPageState);
-
-  const [paused, setPaused] = useState<boolean>(false);
-  const [stopped, setStopped] = useState<boolean>(false);
-
-  const pausedRef = useRef<boolean>(false);
-
   const [tabValue, setTabValue] = useState(task.sources[0]);
 
-  const readerRef = useRef<ReadableStreamDefaultReader<PingSample> | null>(
-    null,
-  );
-  const streamRef = useRef<ReadableStream<PingSample> | null>(null);
-
   const [report, setReport] = useState<TracerouteReport | undefined>(undefined);
-
-  useEffect(() => {
-    let timer: number | null = null;
-
-    if (!stopped) {
-      timer = window.setTimeout(() => {
-        const stream = generatePingSampleStream({
-          sources: task.sources,
-          targets: task.targets.slice(0, 1),
-          intervalMs: 300,
-          pktTimeoutMs: 3000,
-          ttl: "auto",
-          resolver: defaultResolver,
-          ipInfoProviderName: "auto",
-          preferV4: task.preferV4,
-          preferV6: task.preferV6,
-          l4PacketType: !!task.useUDP ? "udp" : "icmp",
-          randomPayloadSize: task.pmtu ? 1500 : undefined,
-        });
-        streamRef.current = stream;
-        const reader = stream.getReader();
-
-        readerRef.current = reader;
-        const readNext = ({
-          done,
-          value,
-        }: {
-          done: boolean;
-          value: PingSample | undefined | null;
-        }) => {
-          if (pausedRef.current) {
-            return;
-          }
-
-          if (done) {
-            return;
-          }
-
-          if (value) {
-            pageStateRef.current = updatePageState(pageStateRef.current, value);
-
-            // in StrictMode, this (as most React library functions), will be called twice per sample
-            setPageState(pageStateRef.current);
-
-            readerRef.current?.read().then(readNext as any);
-          }
-        };
-        readerRef.current?.read().then(readNext as any);
-      }, 100);
-    }
-
-    return () => {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-      }
-
-      const reader = readerRef.current;
-      readerRef.current = null;
-      reader
-        ?.cancel()
-        .then(() => {
-          reader.releaseLock();
-        })
-        .catch((err) => {
-          console.error("failed to cancel reader:", err);
-        });
-      const stream = streamRef.current;
-      stream?.cancel().catch((e) => {
-        console.error("failed to cancel stream:", e);
-      });
-      streamRef.current = null;
-    };
-  }, [task.taskId, stopped, paused]);
 
   const canvasW = 360000;
   const canvasH = 200000;
@@ -798,48 +502,23 @@ export function TracerouteResultDisplay(props: {
     }
   }
 
-  const currentNode: ConnEntry | undefined = Array.from(
-    Object.entries(conns || {}),
-  ).find(([_, connent]) => connent.node_name === tabValue)?.[1];
+  const { traceStatsMap, isRunning, stopTick, resumeTick, paused } =
+    useTraceEventsRead(task);
 
-  // console.log("[dbg] currentNode:", currentNode);
-  // console.log("[dbg] tab:", tabValue);
-  // console.log("[dbg] samples:", pageState?.[tabValue]?.samples);
+  const traceStats = traceStatsMap[tabValue];
+  const tracerouteTable = traceStats?.ToTable();
 
-  let markers: Marker[] = [];
-  let extraPaths: Path[] | undefined = undefined;
-  if (showMap) {
-    markers = pageState?.[tabValue]?.markers || [];
-    markers = [...sourceMarkers, ...markers].map((m) => ({
-      ...m,
-      radius: m.radius ? m.radius * ratio : undefined,
-      strokeWidth: m.strokeWidth ? m.strokeWidth * ratio : undefined,
-    }));
-    if (markers.length > 1) {
-      extraPaths = [];
-      for (let j = 1; j < markers.length; j++) {
-        const fromMarker = markers[j - 1];
-        const toMarker = markers[j];
-        if (fromMarker && toMarker && fromMarker.lonLat && toMarker.lonLat) {
-          const paths = toGeodesicPaths(
-            [fromMarker.lonLat[1], fromMarker.lonLat[0]],
-            [toMarker.lonLat[1], toMarker.lonLat[0]],
-            200,
-          );
-          for (const path of paths) {
-            extraPaths.push({
-              ...path,
-              stroke: "green",
-              strokeWidth: 4 * ratio,
-            });
-          }
-        }
-      }
-    }
-  }
-  const [reportGenerating, setReportGenerating] = useState<boolean>(false);
+  const currentNode = Object.values(conns || {}).find(
+    (entry) => entry.node_name === tabValue,
+  );
 
-  const worldMapFill: CSSProperties["fill"] = "#676767";
+  const [openPreview, setOpenPreview] = useState(false);
+  const { markers, extraPaths } = getMarkersAndPaths(
+    traceStats,
+    showMap,
+    sourceMarkers,
+    ratio,
+  );
 
   return (
     <Card>
@@ -872,10 +551,7 @@ export function TracerouteResultDisplay(props: {
             <IconButton
               sx={{
                 visibility:
-                  pageState?.[tabValue]?.markers &&
-                  pageState[tabValue].markers.length > 0
-                    ? "visible"
-                    : "hidden",
+                  markers && markers.length > 0 ? "visible" : "hidden",
               }}
               onClick={() => setShowMap(!showMap)}
             >
@@ -885,24 +561,18 @@ export function TracerouteResultDisplay(props: {
 
           <Tooltip title="Share Report">
             <IconButton
-              loading={reportGenerating}
               onClick={() => {
                 const from = currentNode;
                 const target = task?.targets?.at(0) || "";
-                if (from && target) {
-                  const samples = pageState?.[tabValue]?.samples || [];
-                  setReportGenerating(true);
-                  new Promise<TracerouteReport>((resolve) => {
-                    const report = buildTracerouteReport(
-                      samples,
+                if (from && target && traceStats) {
+                  setReport(
+                    buildTracerouteReport(
                       from,
                       target,
                       !!task?.useUDP ? "udp" : "icmp",
-                    );
-                    resolve(report);
-                  })
-                    .then((report) => setReport(report))
-                    .finally(() => setReportGenerating(false));
+                    ),
+                  );
+                  setOpenPreview(true);
                 }
               }}
             >
@@ -910,12 +580,20 @@ export function TracerouteResultDisplay(props: {
             </IconButton>
           </Tooltip>
 
-          <StopButton
-            stopped={stopped}
-            onToggle={(prev, nxt) => {
-              setStopped(nxt);
-            }}
-          />
+          <Tooltip title={isRunning ? "Stop" : "Resume"}>
+            <IconButton
+              disabled={(paused && isRunning) || (!paused && !isRunning)}
+              onClick={() => {
+                if (isRunning) {
+                  stopTick();
+                } else {
+                  resumeTick();
+                }
+              }}
+            >
+              {isRunning ? <StopIcon /> : <PlayIcon />}
+            </IconButton>
+          </Tooltip>
 
           <TaskCloseIconButton
             taskId={task.taskId}
@@ -941,7 +619,7 @@ export function TracerouteResultDisplay(props: {
           }}
         >
           <WorldMap
-            canvasSvgRef={canvasSvgRef as any}
+            canvasSvgRef={canvasSvgRef}
             canvasWidth={canvasW}
             canvasHeight={canvasH}
             fill={worldMapFill}
@@ -985,106 +663,58 @@ export function TracerouteResultDisplay(props: {
       <TableContainer sx={{ maxWidth: "100%", overflowX: "auto" }}>
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Hop</TableCell>
-              <TableCell>Peers</TableCell>
-              <TableCell>RTT</TableCell>
-              <TableCell>Stats</TableCell>
-            </TableRow>
+            {tracerouteTable?.header?.map((row, rowIdx, rows) => (
+              <TableRow key={rowIdx}>
+                {row.cells.map((cell, cellIdx) => (
+                  <TableCell
+                    key={cellIdx}
+                    sx={{
+                      fontWeight: "bold",
+                      borderBottom: rowIdx === 0 ? "none" : undefined,
+                      padding: 0,
+                      paddingLeft: 1,
+                      paddingRight: 1,
+                      paddingTop: rowIdx === 0 ? 2 : undefined,
+                      paddingBottom: rowIdx === rows.length - 1 ? 2 : undefined,
+                    }}
+                  >
+                    {cell}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
           </TableHead>
           <TableBody>
-            {getDispEntries(pageState, tabValue).map(({ hop, entry }) => {
+            {tracerouteTable?.rows?.map((row, rowIdx) => {
+              if (row.spacer) {
+                return <Fragment key={rowIdx}></Fragment>;
+              }
+              const rows = tracerouteTable?.rows || [];
+              const hopFirstRow = !!row.cells[0];
+              const isLastOfHop =
+                rowIdx === rows.length - 1 || rows[rowIdx + 1]?.spacer;
               return (
-                <TableRow key={hop}>
-                  <TableCell>{hop}</TableCell>
-                  <TableCell>
-                    {entry.peers.length > 0 ? (
-                      <Box>
-                        {entry.peers.map((peer, idx) => (
-                          <Box
-                            sx={{
-                              display: "flex",
-                              gap: 1,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                            key={idx}
-                          >
-                            <IPDisp rdns={peer.ip.rdns} ip={peer.ip.ip} />
-                            {!!peer.asn && <Box>{peer.asn}</Box>}
-                            {!!peer.location && <Box>{peer.location}</Box>}
-                            {!!peer.isp && <Box>{peer.isp}</Box>}
-                            {!!entry.pmtu?.[peer.ip.ip] && (
-                              <Box>PMTU={entry.pmtu[peer.ip.ip]}</Box>
-                            )}
-                          </Box>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Box>{"***"}</Box>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-                      {entry.rtts.history.length > 0 ? (
-                        <Fragment>
-                          <Box
-                            sx={{
-                              color: getLatencyColor(entry.rtts.current),
-                            }}
-                          >
-                            {entry.rtts.current.toFixed(3)}ms
-                          </Box>
-                          <Box
-                            sx={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(3, auto)",
-                              justifyContent: "space-between",
-                              justifyItems: "center",
-                              alignItems: "center",
-                              columnGap: 2,
-                            }}
-                          >
-                            <Fragment>
-                              <Box>Min</Box>
-                              <Box>Med</Box>
-                              <Box>Max</Box>
-                              <Box
-                                sx={{
-                                  color: getLatencyColor(entry.rtts.min),
-                                }}
-                              >
-                                {entry.rtts.min.toFixed(3)}ms
-                              </Box>
-                              <Box
-                                sx={{
-                                  color: getLatencyColor(entry.rtts.median),
-                                }}
-                              >
-                                {entry.rtts.median.toFixed(3)}ms
-                              </Box>
-                              <Box
-                                sx={{
-                                  color: getLatencyColor(entry.rtts.max),
-                                }}
-                              >
-                                {entry.rtts.max.toFixed(3)}ms
-                              </Box>
-                            </Fragment>
-                          </Box>
-                        </Fragment>
+                <TableRow key={rowIdx}>
+                  {row.cells.map((cell, cellIdx) => (
+                    <TableCell
+                      key={cellIdx}
+                      sx={{
+                        padding: 0,
+                        paddingLeft: 1,
+                        paddingRight: 1,
+                        paddingTop: hopFirstRow ? 2 : undefined,
+                        paddingBottom: isLastOfHop ? 2 : undefined,
+                        whiteSpace: "nowrap",
+                        borderBottom: isLastOfHop ? undefined : "none",
+                      }}
+                    >
+                      {hopFirstRow && cellIdx === 2 ? (
+                        <RttCell value={cell} />
                       ) : (
-                        <Box>{"***"}</Box>
+                        cell
                       )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                      <Box>{entry.stats.sent} Sent,</Box>
-                      <Box>{entry.stats.replied} Replied,</Box>
-                      <Box>{entry.stats.lost} Lost</Box>
-                    </Box>
-                  </TableCell>
+                    </TableCell>
+                  ))}
                 </TableRow>
               );
             })}
@@ -1093,8 +723,11 @@ export function TracerouteResultDisplay(props: {
       </TableContainer>
       <TracerouteReportPreviewDialog
         report={report}
-        open={report !== undefined && report !== null}
-        onClose={() => setReport(undefined)}
+        tracerouteTable={tracerouteTable}
+        open={!!(report && tracerouteTable && openPreview)}
+        onClose={() => {
+          setOpenPreview(false);
+        }}
       />
     </Card>
   );

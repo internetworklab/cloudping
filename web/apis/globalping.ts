@@ -42,7 +42,7 @@ function sortAndDedup(nodes: NodeEntry[]): NodeEntry[] {
 }
 
 export async function getCurrentPingerOptions(
-  extraLabels?: Record<string, string>
+  extraLabels?: Record<string, string>,
 ): Promise<NodeEntry[]> {
   return fetch(`${getApiEndpoint()}/conns`)
     .then((res) => res.json())
@@ -142,7 +142,7 @@ export type PingSample = {
 
 export function generateFakePingSampleStream(
   sources: string[],
-  targets: string[]
+  targets: string[],
 ): ReadableStream<PingSample> {
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -277,7 +277,7 @@ export class LineTokenizer extends TransformStream<string, TokenObject> {
     super({
       transform(
         chunk: string,
-        controller: TransformStreamDefaultController<TokenObject>
+        controller: TransformStreamDefaultController<TokenObject>,
       ) {
         buffer += chunk;
 
@@ -310,7 +310,7 @@ export class JSONLineDecoder extends TransformStream<TokenObject, unknown> {
     super({
       transform(
         chunk: TokenObject,
-        controller: TransformStreamDefaultController<unknown>
+        controller: TransformStreamDefaultController<unknown>,
       ) {
         try {
           const unknownObj = JSON.parse(chunk.content);
@@ -328,7 +328,7 @@ class TCPPingEventAdapter extends TransformStream<RawTCPPingEvent, PingSample> {
     super({
       transform(
         chunk: RawTCPPingEvent,
-        controller: TransformStreamDefaultController<PingSample>
+        controller: TransformStreamDefaultController<PingSample>,
       ) {
         const maybeSample = pingSampleFromTCPEvent(chunk);
         if (maybeSample) {
@@ -344,7 +344,7 @@ class PingEventAdapter extends TransformStream<RawPingEvent, PingSample> {
     super({
       transform(
         chunk: RawPingEvent,
-        controller: TransformStreamDefaultController<PingSample>
+        controller: TransformStreamDefaultController<PingSample>,
       ) {
         const maybeSample = pingSampleFromEvent(chunk);
         if (maybeSample) {
@@ -357,7 +357,7 @@ class PingEventAdapter extends TransformStream<RawPingEvent, PingSample> {
 
 export function makeRealDNSResponseStream(
   targets: DNSTarget[],
-  sources: string[]
+  sources: string[],
 ): Promise<ReadableStream<RawPingEvent<DNSResponse>>> {
   const urlParams = new URLSearchParams();
   urlParams.set("from", sources.join(","));
@@ -378,12 +378,12 @@ export function makeRealDNSResponseStream(
           .pipeThrough(new LineTokenizer())
           .pipeThrough(new JSONLineDecoder()) as ReadableStream<
           RawPingEvent<DNSResponse>
-        >
+        >,
     );
 }
 
 function pingSampleFromTCPEvent(
-  event: RawTCPPingEvent
+  event: RawTCPPingEvent,
 ): PingSample | undefined {
   const from = event.metadata?.from || "";
   const target = event.metadata?.target || "";
@@ -530,9 +530,7 @@ export type PingRequest = {
   randomPayloadSize?: number;
 };
 
-export function generatePingSampleStream(
-  pingReq: PingRequest
-): ReadableStream<PingSample> {
+export function getPingSampleStreamURL(pingReq: PingRequest): string {
   const {
     sources,
     targets,
@@ -587,10 +585,19 @@ export function generatePingSampleStream(
     urlParams.set("randomPayloadSize", randomPayloadSize.toString());
   }
 
+  return `${getApiEndpoint()}/ping?${urlParams.toString()}`;
+}
+
+export function generatePingSampleStream(
+  pingReq: PingRequest,
+): ReadableStream<PingSample> {
+  const { sources, targets, l4PacketType } = pingReq;
+  const url = getPingSampleStreamURL(pingReq);
+
   const headers = new Headers();
   headers.set("Content-Type", "application/json");
 
-  let controlscope: {
+  const controlscope: {
     rawStream?: ReadableStream<Uint8Array<ArrayBuffer>> | null;
     sampleStream?: ReadableStream<PingSample> | null;
     reader?: ReadableStreamDefaultReader<PingSample> | null;
@@ -599,13 +606,13 @@ export function generatePingSampleStream(
 
   return new ReadableStream<PingSample>({
     start(controller) {
-      fetch(`${getApiEndpoint()}/ping?${urlParams.toString()}`, {
+      fetch(url, {
         method: "GET",
         headers: headers,
       })
         .then((res) => res.body)
         .then((rawStream) => {
-          controlscope.rawStream = rawStream as any;
+          controlscope.rawStream = rawStream;
           return rawStream
             ?.pipeThrough(new TextDecoderStream())
             .pipeThrough(new LineTokenizer())
@@ -613,7 +620,7 @@ export function generatePingSampleStream(
             .pipeThrough(
               l4PacketType === "tcp"
                 ? new TCPPingEventAdapter()
-                : new PingEventAdapter()
+                : new PingEventAdapter(),
             );
         })
         .then((maybeSampleStream) => {
@@ -637,15 +644,14 @@ export function generatePingSampleStream(
         });
     },
     cancel() {
-      console.log("[dbg] cancel stream", sources, targets);
       controlscope.stopped = true;
       controlscope.reader
         ?.cancel()
         .then(() => {
-          console.log("[dbg] reader cancelled");
+          console.debug("reader cancelled, pingReq:", pingReq);
         })
         .catch((err) => {
-          console.error("[dbg] failed to cancel reader:", err);
+          console.error("failed to cancel reader:", err);
         });
     },
   });
@@ -667,6 +673,6 @@ export type Conns = {
 
 export async function getNodes(): Promise<Conns> {
   return fetch(`${getApiEndpoint()}/conns`).then(
-    (res) => res.json() as Promise<Conns>
+    (res) => res.json() as Promise<Conns>,
   );
 }

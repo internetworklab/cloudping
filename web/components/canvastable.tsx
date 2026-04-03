@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@mui/material";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, RefObject, useEffect, useRef } from "react";
 
 type LineDrawCtx = {
   fillStyle?: CanvasPattern | string | CanvasGradient;
@@ -19,7 +19,7 @@ type LineDrawCtx = {
 function drawLine(
   lineCtx: LineDrawCtx,
   ctx: CanvasRenderingContext2D,
-  line: string
+  line: string,
 ): LineDrawCtx {
   if (lineCtx.baseline) {
     ctx.textBaseline = lineCtx.baseline;
@@ -54,20 +54,6 @@ function drawLine(
   };
 }
 
-function drawCursor(
-  x: number,
-  y: number,
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  color: CanvasPattern | string | CanvasGradient
-): void {
-  const currentFill = ctx.fillStyle;
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = currentFill;
-}
-
 type ColDrawCtx = {
   lineDrawCtx: LineDrawCtx;
   columnGap: number;
@@ -83,7 +69,8 @@ export type Col = Cell[];
 
 export type Row = Cell[];
 
-function transposeTable(rows: Row[]): Col[] {
+// Re-structure a table from row-based to col-based
+function reStructureTable(rows: Row[]): Col[] {
   if (rows.length === 0) {
     return [];
   }
@@ -106,9 +93,9 @@ function transposeTable(rows: Row[]): Col[] {
 function drawCol(
   colCtx: ColDrawCtx,
   ctx: CanvasRenderingContext2D,
-  column: Col
+  column: Col,
 ): ColDrawCtx {
-  let newColCtx: ColDrawCtx = {
+  const newColCtx: ColDrawCtx = {
     ...colCtx,
     y0: colCtx.y0 ?? colCtx.lineDrawCtx.y,
   };
@@ -141,53 +128,84 @@ function carriageReturn(lineCtx: LineDrawCtx): LineDrawCtx {
   };
 }
 
+type DimensionCtx = {
+  w: number;
+  h: number;
+  maxW: number;
+  maxH: number;
+};
+
+function doPaint(
+  ctx: CanvasRenderingContext2D,
+  canvasEle: HTMLCanvasElement,
+  dim: DimensionCtx,
+  preamble: Row[],
+  tabularData: Row[],
+): DimensionCtx {
+  const dpi = window.devicePixelRatio;
+  const canvasW = Math.max(dim.w * dpi, dim.maxW);
+  const canvasH = Math.max(dim.h * dpi, dim.maxH);
+
+  canvasEle.setAttribute("width", String(canvasW));
+  canvasEle.setAttribute("height", String(canvasH));
+
+  ctx.fillStyle = "#262626";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  const deltaX = 10 * dpi;
+  const deltaY = 10 * dpi;
+
+  ctx.setTransform(1, 0, 0, 1, deltaX, deltaY);
+
+  let lineCtx: LineDrawCtx = {
+    fillStyle: "#fff",
+    baseline: "top",
+    font: `${16 * dpi}px sans-serif`,
+    y: 0,
+    lineGap: 6 * dpi,
+    x: 0,
+  };
+
+  for (const row of preamble) {
+    if (row.length > 0) {
+      lineCtx = drawLine(lineCtx, ctx, row[0].content);
+    }
+  }
+
+  let colCtx: ColDrawCtx = {
+    lineDrawCtx: lineCtx,
+    columnGap: 30 * dpi,
+  };
+
+  const cols = reStructureTable(tabularData);
+
+  for (const col of cols) {
+    colCtx = drawCol(colCtx, ctx, col);
+  }
+
+  colCtx = {
+    ...colCtx,
+    lineDrawCtx: carriageReturn(colCtx.lineDrawCtx),
+  };
+
+  const measuredMaxR = colCtx.lineDrawCtx.maxRight ?? 0;
+  const measuredMaxH = colCtx.lineDrawCtx.maxHeight ?? 0;
+
+  return {
+    ...dim,
+    maxW: measuredMaxR + 2 * deltaX,
+    maxH: measuredMaxH + 2 * deltaY,
+  } as DimensionCtx;
+}
+
 export function CanvasTable(props: {
   preamble: Row[];
   tabularData: Row[];
-  canvasRef: React.RefObject<HTMLCanvasElement>;
-  showCursor?: boolean;
-  showDbg?: boolean;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
 }) {
-  const { preamble, tabularData, showCursor, showDbg } = props;
-  const [w, setW] = useState(0);
-  const [h, setH] = useState(0);
-  const [maxW, setMaxW] = useState(0);
-  const [maxH, setMaxH] = useState(0);
-
-  const dpi = window.devicePixelRatio;
-  const R = Math.max(w * dpi, maxW);
-  const H = Math.max(h * dpi, maxH);
-
+  const { preamble, tabularData, canvasRef } = props;
+  const dimRef = useRef<DimensionCtx>({ w: 0, h: 0, maxW: 0, maxH: 0 });
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const ele = boxRef.current;
-    if (!ele) {
-      return;
-    }
-
-    const rect = ele.getBoundingClientRect();
-    console.log("[dbg] rect:", rect);
-
-    const obs = new ResizeObserver((entries) => {
-      for (const ent of entries) {
-        if (ent.target === ele) {
-          console.log("[dbg] ResizeObserver entry:", ent);
-          const cr = ent.contentRect;
-          if (cr) {
-            setW(cr.width);
-            setH(cr.height);
-          }
-        }
-      }
-    });
-
-    obs.observe(ele);
-
-    return () => {
-      obs.unobserve(ele);
-    };
-  });
 
   useEffect(() => {
     const ele = boxRef.current;
@@ -200,129 +218,58 @@ export function CanvasTable(props: {
       return;
     }
 
-    const dpi = window.devicePixelRatio;
-
-    // canvasEle.setAttribute("width", `${w * dpi}`);
-    // canvasEle.setAttribute("height", `${h * dpi}`);
-
     const ctx = canvasEle.getContext("2d");
     if (!ctx) {
       return;
     }
 
-    ctx.fillStyle = "#262626";
-    ctx.fillRect(0, 0, R, H);
-
-    const deltaX = 10 * dpi;
-    const deltaY = 10 * dpi;
-    const translateMatrix = [
-      [1, 0, deltaX],
-      [0, 1, deltaY],
-      [0, 0, 1],
-    ];
-    ctx.setTransform(
-      translateMatrix[0][0],
-      translateMatrix[1][0],
-      translateMatrix[0][1],
-      translateMatrix[1][1],
-      translateMatrix[0][2],
-      translateMatrix[1][2]
+    dimRef.current = doPaint(
+      ctx,
+      canvasEle,
+      dimRef.current!,
+      preamble,
+      tabularData,
     );
-    let lineCtx: LineDrawCtx = {
-      fillStyle: "#fff",
-      baseline: "top",
-      font: `${16 * dpi}px sans-serif`,
-      y: 0,
-      lineGap: 6 * dpi,
-      x: 0,
-    };
 
-    for (const row of preamble) {
-      if (row.length > 0) {
-        lineCtx = drawLine(lineCtx, ctx, row[0].content);
+    const obs = new ResizeObserver((entries) => {
+      for (const ent of entries) {
+        if (ent.target === ele) {
+          const cr = ent.contentRect;
+          if (cr) {
+            dimRef.current = { ...dimRef.current, w: cr.width, h: cr.height };
+            dimRef.current = doPaint(
+              ctx,
+              canvasEle,
+              dimRef.current,
+              preamble,
+              tabularData,
+            );
+          }
+        }
       }
-    }
+    });
 
-    // drawCursor(lineCtx, ctx, 15 * dpi, 20 * dpi, "#111");
-
-    let colCtx: ColDrawCtx = {
-      lineDrawCtx: lineCtx,
-      columnGap: 30 * dpi,
-    };
-
-    const cols = transposeTable(tabularData);
-
-    for (const col of cols) {
-      colCtx = drawCol(colCtx, ctx, col);
-    }
-
-    colCtx = {
-      ...colCtx,
-      lineDrawCtx: carriageReturn(colCtx.lineDrawCtx),
-    };
-
-    if (!!showCursor) {
-      drawCursor(
-        colCtx.lineDrawCtx.x,
-        colCtx.lineDrawCtx.y,
-        ctx,
-        15 * dpi,
-        20 * dpi,
-        "#111"
-      );
-    }
-
-    console.log("[dbg] paint.");
-    const maxR = colCtx.lineDrawCtx.maxRight ?? 0;
-    console.log("[dbg] maxRight:", maxR);
-    const maxH = colCtx.lineDrawCtx.maxHeight ?? 0;
-    console.log("[dbg] maxHeight:", maxH);
-
-    const realMaxW = maxR + 2 * deltaX;
-    setMaxW(realMaxW);
-    const realMaxH = maxH + 2 * deltaY;
-    setMaxH(realMaxH);
+    obs.observe(ele);
 
     return () => {
-      console.log("[dbg] clean up");
-      ctx.resetTransform();
-      ctx.clearRect(0, 0, realMaxW, realMaxH);
+      obs.unobserve(ele);
     };
-  });
+  }, [preamble, tabularData]);
 
   return (
     <Fragment>
       <Box
         ref={boxRef}
         sx={{
-          maxHeight: "400px",
+          maxHeight: "80vh",
           overflow: "auto",
         }}
       >
         <canvas
-          ref={props.canvasRef}
+          ref={canvasRef}
           style={{ width: "100%", height: "auto" }}
-          width={R}
-          height={H}
         ></canvas>
       </Box>
-      {showDbg && (
-        <Box
-          sx={{
-            paddingTop: 2,
-            paddingLeft: 3,
-            paddingRight: 3,
-            display: "flex",
-            gap: 2,
-            flexWrap: "wrap",
-          }}
-        >
-          <Box>W: {w}</Box>
-          <Box>H: {h}</Box>
-          <Box>MaxW: {maxW.toFixed(0)}</Box>
-          <Box>MaxH: {maxH.toFixed(0)}</Box>
-        </Box>
-      )}
     </Fragment>
   );
 }

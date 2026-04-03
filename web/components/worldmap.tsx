@@ -94,7 +94,7 @@ export function xyzToLatLon(xyz: Vector3): [number, number] {
 function getGeodesicPoints(
   startPoint: Vector3,
   endPoint: Vector3,
-  numPoints: number
+  numPoints: number,
 ): Vector3[] {
   const points = [];
   const quaternion = new Quaternion();
@@ -142,7 +142,7 @@ function markVector3(points: LonLat[]): [number, number] | undefined {
 export function toGeodesicPaths(
   from: LatLon,
   to: LatLon,
-  numPoints: number
+  numPoints: number,
 ): Path[] {
   const xyzFrom = baseVector
     .clone()
@@ -197,7 +197,7 @@ function isPolygon(polygon: any): boolean {
 }
 
 function* yieldPolygons(
-  polygonOrPolygons: any
+  polygonOrPolygons: any,
 ): Generator<Polygon, void, unknown> {
   if (isPolygon(polygonOrPolygons)) {
     yield polygonOrPolygons as Polygon;
@@ -331,9 +331,9 @@ export function useCanvasSizing(
   canvasW: number,
   canvasH: number,
   expanded: boolean,
-  enableZoom: boolean
+  enableZoom: boolean,
 ) {
-  const canvasSvgRef = useRef<SVGSVGElement>(null);
+  const canvasSvgRef = useRef<SVGSVGElement | null>(null);
   const [ratio, setRatio] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (canvasSvgRef.current) {
@@ -364,7 +364,7 @@ export function useCanvasSizing(
       const x0 = event.clientX;
       const y0 = event.clientY;
       const [initOffsetX, initOffsetY, initProjXLen, initProjYLen] = getViewBox(
-        svg!
+        svg!,
       );
       const boundingBox = svg!.getBoundingClientRect();
       const onMouseMove = (event: MouseEvent) => {
@@ -467,7 +467,7 @@ function RenderMarker(props: { marker: Marker; projector: Projector }) {
               x={x + radius * 1.75}
               y={y + radius * 1.75}
               fontSize={radius * 2}
-              fill='currentColor'
+              fill="currentColor"
               style={{ cursor: "text" }}
             >
               {marker.index}
@@ -513,7 +513,7 @@ export function WorldMap(props: {
   canvasHeight: number;
   fill: CSSProperties["fill"];
   markers: Marker[];
-  canvasSvgRef?: RefObject<SVGSVGElement>;
+  canvasSvgRef?: RefObject<SVGSVGElement | null>;
   paths?: Path[];
 }) {
   const {
@@ -532,7 +532,7 @@ export function WorldMap(props: {
 
   const projector = useMemo(
     () => getProjector(canvasX, canvasY),
-    [canvasX, canvasY]
+    [canvasX, canvasY],
   );
 
   return (

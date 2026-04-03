@@ -227,6 +227,8 @@ export type HTTPProbeEvent = {
 export type RawPingEvent<T = RawPingEventData> = {
   data?: T;
   metadata?: RawPingEventMetadata;
+  err?: string;
+  error?: string;
 };
 
 export type RawPingEventICMPReply = {

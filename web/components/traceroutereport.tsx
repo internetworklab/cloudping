@@ -12,6 +12,7 @@ import {
 import { useMemo, useRef, useState } from "react";
 import SaveIcon from "@mui/icons-material/Save";
 import { Row, CanvasTable } from "@/components/canvastable";
+import { Table } from "@/apis/trace";
 
 export type TracerouteReportLocation = {
   city?: string;
@@ -20,31 +21,6 @@ export type TracerouteReportLocation = {
 
 function formatNumStr(num: string): string {
   return num.replace(/0+$/, "").replace(/\.$/, "");
-}
-
-function getNumStats(arr: number[]):
-  | {
-      min: number;
-      max: number;
-      med: number;
-    }
-  | undefined {
-  if (arr.length > 0) {
-    const sorted = [...arr];
-    sorted.sort();
-
-    let med = 0;
-    if (arr.length % 2) {
-      med = sorted[Math.floor(arr.length / 2)];
-    } else {
-      med += sorted[arr.length / 2 - 1];
-      med += sorted[arr.length / 2];
-      med = med / 2;
-    }
-
-    return { min: sorted[0], max: sorted[sorted.length - 1], med };
-  }
-  return undefined;
 }
 
 function renderLoc(loc?: TracerouteReportLocation): string {
@@ -130,40 +106,10 @@ export type TracerouteReportRTTStat = {
   samples: number[];
 };
 
-function renderRTTStat(stat?: TracerouteReportRTTStat): string {
-  if (!stat) {
-    return "";
-  }
-  const stats = getNumStats(stat.samples);
-  let rttStr = `${formatNumStr(stat.lastMs.toFixed(2))}ms`;
-  if (stats) {
-    const statsLine = [
-      `${formatNumStr(stats.min.toFixed(2))}ms`,
-      `${formatNumStr(stats.med.toFixed(2))}ms`,
-      `${formatNumStr(stats.max.toFixed(2))}ms`,
-    ];
-    rttStr += ` ${statsLine.join("/")}`;
-  }
-  return rttStr;
-}
-
 export type TracerouteReportTXRXStat = {
   sent: number;
   replies: number;
 };
-
-function renderTXRXStat(stat?: TracerouteReportTXRXStat): string {
-  if (!stat) {
-    return "";
-  }
-  const lossPercent =
-    stat.sent > 0 ? ((stat.sent - stat.replies) / stat.sent) * 100 : 0;
-  return [
-    `${stat.sent} sent`,
-    `${stat.replies} replies`,
-    `${formatNumStr(lossPercent.toFixed(2))}% loss`,
-  ].join(", ");
-}
 
 export type TracerouteReportPeer = {
   // if this field is falsy, mark it with a '*' in the screen,
@@ -187,6 +133,7 @@ export type TracerouteReportHop = {
   peers: TracerouteReportPeer[];
 };
 
+// Note: this struct is solely for storing metadata of a traceroute task.
 export type TracerouteReport = {
   // when the report is generated
   date: number;
@@ -200,11 +147,12 @@ export type TracerouteReport = {
   // type of l4 sending packets, for linux, traceroute use udp by default,
   // for windows, icmp is used.
   mode: TracerouteReportMode;
-
-  hops: TracerouteReportHop[];
 };
 
-function renderTracerouteReport(report: TracerouteReport): {
+function renderTracerouteReport(
+  report: TracerouteReport,
+  tracerouteTable: Table,
+): {
   preamble: Row[];
   tabularData: Row[];
 } {
@@ -231,64 +179,20 @@ function renderTracerouteReport(report: TracerouteReport): {
   }
 
   const tabularData: Row[] = [];
-  if (report.hops && report.hops.length > 0) {
-    const header: Row = [
-      { content: "TTL" },
-      { content: "Peers" },
-      { content: "ISP" },
-      { content: "Location" },
-      { content: "RTTs (last min/med/max)" },
-      { content: "Stat" },
-    ];
-    tabularData.push(header);
 
-    for (const hop of report.hops) {
-      for (let peerIdx in hop.peers) {
-        const peer = hop.peers[peerIdx];
-        const row: Row = [];
+  // Render tabular data from tracerouteTable
+  for (const headerRow of tracerouteTable.header) {
+    tabularData.push(headerRow.cells.map((cell) => ({ content: cell })));
+  }
 
-        // TTL
-        if (peerIdx === "0") {
-          row.push({ content: String(hop.ttl) });
-        } else {
-          row.push({ content: "" });
-        }
+  // Spacer between header and body
+  tabularData.push([{ content: "", empty: true }]);
 
-        // Peers
-        if (peer.timeout) {
-          row.push({ content: "*" });
-          for (let i = 1; i < header.length; i++) {
-            row.push({ content: "" });
-          }
-          tabularData.push(row);
-          continue;
-        } else {
-          let peerName = "";
-          if (peer.rdns) {
-            peerName = peer.rdns + " " + `(${peer.ip})`;
-          } else {
-            peerName = peer.ip;
-          }
-          if (peer.pmtu !== undefined && peer.pmtu !== null) {
-            peerName += ` [PMTU=${peer.pmtu}]`;
-          }
-          row.push({ content: peerName });
-        }
-
-        // ISP
-        row.push({ content: renderISP(peer.isp) });
-
-        // Location
-        row.push({ content: renderLoc(peer.loc) });
-
-        // RTTs
-        row.push({ content: renderRTTStat(peer.rtt) });
-
-        // Stats
-        row.push({ content: renderTXRXStat(peer.stat) });
-
-        tabularData.push(row);
-      }
+  for (const row of tracerouteTable.rows) {
+    if (row.spacer) {
+      tabularData.push([{ content: "", empty: true }]);
+    } else {
+      tabularData.push(row.cells.map((cell) => ({ content: cell })));
     }
   }
 
@@ -389,19 +293,20 @@ function exportCanvasBitmap(
 
 export function TracerouteReportPreviewDialog(props: {
   report: TracerouteReport | undefined;
+  tracerouteTable: Table | undefined;
   open: boolean;
   onClose: () => void;
 }) {
-  const { report, open, onClose } = props;
+  const { report, tracerouteTable, open, onClose } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const { preamble, tabularData } = useMemo(() => {
-    if (report) {
-      return renderTracerouteReport(report);
+    if (report && tracerouteTable) {
+      return renderTracerouteReport(report, tracerouteTable);
     }
     return { preamble: [], tabularData: [] };
-  }, [report]);
+  }, [report, tracerouteTable]);
 
   const [exporting, setExporting] = useState(false);
 
@@ -441,7 +346,7 @@ export function TracerouteReportPreviewDialog(props: {
         <CanvasTable
           preamble={preamble}
           tabularData={tabularData}
-          canvasRef={canvasRef as any}
+          canvasRef={canvasRef}
         />
       </DialogContent>
     </Dialog>
@@ -502,7 +407,7 @@ export function PingReportPreviewDialog(props: {
         <CanvasTable
           preamble={preamble}
           tabularData={tabularData}
-          canvasRef={canvasRef as any}
+          canvasRef={canvasRef}
         />
       </DialogContent>
     </Dialog>
