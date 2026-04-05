@@ -16,7 +16,6 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - QUIC for hub-agent communication support and NAT-traversal
 - JWT authentication
 - Telegram Bot (currently supports: `/ping`, `/traceroute`, docs are on the way)
-- Mobile friendly
 - Prometheus Metrics
 
 ## Try
