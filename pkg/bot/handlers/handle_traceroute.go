@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/alecthomas/kong"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtable "github.com/internetworklab/cloudping/pkg/table"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type TracerouteCLI struct {
@@ -452,95 +453,16 @@ func (statsBuilder *TraceStatsBuilder) GetTraceStats() *TraceStats {
 	return statsBuilder.stats
 }
 
-type Row struct {
-	Cells []string
-}
-
-type Table struct {
-	Rows []Row
-}
-
-func (tb *Table) GetHumanReadableText(colGap int, rowGap int, maxColWidth int) string {
-	if len(tb.Rows) == 0 {
-		return "(No data)"
-	}
-
-	// Calculate max width for each column
-	numCols := 0
-	for _, row := range tb.Rows {
-		if len(row.Cells) > numCols {
-			numCols = len(row.Cells)
-		}
-	}
-	if numCols == 0 {
-		return "(No data)"
-	}
-	colWidths := make([]int, numCols)
-	for _, row := range tb.Rows {
-		for colIdx, cell := range row.Cells {
-			cellLen := len(cell)
-			if maxColWidth > 0 && cellLen > maxColWidth {
-				cellLen = maxColWidth
-			}
-			if colIdx < numCols && cellLen > colWidths[colIdx] {
-				colWidths[colIdx] = cellLen
-			}
-		}
-	}
-
-	var sb strings.Builder
-
-	// Helper function to truncate a cell if it exceeds maxColWidth
-	truncateCell := func(cell string) string {
-		if maxColWidth > 0 && len(cell) > maxColWidth {
-			if maxColWidth <= 3 {
-				return cell[:maxColWidth]
-			}
-			return cell[:maxColWidth-3] + "..."
-		}
-		return cell
-	}
-
-	// Helper function to write a row with aligned columns
-	writeRow := func(row Row) {
-		for colIdx := 0; colIdx < numCols; colIdx++ {
-			cell := ""
-			if colIdx < len(row.Cells) {
-				cell = truncateCell(row.Cells[colIdx])
-			}
-			// Pad cell to max width for this column (left-aligned)
-			fmt.Fprintf(&sb, "%-*s", colWidths[colIdx], cell)
-			if colIdx < numCols-1 && colGap > 0 {
-				sb.WriteString(strings.Repeat(" ", colGap))
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	// Write all rows
-	for rowIdx, row := range tb.Rows {
-		// Add row gap between hops (blank rows)
-		if rowIdx > 0 && len(row.Cells) == 0 {
-			sb.WriteString("\n")
-			continue
-		}
-
-		writeRow(row)
-	}
-
-	return sb.String()
-}
-
 // ToTable converts the traceroute statistics to a Table struct
-func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
+func (statsBuilder *TraceStatsBuilder) ToTable() *pkgtable.Table {
 	stats := statsBuilder.stats
-	table := &Table{Rows: []Row{}}
+	table := &pkgtable.Table{Rows: []pkgtable.Row{}}
 
 	// Add header rows
 	table.Rows = append(table.Rows,
-		Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
-		Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
-		Row{Cells: []string{}},
+		pkgtable.Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
+		pkgtable.Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
+		pkgtable.Row{Cells: []string{}},
 	)
 
 	if len(stats.HopOrder) == 0 {
@@ -550,7 +472,7 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 	for hopIdx, hopTTL := range stats.HopOrder {
 		// Add blank row between hops
 		if hopIdx > 0 {
-			table.Rows = append(table.Rows, Row{Cells: []string{}})
+			table.Rows = append(table.Rows, pkgtable.Row{Cells: []string{}})
 		}
 
 		hop := stats.Hops[hopTTL]
@@ -616,7 +538,7 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 				statsCell = fmt.Sprintf("%d/%d/%.0f%%", peerStats.ReceivedCount, totalPkts, lossPercent)
 			}
 
-			table.Rows = append(table.Rows, Row{
+			table.Rows = append(table.Rows, pkgtable.Row{
 				Cells: []string{hopCell, peerName, rttCell, statsCell},
 			})
 
@@ -656,7 +578,7 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 				}
 			}
 
-			table.Rows = append(table.Rows, Row{
+			table.Rows = append(table.Rows, pkgtable.Row{
 				Cells: []string{"", ipCell, asnIspCell, locationCell},
 			})
 		}
@@ -688,34 +610,32 @@ func (statsBuilder *TraceStatsBuilder) ToTable() *Table {
 // 1. If RDNS is empty string, use IP address as RDNS
 // 2. A one-line space is between each hop
 
-const defaultMaxColWidth int = 24
-
 // GetHumanReadableText returns a formatted traceroute report
 func (statsBuilder *TraceStatsBuilder) GetHumanReadableText() string {
 	table := statsBuilder.ToTable()
 	// *table = getExampleTable()
 
-	return table.GetHumanReadableText(2, 0, defaultMaxColWidth)
+	return table.GetHumanReadableText(defaultColGap, defaultRowGap, defaultMaxColWidth)
 }
 
-func getExampleTable() Table {
+func (handler *TracerouteCommandHandler) getExampleTable() pkgtable.Table {
 	// Write header rows
-	table := Table{}
+	table := pkgtable.Table{}
 	table.Rows = append(
 		table.Rows,
-		Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
-		Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
-		Row{Cells: []string{"", "", "", ""}},
-		Row{Cells: []string{"1.", "homelab.local", "1ms 1ms/2ms/3ms", "2/3/33%"}},
-		Row{Cells: []string{"", "(192.168.1.1)", "", ""}},
-		Row{Cells: []string{"", "", "", ""}},
-		Row{Cells: []string{"2.", "a.example.com", "10ms 10ms/10ms/10ms", "3/3/0%"}},
-		Row{Cells: []string{"", "(17.18.19.20)", "AS12345 Example LLC", "HongKong,HK"}},
-		Row{Cells: []string{}},
-		Row{Cells: []string{"3.", "[TIMEOUT]", "", ""}},
-		Row{Cells: []string{"", "(*)", "", ""}},
-		Row{Cells: []string{}},
-		Row{Cells: []string{"4.", "google.com", "100ms 100ms/100ms/100ms", "1/1/0%"}},
+		pkgtable.Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
+		pkgtable.Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
+		pkgtable.Row{Cells: []string{"", "", "", ""}},
+		pkgtable.Row{Cells: []string{"1.", "homelab.local", "1ms 1ms/2ms/3ms", "2/3/33%"}},
+		pkgtable.Row{Cells: []string{"", "(192.168.1.1)", "", ""}},
+		pkgtable.Row{Cells: []string{"", "", "", ""}},
+		pkgtable.Row{Cells: []string{"2.", "a.example.com", "10ms 10ms/10ms/10ms", "3/3/0%"}},
+		pkgtable.Row{Cells: []string{"", "(17.18.19.20)", "AS12345 Example LLC", "HongKong,HK"}},
+		pkgtable.Row{Cells: []string{}},
+		pkgtable.Row{Cells: []string{"3.", "[TIMEOUT]", "", ""}},
+		pkgtable.Row{Cells: []string{"", "(*)", "", ""}},
+		pkgtable.Row{Cells: []string{}},
+		pkgtable.Row{Cells: []string{"4.", "google.com", "100ms 100ms/100ms/100ms", "1/1/0%"}},
 	)
 
 	return table

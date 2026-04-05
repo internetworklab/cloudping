@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -29,6 +31,7 @@ type CloudPingEventsProvider struct {
 }
 
 const defaultPingIntv time.Duration = 1000 * time.Millisecond
+const defaultProbeIntv time.Duration = 100 * time.Millisecond
 const defaultPktTiemoutMs int = 3000
 const defaultIPInfoProviderName string = "auto"
 const maxPktCountAllowed int = 128
@@ -43,7 +46,7 @@ func (provider *CloudPingEventsProvider) GetAuthorizationHeader() string {
 var ErrReqURLInvalid = errors.New("invalid request url")
 var ErrInvalidPingRequest = errors.New("invalid ping request")
 
-func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc *pkgbot.PingRequestDescriptor) (*url.URL, error) {
+func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgbot.PingRequestDescriptor) (*url.URL, error) {
 	fullPath := provider.APIPrefix + "/ping"
 	urlObj, err := url.Parse(fullPath)
 	if err != nil {
@@ -91,6 +94,27 @@ func (provider *CloudPingEventsProvider) GetPingURL(pingRequestDesc *pkgbot.Ping
 	return urlObj, nil
 }
 
+func (provider *CloudPingEventsProvider) getProbeURL(probeRequestDesc *pkgbot.ProbeRequestDescriptor) (*url.URL, error) {
+	fullPath := provider.APIPrefix + "/ping"
+	urlObj, err := url.Parse(fullPath)
+	if err != nil {
+		return nil, ErrReqURLInvalid
+	}
+
+	pingRequest := pkgpinger.SimplePingRequest{
+		From:             []string{probeRequestDesc.FromNodeId},
+		Targets:          []string{probeRequestDesc.TargetCIDR.String()},
+		IntvMilliseconds: int(defaultProbeIntv.Milliseconds()),
+	}
+	l4Ty := pkgpinger.L4ProtoICMP
+	pingRequest.L4PacketType = &l4Ty
+	pingRequest.PktTimeoutMilliseconds = defaultPktTiemoutMs
+
+	urlObj.RawQuery = pingRequest.ToURLValues().Encode()
+
+	return urlObj, nil
+}
+
 func (provider *CloudPingEventsProvider) GetLocationsURL() (*url.URL, error) {
 	fullPath := provider.APIPrefix + "/conns"
 	urlObj, err := url.Parse(fullPath)
@@ -100,12 +124,135 @@ func (provider *CloudPingEventsProvider) GetLocationsURL() (*url.URL, error) {
 	return urlObj, nil
 }
 
+func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, request pkgbot.ProbeRequestDescriptor) <-chan pkgbot.ProbeEvent {
+	dataCh := make(chan pkgbot.ProbeEvent, 1)
+	go func() {
+		defer close(dataCh)
+
+		urlObj, err := provider.getProbeURL(&request)
+		if err != nil {
+			dataCh <- pkgbot.ProbeEvent{
+				Err: fmt.Errorf("can't get ping event stream URL: %w", err),
+			}
+			return
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlObj.String(), nil)
+		if err != nil {
+			dataCh <- pkgbot.ProbeEvent{
+				Err: fmt.Errorf("failed to create request: %w", err),
+			}
+			return
+		}
+
+		if authHeader := provider.GetAuthorizationHeader(); authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			dataCh <- pkgbot.ProbeEvent{
+				Err: fmt.Errorf("failed to fetch ping events: %w", err),
+			}
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			dataCh <- pkgbot.ProbeEvent{
+				Err: fmt.Errorf("unexpected status code: %d", resp.StatusCode),
+			}
+			return
+		}
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				dataCh <- pkgbot.ProbeEvent{
+					Err: fmt.Errorf("scanner error: %w", err),
+				}
+				return
+			}
+
+			line := scanner.Bytes()
+			var pingEVObj pkgpinger.PingEvent
+			if err := json.Unmarshal(line, &pingEVObj); err != nil {
+				dataCh <- pkgbot.ProbeEvent{
+					Err: fmt.Errorf("failed to parse ping event: %w", err),
+				}
+				continue
+			}
+
+			if pingEVObj.Err != nil {
+				dataCh <- pkgbot.ProbeEvent{
+					Err: errors.New(*pingEVObj.Err),
+				}
+				continue
+			}
+
+			if pingEVObj.Error != nil {
+				dataCh <- pkgbot.ProbeEvent{
+					Err: pingEVObj.Error,
+				}
+				continue
+			}
+			if pingEVObj.Metadata == nil {
+				continue
+			}
+
+			probeEvent, err := provider.convertToProbeEvent(&pingEVObj)
+			if err != nil {
+				dataCh <- pkgbot.ProbeEvent{
+					Err: err,
+				}
+				continue
+			}
+
+			if probeEvent != nil {
+				dataCh <- *probeEvent
+			}
+		}
+
+	}()
+	return dataCh
+}
+
+func (provider *CloudPingEventsProvider) convertToProbeEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.ProbeEvent, error) {
+
+	botEV := pkgbot.ProbeEvent{}
+
+	if pingEV.Data == nil {
+		return &botEV, errors.New("ping event data is nil")
+	}
+
+	// Marshal and unmarshal to convert interface{} to ICMPTrackerEntry
+	dataBytes, err := json.Marshal(pingEV.Data)
+	if err != nil {
+		return &botEV, fmt.Errorf("failed to marshal IPProbeEvent data: %w", err)
+	}
+
+	var rawProbeEV pkgpinger.IPProbeEvent
+	if err := json.Unmarshal(dataBytes, &rawProbeEV); err != nil {
+		return &botEV, fmt.Errorf("failed to unmarshal IPProbeEvent data: %w", err)
+	}
+
+	ipObj := net.ParseIP(rawProbeEV.Peer)
+	if ipObj == nil {
+		botEV.Err = fmt.Errorf("invalid ip: %s", rawProbeEV.Peer)
+		return &botEV, nil
+	}
+	botEV.IP = ipObj
+	botEV.RTTMs = int(rawProbeEV.RTT)
+
+	return &botEV, nil
+}
+
 func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
 	dataCh := make(chan pkgbot.PingEvent, 1)
 	go func() {
 		defer close(dataCh)
 
-		urlObj, err := provider.GetPingURL(pingRequest)
+		urlObj, err := provider.getPingURL(pingRequest)
 		if err != nil {
 			dataCh <- pkgbot.PingEvent{
 				Err: fmt.Sprintf("can't get ping event stream URL: %s", err.Error()),
@@ -179,7 +326,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 				continue
 			}
 
-			botEvent, err := convertPingEventToBotEvent(&pingEVObj)
+			botEvent, err := provider.convertPingEventToBotEvent(&pingEVObj)
 			if err != nil {
 				dataCh <- pkgbot.PingEvent{
 					Err: err.Error(),
@@ -202,7 +349,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 	return dataCh
 }
 
-func convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent, error) {
+func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent, error) {
 	botEV := pkgbot.PingEvent{}
 
 	if pingEV.Data == nil {
@@ -325,6 +472,9 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 			if city, ok := conn.Attributes[pkgnodereg.AttributeKeyCityName]; ok {
 				loc.CityIATACode = city
 			}
+
+			loc.ExtendedAttributes = make(map[string]string)
+			maps.Copy(loc.ExtendedAttributes, conn.Attributes)
 		}
 
 		locations = append(locations, loc)

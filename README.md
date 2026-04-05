@@ -15,7 +15,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - API-first design, CLI friendly (can be access through http clients like `curl`)
 - QUIC for hub-agent communication support and NAT-traversal
 - JWT authentication
-- Telegram Bot (currently supports: `/ping`, `/traceroute`, docs are on the way)
+- Telegram Bot (currently supports: `/ping`, `/traceroute`, and `/probe`)
 - Prometheus Metrics
 
 ## Try
@@ -121,18 +121,23 @@ curl localhost:2112/metrics
 
 Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimiter.
 
-### Authentication
-
-| Endpoint | Authentication |
-|----------|----------------|
-| Agent (`/simpleping`) | mTLS (client certificate required) |
-| Hub (`/ping`) | JWT token |
-
-For certificate configuration, run `bin/globalping agent --help` or `bin/globalping hub --help`.
-
 ### Developer Note
 
 These APIs are intended for developers only. End users should use the Web UI.
+
+## Bot Command
+
+Currently, only Telegram Bot is supported.
+
+| Command | Description | Example |
+|-----------|----------|--------|
+| `/ping` | Ping a destination with real-time streaming statistics. Supports IPv4/IPv6 preference and interactive location switching. | `/ping -c 3 example.com` |
+| `/traceroute` | Traceroute to a destination with hop-by-hop peer and latency details. Supports IPv4/IPv6 preference and packet count. | `/traceroute -6 example.com` |
+| `/probe` | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node. | `/probe -s us-lax1 172.23.0.0/24` |
+| `/list` | List all available probe nodes with their network (ASN/ISP) and location information. | `/list` |
+| `/version` | Show build version information as a JSON payload. | `/version` |
+
+For how to deploy your own bot, see the `docker-compose.yaml` file in [example1](./docker/example1/docker-compose.yaml) or the dev scripts in [scripts/](./scripts).
 
 ## Deployment
 

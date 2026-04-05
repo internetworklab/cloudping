@@ -19,8 +19,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
 	"github.com/google/gopacket/layers"
+	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -51,17 +51,13 @@ type SimplePinger struct {
 	OnSent        pkgraw.ICMPTransceiverHook
 	OnReceived    pkgraw.ICMPTransceiverHook
 	RateLimiter   pkgratelimit.RateLimiter
+	CommonLabels  *prometheus.Labels
+	CounterStore  *pkgmyprom.CounterStore
 }
 
 func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
-	commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
-	if commonLabels == nil {
-		panic("failed to obtain common labels from context")
-	}
-	counterStore := ctx.Value(pkgutils.CtxKeyPrometheusCounterStore).(*pkgmyprom.CounterStore)
-	if counterStore == nil {
-		panic("failed to obtain counter store from context")
-	}
+	commonLabels := sp.CommonLabels
+	counterStore := sp.CounterStore
 
 	outputEVChan := make(chan PingEvent)
 
@@ -303,7 +299,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 								log.Printf("In ICMPReceiving goroutine for %s, failed to mark received: %v", dst.String(), err)
 								return
 							}
-							counterStore.NumPktsReceived.With(commonLabels).Add(1.0)
+							counterStore.LogPktReceive(commonLabels)
 
 						case rxErr, ok := <-errC:
 							if ok && rxErr != nil {
@@ -334,13 +330,13 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 							// MarkSent first, then actually send it.
 							// otherwise, if send it before marking sent, and if the reply is received too early,
 							// there would be a race condition (the reply packet can't find the corresponding sent entry)
-							if err := tracker.MarkSent(req.Seq, req.TTL); err != nil {
+							if err := tracker.MarkSent(req.Seq, req.TTL, &dst); err != nil {
 								log.Printf("In ICMPSending goroutine for %s, failed to mark sent: %v", dst.String(), err)
 								return
 							}
 							inC <- req
 
-							counterStore.NumPktsSent.With(commonLabels).Add(1.0)
+							counterStore.LogPktSent(commonLabels)
 						}
 					}
 				}()

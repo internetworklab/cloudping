@@ -22,6 +22,20 @@ type CounterStore struct {
 	IPInfoServedDurationMs *prometheus.CounterVec
 }
 
+func (counterStore *CounterStore) LogPktSent(labels *prometheus.Labels) {
+	if counterStore == nil || labels == nil {
+		return
+	}
+	counterStore.NumPktsSent.With(*labels).Add(1.0)
+}
+
+func (counterStore *CounterStore) LogPktReceive(labels *prometheus.Labels) {
+	if counterStore == nil || labels == nil {
+		return
+	}
+	counterStore.NumPktsReceived.With(*labels).Add(1.0)
+}
+
 const (
 	PromLabelFrom     = "from"
 	PromLabelTarget   = "target"
