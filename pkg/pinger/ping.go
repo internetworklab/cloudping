@@ -19,8 +19,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
 	"github.com/google/gopacket/layers"
+	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -334,7 +334,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 							// MarkSent first, then actually send it.
 							// otherwise, if send it before marking sent, and if the reply is received too early,
 							// there would be a race condition (the reply packet can't find the corresponding sent entry)
-							if err := tracker.MarkSent(req.Seq, req.TTL); err != nil {
+							if err := tracker.MarkSent(req.Seq, req.TTL, &dst); err != nil {
 								log.Printf("In ICMPSending goroutine for %s, failed to mark sent: %v", dst.String(), err)
 								return
 							}

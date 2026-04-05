@@ -16,14 +16,15 @@ import (
 )
 
 type ICMPTrackerEntry struct {
-	Seq          int
-	TTL          int
-	RTTNanoSecs  []int64
-	RTTMilliSecs []int64
-	SentAt       time.Time
-	ReceivedAt   []time.Time
-	Timer        *time.Timer `json:"-"`
-	Raw          []ICMPReceiveReply
+	Seq           int
+	TTL           int
+	OriginDstAddr *net.IPAddr
+	RTTNanoSecs   []int64
+	RTTMilliSecs  []int64
+	SentAt        time.Time
+	ReceivedAt    []time.Time
+	Timer         *time.Timer `json:"-"`
+	Raw           []ICMPReceiveReply
 }
 
 func (itEnt *ICMPTrackerEntry) FoundLastHop() bool {
@@ -303,7 +304,7 @@ func (it *ICMPTracker) GetAckedSeq() int {
 	return *ackedSeqCount
 }
 
-func (it *ICMPTracker) MarkSent(seq int, ttl int) error {
+func (it *ICMPTracker) MarkSent(seq int, ttl int, dst *net.IPAddr) error {
 	requestCh, ok := <-it.serviceChan
 	if !ok {
 		// engine is already shutdown
@@ -317,10 +318,11 @@ func (it *ICMPTracker) MarkSent(seq int, ttl int) error {
 		}
 
 		ent := &ICMPTrackerEntry{
-			Seq:    seq,
-			TTL:    ttl,
-			SentAt: time.Now(),
-			Timer:  time.NewTimer(it.pktTimeout),
+			Seq:           seq,
+			TTL:           ttl,
+			OriginDstAddr: dst,
+			SentAt:        time.Now(),
+			Timer:         time.NewTimer(it.pktTimeout),
 		}
 		it.store[seq] = ent
 
