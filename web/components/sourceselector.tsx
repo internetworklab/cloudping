@@ -30,11 +30,13 @@ export type SourceOption = {
   label: string;
   iso3166alpha2?: string;
   cityName?: string;
+  asn?: string;
+  isp?: string;
 };
 
 function getOptionLabel(opt: SourceOption): string {
   const basic = opt.label.toUpperCase();
-  if (opt.iso3166alpha2 && opt.iso3166alpha2.length == 2) {
+  if (opt.iso3166alpha2 && opt.iso3166alpha2.length === 2) {
     return `${getFlagEmoji(opt.iso3166alpha2)} ${basic}`;
   }
 
@@ -80,12 +82,26 @@ export function SourcesSelector(props: {
           cityLoc.push(option.iso3166alpha2);
         }
         cityLoc = cityLoc.filter((v) => !!v);
+
+        const asnIsp: string[] = [];
+        if (option.asn) {
+          asnIsp.push(option.asn);
+        }
+        if (option.isp) {
+          asnIsp.push(option.isp);
+        }
+
         return (
           <Box key={key} component="li" {...optionProps}>
             {ownerSt.getOptionLabel(option)}
             {cityLoc.length > 0 && (
               <Box fontSize={"small"} sx={{ marginLeft: 1 }} component={"span"}>
                 {cityLoc.join(", ")}
+              </Box>
+            )}
+            {asnIsp.length > 0 && (
+              <Box fontSize={"small"} sx={{ marginLeft: 1 }} component={"span"}>
+                {asnIsp.join(" ")}
               </Box>
             )}
           </Box>

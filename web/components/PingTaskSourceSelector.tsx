@@ -1,4 +1,8 @@
-import { getCurrentPingerOptions } from "@/apis/globalping";
+import {
+  getCurrentPingerOptions,
+  NodeAttrASN,
+  NodeAttrISP,
+} from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
 import { SourceOption, SourcesSelector } from "@/components/sourceselector";
 import { Dispatch, SetStateAction } from "react";
@@ -77,6 +81,8 @@ export function PingTaskSourceSelector(props: {
             label: node.node_name ?? "",
             iso3166alpha2: node.attributes?.CountryCode,
             cityName: node.attributes?.CityName,
+            asn: node.attributes?.[NodeAttrASN],
+            isp: node.attributes?.[NodeAttrISP],
           }));
         });
         // return new Promise((res) => {
