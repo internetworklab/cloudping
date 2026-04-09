@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
+	"strings"
 )
 
 func SelectDstIP(ctx context.Context, resolver *net.Resolver, host string, preferV4 *bool, preferV6 *bool, respondRange []net.IPNet) (*net.IPAddr, error) {
@@ -82,4 +84,28 @@ func CheckIntersect(dstIPs []net.IP, rangeCIDRs []net.IPNet) bool {
 		}
 	}
 	return true
+}
+
+func GetHostFromIP(ipstr string) (net.IP, error) {
+	ip := net.ParseIP(ipstr)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse IP from string: %s", ipstr)
+	}
+	return ip, nil
+}
+
+func GetHost(addrport string) (net.IP, error) {
+	urlObj, err := url.Parse(addrport)
+	if err == nil && urlObj != nil {
+		addrport = urlObj.Host
+		if strings.HasPrefix(addrport, "[") && strings.HasSuffix(addrport, "]") {
+			addrport, _ = strings.CutPrefix(addrport, "[")
+			addrport, _ = strings.CutSuffix(addrport, "]")
+		}
+	}
+	host, _, err := net.SplitHostPort(addrport)
+	if err != nil {
+		return GetHostFromIP(addrport)
+	}
+	return GetHostFromIP(host)
 }
