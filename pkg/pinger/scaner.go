@@ -18,6 +18,7 @@ import (
 
 type SimpleBlockScanner struct {
 	PingRequest  *SimplePingRequest
+	RespondRange []net.IPNet
 	OnSent       pkgraw.ICMPTransceiverHook
 	OnReceived   pkgraw.ICMPTransceiverHook
 	RateLimiter  pkgratelimit.RateLimiter
@@ -123,6 +124,11 @@ func (sp *SimpleBlockScanner) pingCIDR(ctx context.Context, ipCidrStr string) <-
 
 		if ipNet == nil {
 			ch <- PingEvent{Error: fmt.Errorf("invalid cidr: %s", ipCidrStr)}
+			return
+		}
+
+		if len(sp.RespondRange) > 0 && !pkgutils.IsSubset(*ipNet, sp.RespondRange) {
+			ch <- PingEvent{Error: fmt.Errorf("invalid cidr: %s, it does not fall within the allowed set.", ipNet.String())}
 			return
 		}
 

@@ -241,21 +241,43 @@ func (ph *PingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		pinger = tcpingPinger
 	} else {
-		icmpOrUDPPinger := &pkgpinger.SimplePinger{
-			PingRequest:   pingRequest,
-			IPInfoAdapter: ipinfoAdapter,
-			RespondRange:  ph.RespondRange,
-			OnSent: func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
-				counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))
-				return nil
-			},
-			OnReceived: func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
-				counterStore.NumBytesReceived.With(commonLabels).Add(float64(nBytes))
-				return nil
-			},
-			RateLimiter: rateLimiterUsed,
+		onSent := func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
+			counterStore.NumBytesSent.With(commonLabels).Add(float64(nBytes))
+			return nil
 		}
-		pinger = icmpOrUDPPinger
+		onReceived := func(ctx context.Context, request *pkgraw.ICMPSendRequest, reply *pkgraw.ICMPReceiveReply, peer string, nBytes int) error {
+			counterStore.NumBytesReceived.With(commonLabels).Add(float64(nBytes))
+			return nil
+		}
+
+		firstTgt := ""
+		if len(pingRequest.Targets) > 0 {
+			firstTgt = pingRequest.Targets[0]
+		}
+		if _, _, err := net.ParseCIDR(firstTgt); err == nil {
+			blockPinger := &pkgpinger.SimpleBlockScanner{
+				PingRequest:  pingRequest,
+				RespondRange: ph.RespondRange,
+				OnSent:       onSent,
+				OnReceived:   onReceived,
+				RateLimiter:  rateLimiterUsed,
+				CommonLabels: &commonLabels,
+				CounterStore: counterStore,
+			}
+			pinger = blockPinger
+		} else {
+			icmpOrUDPPinger := &pkgpinger.SimplePinger{
+				PingRequest:   pingRequest,
+				IPInfoAdapter: ipinfoAdapter,
+				RespondRange:  ph.RespondRange,
+				OnSent:        onSent,
+				OnReceived:    onReceived,
+				RateLimiter:   rateLimiterUsed,
+				CommonLabels:  &commonLabels,
+				CounterStore:  counterStore,
+			}
+			pinger = icmpOrUDPPinger
+		}
 	}
 
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyPromCommonLabels, commonLabels)
