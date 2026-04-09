@@ -23,14 +23,17 @@ func main() {
 	}
 }
 
+const maxConfirmations = 30
+
 func testNetwork(nwCIDR net.IPNet) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	scanner := &pinger.SimpleBlockScanner{
 		PingRequest: &pinger.SimplePingRequest{
 			Targets:                []string{nwCIDR.String()},
-			IntvMilliseconds:       100,
+			IntvMilliseconds:       50,
 			PktTimeoutMilliseconds: 3000,
 			TTL:                    &pinger.RangeTTL{TTLs: []int{64}},
 		},
@@ -52,6 +55,9 @@ func testNetwork(nwCIDR net.IPNet) {
 			} else {
 				fmt.Printf("  UP       %s  RTT=%dms\n", probe.Peer, probe.RTT)
 				responded++
+			}
+			if responded+timedOut >= maxConfirmations {
+				cancel()
 			}
 		}
 	}
