@@ -81,6 +81,18 @@ func TestIsSubset_OverlappingAllowed(t *testing.T) {
 	}
 }
 
+func TestIsSubset_OverlappingAllowed_HostBitsSet(t *testing.T) {
+	subnetA := mustParseCIDR(t, "192.168.0.0/24")
+	allowed := []net.IPNet{
+		mustParseCIDR(t, "192.168.0.0/25"),
+		mustParseCIDR(t, "192.168.0.128/25"),
+	}
+
+	if !IsSubset(subnetA, allowed) {
+		t.Error("expected true: /24 is within { 192.168.0.0/25, 192.168.0.128/25 }")
+	}
+}
+
 // --- Non-overlapping ---
 
 func TestIsSubset_NonOverlapping(t *testing.T) {
