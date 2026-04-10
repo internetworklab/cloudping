@@ -31,8 +31,11 @@ type IPProbeEvent struct {
 	Peer string
 }
 
-func (sp *SimpleBlockScanner) withRateLimiter(ctx context.Context, unthrottled <-chan net.IP, rateLimiter pkgratelimit.RateLimiter) <-chan net.IP {
-	rlIn, rlOut := rateLimiter.GetIO(ctx)
+func (sp *SimpleBlockScanner) withRateLimiter(unthrottled <-chan net.IP, rateLimiter pkgratelimit.RateLimiter) <-chan net.IP {
+	// Use context.Background() so the rate limiter is NOT tied to any parent
+	// context lifecycle.  The only way to cancel it is closing the source channel
+	// (unthrottled), which triggers the deferred close(rlIn) below.
+	rlIn, rlOut := rateLimiter.GetIO(context.Background())
 
 	throttled := make(chan net.IP)
 
@@ -45,7 +48,9 @@ func (sp *SimpleBlockScanner) withRateLimiter(ctx context.Context, unthrottled <
 	}()
 
 	// Feed items from the unthrottled channel into the rate limiter.
+	// When unthrottled closes, close rlIn to signal the rate limiter to stop.
 	go func() {
+		defer close(rlIn)
 		for ip := range unthrottled {
 			rlIn <- ip
 		}
@@ -227,9 +232,12 @@ func (sp *SimpleBlockScanner) pingCIDR(ctx context.Context, ipCidrStr string) <-
 		}()
 
 		// Main loop: iterate addresses and send pings.
-		addressesCh := pkgutils.GetMemberAddresses32(ctx, *ipNet)
+		addressesChRaw := pkgutils.GetMemberAddresses32(ctx, *ipNet)
+		var addressesCh <-chan net.IP
 		if sp.RateLimiter != nil {
-			addressesCh = sp.withRateLimiter(ctx, addressesCh, sp.RateLimiter)
+			addressesCh = sp.withRateLimiter(addressesChRaw, sp.RateLimiter)
+		} else {
+			addressesCh = addressesChRaw
 		}
 		numPktsSent := 0
 

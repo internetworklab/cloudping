@@ -56,9 +56,9 @@ func testNetwork(nwCIDR net.IPNet) {
 				fmt.Printf("  UP       %s  RTT=%dms\n", probe.Peer, probe.RTT)
 				responded++
 			}
-			if responded+timedOut >= maxConfirmations {
-				cancel()
-			}
+			// if responded+timedOut >= maxConfirmations {
+			// 	cancel()
+			// }
 		}
 	}
 
