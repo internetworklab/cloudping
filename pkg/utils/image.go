@@ -6,11 +6,16 @@ import (
 	"image/png"
 	"math"
 	"os"
+
+	"github.com/tdewolff/canvas"
 )
+
+const fontPath = "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"
 
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
 func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
+
 	contentL := 1024
 
 	_, _, originContentRGBA, err := BitmapPlot(nil, bitSize)
@@ -24,6 +29,19 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
 
 	h := contentH + padding*2
 	w := contentW + padding*2
+
+	font, err := canvas.LoadFontFile(fontPath, canvas.FontRegular)
+	if err != nil {
+		return "", err
+	}
+
+	fontFace := &canvas.FontFace{
+		Font: font,
+		Size: 13,
+	}
+
+	canv := canvas.New(float64(h), float64(w))
+	canv.RenderText(canvas.NewTextLine(fontFace, "HelloWorld", canvas.Left), canvas.Identity.Translate(0, 0))
 
 	upLeft := image.Point{X: 0, Y: 0}
 	lowRight := image.Point{X: w, Y: h}
