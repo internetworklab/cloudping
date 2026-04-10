@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -11,10 +10,20 @@ import (
 
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
-func GenerateRandomRGBAPNGBitmap(w, h, padding int) (string, error) {
-	if padding*2 > h || padding*2 > w {
-		return "", errors.New("min(w,h)>=padding*2 must be satisfied")
+func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
+	contentL := 1024
+
+	_, _, originContentRGBA, err := BitmapPlot(nil, bitSize)
+	if err != nil {
+		return "", err
 	}
+
+	scaledContentRGBA := RGBAImgIntgScaleUpTo(uint64(contentL), originContentRGBA)
+	contentH := scaledContentRGBA.Rect.Dy()
+	contentW := scaledContentRGBA.Rect.Dx()
+
+	h := contentH + padding*2
+	w := contentW + padding*2
 
 	upLeft := image.Point{X: 0, Y: 0}
 	lowRight := image.Point{X: w, Y: h}
@@ -32,12 +41,8 @@ func GenerateRandomRGBAPNGBitmap(w, h, padding int) (string, error) {
 					A: 255,
 				})
 			} else {
-				img.Set(x, y, color.RGBA{
-					R: 0,
-					G: 0,
-					B: 0,
-					A: 255,
-				})
+				c := color.RGBAModel.Convert(scaledContentRGBA.At(x-padding, y-padding)).(color.RGBA)
+				img.Set(x, y, c)
 			}
 
 		}
@@ -57,8 +62,19 @@ func GenerateRandomRGBAPNGBitmap(w, h, padding int) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-// actual w: 1 << bitSize otherwise
-// actual h: 1 if bitSize = 0, 1 << (bitSize - 1)
+func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
+	w = 1
+	h = 1
+	for i := range bitSize {
+		if i%2 > 0 {
+			h = h << 1
+		} else {
+			w = w << 1
+		}
+	}
+	return w, h
+}
+
 // pixel layout:
 // for pixel index i,
 // data[i*4] -> R
@@ -67,24 +83,22 @@ func GenerateRandomRGBAPNGBitmap(w, h, padding int) (string, error) {
 // data[i*4+3] -> A
 func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGBA, err error) {
 	err = nil
+	w, h = getDimentionFromBitsize(bitSize)
 
 	const numChannels uint16 = 4
-	w = 1
-	h = 1
-	for range bitSize {
-		h = w
-		w = w << 1
-	}
 
 	if data == nil {
 		// if data is nil, fill it with some random data
 		data = make([]uint8, w*h*numChannels)
-		for i := range w * h {
-			v := uint8(255) * uint8(i%2)
-			data[i*4] = v
-			data[i*4+1] = v
-			data[i*4+2] = v
-			data[i*4+3] = 255
+		for y := range h {
+			for x := range w {
+				i := y*w + x
+				v := uint8(255) * uint8(i%2)
+				data[i*4] = v
+				data[i*4+1] = v
+				data[i*4+2] = v
+				data[i*4+3] = 255
+			}
 		}
 	}
 
@@ -92,13 +106,14 @@ func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGB
 	lowRight := image.Point{X: int(w), Y: int(h)}
 
 	img = image.NewRGBA(image.Rectangle{Min: upLeft, Max: lowRight})
-	for i := range w {
-		for j := range h {
-			img.Set(int(i), int(j), color.RGBA{
-				R: data[i*j*4],
-				G: data[i*j*4+1],
-				B: data[i*j*4+2],
-				A: data[i*j*4+3],
+	for i := range h {
+		for j := range w {
+			idx := i*w + j
+			img.Set(int(j), int(i), color.RGBA{
+				R: data[idx*4],
+				G: data[idx*4+1],
+				B: data[idx*4+2],
+				A: data[idx*4+3],
 			})
 		}
 	}
@@ -110,6 +125,7 @@ func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGB
 // such that both resulting dimensions are <= maxL. The aspect ratio is preserved.
 // Precondition: maxL >= max(w, h) of the original image (no overflow).
 func RGBAImgIntgScaleUpTo(maxL uint64, img *image.RGBA) *image.RGBA {
+
 	w := img.Rect.Dx()
 	h := img.Rect.Dy()
 	bound := int(math.Max(float64(w), float64(h)))

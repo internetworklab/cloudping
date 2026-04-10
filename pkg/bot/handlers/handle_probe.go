@@ -14,7 +14,7 @@ func HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
-	imgFilename, err := pkgutils.GenerateRandomRGBAPNGBitmap(1200, 1200, (1200-1024)/2)
+	imgFilename, err := pkgutils.GenerateRandomRGBAPNGBitmap(10, (1200-1024)/2)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{Text: err.Error()})
 		return
