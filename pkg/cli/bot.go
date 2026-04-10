@@ -137,6 +137,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), pkgbothandlers.HandleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), pkgbothandlers.HandleVersion)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/probe`), pkgbothandlers.HandleProbe)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
 
@@ -146,6 +147,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
 			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
 			{Command: "/version", Description: "Show build version information."},
+			{Command: "/probe", Description: "Responds with pong."},
 		},
 	})
 	if err != nil {
