@@ -3,11 +3,11 @@ package utils
 import (
 	"image"
 	"image/color"
-	"image/png"
 	"math"
 	"os"
 
 	"github.com/tdewolff/canvas"
+	"github.com/tdewolff/canvas/renderers"
 )
 
 const fontPath = "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"
@@ -35,51 +35,63 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
 		return "", err
 	}
 
-	fontFace := &canvas.FontFace{
-		Font: font,
-		Size: 13,
-	}
+	fontFace := font.Face(13.0, canvas.Black)
 
-	canv := canvas.New(float64(h), float64(w))
-	canv.RenderText(canvas.NewTextLine(fontFace, "HelloWorld", canvas.Left), canvas.Identity.Translate(0, 0))
+	// Create canvas with pixel dimensions (1 canvas unit = 1 pixel at DPMM=1).
+	// Note: canvas.New takes (width, height).
+	canv := canvas.New(float64(w), float64(h))
 
-	upLeft := image.Point{X: 0, Y: 0}
-	lowRight := image.Point{X: w, Y: h}
+	// Render the scaled content image centered on the canvas with padding.
+	// Canvas uses Cartesian I coordinates (origin bottom-left, Y upward).
+	// Translating to (padding, padding) places the image centered with equal padding
+	// around all sides.
+	canv.RenderImage(scaledContentRGBA, canvas.Identity.Translate(float64(padding), float64(padding)))
 
-	img := image.NewRGBA(image.Rectangle{Min: upLeft, Max: lowRight})
-
-	// Fill the image with random RGBA colors pixel by pixel
-	for y := range h {
-		for x := range w {
-			if x < padding || x >= (w-padding) || y < padding || y >= (h-padding) {
-				img.Set(x, y, color.RGBA{
-					R: 255,
-					G: 255,
-					B: 255,
-					A: 255,
-				})
-			} else {
-				c := color.RGBAModel.Convert(scaledContentRGBA.At(x-padding, y-padding)).(color.RGBA)
-				img.Set(x, y, c)
-			}
-
-		}
-	}
+	canv.RenderText(canvas.NewTextLine(fontFace, "HelloWorld", canvas.Left), canvas.Identity.Translate(100, 100))
 
 	tmpFile, err := os.CreateTemp("", "random_image_*.png")
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	defer tmpFile.Close()
 
-	err = png.Encode(tmpFile, img)
+	// Use the PNG renderer to rasterize and encode the canvas directly to the temp file.
+	err = canv.Write(tmpFile, renderers.PNG(canvas.DPMM(1.0)))
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
 	return tmpFile.Name(), nil
 }
 
+// getDimentionFromBitsize computes a pair of power-of-two dimensions (w, h) whose
+// product equals 2^bitSize. The total pixel count of the resulting bitmap therefore
+// corresponds exactly to the number of bits represented by bitSize.
+//
+// # Algorithm
+//
+// Both dimensions start at 1. The function then iterates bitSize times, doubling
+// the width on even iteration indices (0, 2, 4, …) and doubling the height on odd
+// iteration indices (1, 3, 5, …). This distributes the total area growth as evenly
+// as possible between the two axes:
+//
+//	bitSize | w   | h   | w×h
+//	--------|-----|-----|-------
+//	  0     |  1  |  1  |     1
+//	  1     |  2  |  1  |     2
+//	  2     |  2  |  2  |     4
+//	  3     |  4  |  2  |     8
+//	  4     |  4  |  4  |    16
+//	  8     | 16  | 16  |   256
+//
+// For even bitSize values the result is a square (w == h); for odd values width is
+// exactly twice the height (w == 2×h), producing a landscape rectangle.
+//
+// # Usage context
+//
+// This helper is called by [BitmapPlot] to derive the grid dimensions for a bitmap
+// image whose raw pixel data array contains one RGBA pixel per "bit" of the given
+// bitSize, i.e. w × h × 4 bytes of RGBA data.
 func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
 	w = 1
 	h = 1
