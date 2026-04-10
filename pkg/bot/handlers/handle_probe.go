@@ -10,13 +10,15 @@ import (
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
-const maxW int = 1200
-
 func HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
-	imgFilename := pkgutils.GenerateRandomRGBAPNGBitmap(maxW, maxW)
+	imgFilename, err := pkgutils.GenerateRandomRGBAPNGBitmap(1200, 1200, (1200-1024)/2)
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{Text: err.Error()})
+		return
+	}
 	defer os.Remove(imgFilename)
 	imgFile, err := os.Open(imgFilename)
 	if err != nil {
