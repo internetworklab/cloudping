@@ -10,6 +10,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgtable "github.com/internetworklab/cloudping/pkg/table"
 )
 
@@ -50,7 +51,7 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 		return
 	}
 
-	var nodesTable pkgtable.Table = handler.getExampleTable()
+	var nodesTable pkgtable.Table = handler.getNodeTable(allLocs)
 	const maxColWidth = 30
 	tableText := nodesTable.GetHumanReadableText(defaultColGap, defaultRowGap, maxColWidth)
 	entities := []models.MessageEntity{
@@ -69,6 +70,67 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 	if err != nil {
 		log.Printf("Failed to send bot message: %s", err.Error())
 	}
+}
+
+func (handler *ListHandler) getNodeTable(locations []pkgbot.LocationDescriptor) pkgtable.Table {
+	// Write header rows
+	table := pkgtable.Table{}
+	table.Rows = append(
+		table.Rows,
+		pkgtable.Row{Cells: []string{"NodeId", "Network", "City,Country"}},
+		pkgtable.Row{Cells: []string{"", "(Alternative Networks)", "(Location)"}},
+		pkgtable.Row{Cells: []string{}},
+	)
+
+	for _, loc := range locations {
+		nodeName := loc.Id
+		isps := make([]string, 0)
+		cityContry := ""
+		exactLoc := ""
+		if locAttrs := loc.ExtendedAttributes; locAttrs != nil {
+			if asn, hit := locAttrs[pkgnodereg.AttributeKeyASN]; hit && asn != "" {
+				isps = append(isps, asn)
+			}
+			if isp, hit := locAttrs[pkgnodereg.AttributeKeyISP]; hit && isp != "" {
+				if len(isps) > 0 {
+					isps[len(isps)-1] = isps[len(isps)-1] + " " + isp
+				} else {
+					isps = append(isps, isp)
+				}
+			}
+			if asn, hit := locAttrs[pkgnodereg.AttributeKeyDN42ASN]; hit && asn != "" {
+				isps = append(isps, asn)
+			}
+			if isp, hit := locAttrs[pkgnodereg.AttributeKeyDN42ISP]; hit && isp != "" {
+				if len(isps) > 0 {
+					isps[len(isps)-1] = isps[len(isps)-1] + " " + isp
+				} else {
+					isps = append(isps, isp)
+				}
+			}
+
+			if city, hit := locAttrs[pkgnodereg.AttributeKeyCityName]; hit && city != "" {
+				cityContry = city
+			}
+			if countryCode, hit := locAttrs[pkgnodereg.AttributeKeyCountryCode]; hit && countryCode != "" {
+				if cityContry == "" {
+					cityContry = countryCode
+				} else {
+					cityContry = cityContry + "," + countryCode
+				}
+			}
+
+			if l, hit := locAttrs[pkgnodereg.AttributeKeyExactLocation]; hit && l != "" {
+				exactLoc = l
+			}
+		}
+
+		rows := handler.getNodeRows(nodeName, isps, cityContry, exactLoc)
+		table.Rows = append(table.Rows, rows...)
+		table.Rows = append(table.Rows, pkgtable.Row{Cells: []string{}})
+	}
+
+	return table
 }
 
 func (handler *ListHandler) getExampleTable() pkgtable.Table {

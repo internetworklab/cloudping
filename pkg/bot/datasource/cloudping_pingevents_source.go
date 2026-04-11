@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -325,6 +326,9 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 			if city, ok := conn.Attributes[pkgnodereg.AttributeKeyCityName]; ok {
 				loc.CityIATACode = city
 			}
+
+			loc.ExtendedAttributes = make(map[string]string)
+			maps.Copy(loc.ExtendedAttributes, conn.Attributes)
 		}
 
 		locations = append(locations, loc)
