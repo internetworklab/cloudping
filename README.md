@@ -200,7 +200,7 @@ services:
 .env:
 
 ```
-NODE_NAME=someone/de-nue1
+NODE_NAME=nickname-nue1
 SUBNET_OVERRIDE=192.168.253.0/30
 EXACT_LOCATION_LAT_LON=48.1952,16.3503
 VERSION=latest
