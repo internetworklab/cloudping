@@ -27,11 +27,11 @@ type ProbeHandler struct {
 	FontNames []string
 }
 
-func (prober *ProbeHandler) GetUsage() string {
+func (handler *ProbeHandler) GetUsage() string {
 	return "/probe -s=<source_node_id> <cidr>"
 }
 
-func (prober *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
+func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
 
 	cliSegs := pkgutils.SplitBySpace(cliString)
 	if len(cliSegs) == 0 {
@@ -52,15 +52,15 @@ func (prober *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.C
 	return pingCLI, kongCtx, nil
 }
 
-func (prober *ProbeHandler) getFontNames() []string {
+func (handler *ProbeHandler) getFontNames() []string {
 	var defaultFontNames = []string{"Noto Sans Mono", "monospace"}
-	if prober == nil || len(prober.FontNames) == 0 {
+	if handler == nil || len(handler.FontNames) == 0 {
 		return defaultFontNames
 	}
-	return prober.FontNames
+	return handler.FontNames
 }
 
-func (prober *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
@@ -70,11 +70,11 @@ func (prober *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update 
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
 	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
-	probeCLI, _, err := prober.parseCLIString(cliString)
+	probeCLI, _, err := handler.parseCLIString(cliString)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
-			Text:            fmt.Sprintf("Error: %s\nUsage: %s", err.Error(), prober.GetUsage()),
+			Text:            fmt.Sprintf("Error: %s\nUsage: %s", err.Error(), handler.GetUsage()),
 			ReplyParameters: replyParams,
 		})
 		return
@@ -92,7 +92,7 @@ func (prober *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update 
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		defaultGridCellSize,
 		probeCLI.CIDR,
-		prober.getFontNames(),
+		handler.getFontNames(),
 	)
 
 	if err != nil {

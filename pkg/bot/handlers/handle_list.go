@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -16,15 +17,15 @@ type ListHandler struct {
 	EventsProvider pkgbot.PingEventsProvider
 }
 
-func (prober *ListHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
-	if prober.EventsProvider == nil {
+func (handler *ListHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
+	if handler.EventsProvider == nil {
 		return nil, errors.New("PingEventsProvider is not provided")
 	}
-	return prober.EventsProvider, nil
+	return handler.EventsProvider, nil
 }
 
-func (prober *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := prober.EventsProvider
+func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *models.Update) {
+	provider := handler.EventsProvider
 	allLocs, err := provider.GetAllLocations(ctx)
 	chatId := update.Message.Chat.ID
 	msgId := update.Message.ID
@@ -49,8 +50,9 @@ func (prober *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *m
 		return
 	}
 
-	var nodesTable pkgtable.Table = prober.getExampleTable()
-	tableText := nodesTable.GetHumanReadableText(defaultColGap, defaultRowGap, defaultMaxColWidth)
+	var nodesTable pkgtable.Table = handler.getExampleTable()
+	const maxColWidth = 30
+	tableText := nodesTable.GetHumanReadableText(defaultColGap, defaultRowGap, maxColWidth)
 	entities := []models.MessageEntity{
 		{
 			Type:   models.MessageEntityTypePre,
@@ -74,20 +76,76 @@ func (handler *ListHandler) getExampleTable() pkgtable.Table {
 	table := pkgtable.Table{}
 	table.Rows = append(
 		table.Rows,
-		pkgtable.Row{Cells: []string{"Hop", "Peer", "RTTs (Last Min/Avg/Max)", "Stats (Rx/Tx/Loss)"}},
-		pkgtable.Row{Cells: []string{"", "(IP address)", "ASN Network", "City,Country"}},
-		pkgtable.Row{Cells: []string{"", "", "", ""}},
-		pkgtable.Row{Cells: []string{"1.", "homelab.local", "1ms 1ms/2ms/3ms", "2/3/33%"}},
-		pkgtable.Row{Cells: []string{"", "(192.168.1.1)", "", ""}},
-		pkgtable.Row{Cells: []string{"", "", "", ""}},
-		pkgtable.Row{Cells: []string{"2.", "a.example.com", "10ms 10ms/10ms/10ms", "3/3/0%"}},
-		pkgtable.Row{Cells: []string{"", "(17.18.19.20)", "AS12345 Example LLC", "HongKong,HK"}},
+		pkgtable.Row{Cells: []string{"NodeId", "ASNs", "City,Country"}},
+		pkgtable.Row{Cells: []string{"", "", "(Location)"}},
 		pkgtable.Row{Cells: []string{}},
-		pkgtable.Row{Cells: []string{"3.", "[TIMEOUT]", "", ""}},
-		pkgtable.Row{Cells: []string{"", "(*)", "", ""}},
-		pkgtable.Row{Cells: []string{}},
-		pkgtable.Row{Cells: []string{"4.", "google.com", "100ms 100ms/100ms/100ms", "1/1/0%"}},
 	)
 
+	rows := handler.getNodeRows("us-lax1", []string{"AS1331 EXAMPLE-LLC", "AS4242421234 EXAMPLE-DN42"}, "LAX,US", "48.1952,16.3503")
+	table.Rows = append(table.Rows, rows...)
+	table.Rows = append(table.Rows, pkgtable.Row{Cells: []string{}})
+
+	rows = handler.getNodeRows("hk-hkg1", []string{"AS1331 EXAMPLE-LLC", "AS4242421234 EXAMPLE-DN42"}, "HKG,HK", "48.1952,16.3503")
+	table.Rows = append(table.Rows, rows...)
+	table.Rows = append(table.Rows, pkgtable.Row{Cells: []string{}})
+
+	rows = handler.getNodeRows("jp-nrt1", []string{"AS1331 EXAMPLE-LLC", "AS4242421234 EXAMPLE-DN42"}, "NRT,JP", "48.1952,16.3503")
+	table.Rows = append(table.Rows, rows...)
+	table.Rows = append(table.Rows, pkgtable.Row{Cells: []string{}})
+
 	return table
+}
+
+func (handler *ListHandler) getNodeRows(nodeName string, isps []string, cityCountry string, location string) []pkgtable.Row {
+	if nodeName == "" {
+		return nil
+	}
+
+	nameCol := make([]string, 0)
+	nameCol = append(nameCol, nodeName)
+
+	ispCol := make([]string, 0)
+	for _, isp := range isps {
+		isp = strings.TrimSpace(isp)
+		if isp != "" {
+			ispCol = append(ispCol, isp)
+		}
+	}
+
+	locCol := make([]string, 0)
+	cityCountry = strings.TrimSpace(cityCountry)
+	if cityCountry != "" {
+		locCol = append(locCol, cityCountry)
+	}
+
+	location = strings.TrimSpace(location)
+	if location != "" {
+		locCol = append(locCol, location)
+	}
+
+	rowHeight := len(nameCol)
+
+	if h := len(ispCol); h > rowHeight {
+		rowHeight = h
+	}
+
+	if h := len(locCol); h > rowHeight {
+		rowHeight = h
+	}
+
+	rows := make([]pkgtable.Row, rowHeight)
+	for i := range rows {
+		rows[i].Cells = make([]string, 3)
+		if i < len(nameCol) {
+			rows[i].Cells[0] = nameCol[i]
+		}
+		if i < len(ispCol) {
+			rows[i].Cells[1] = ispCol[i]
+		}
+		if i < len(locCol) {
+			rows[i].Cells[2] = locCol[i]
+		}
+	}
+
+	return rows
 }
