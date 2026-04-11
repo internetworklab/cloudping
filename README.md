@@ -121,18 +121,21 @@ curl localhost:2112/metrics
 
 Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimiter.
 
-### Authentication
-
-| Endpoint | Authentication |
-|----------|----------------|
-| Agent (`/simpleping`) | mTLS (client certificate required) |
-| Hub (`/ping`) | JWT token |
-
-For certificate configuration, run `bin/globalping agent --help` or `bin/globalping hub --help`.
-
 ### Developer Note
 
 These APIs are intended for developers only. End users should use the Web UI.
+
+## Bot Command
+
+Currently, on Telegram Bot is supported.
+
+| Command | Description | Example |
+|-----------|----------|--------|
+| `/ping` | 
+| `/traceroute` | 
+| `/probe` |
+| `/list` |
+| `/version` |
 
 ## Deployment
 
