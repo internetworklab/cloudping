@@ -33,6 +33,10 @@ func tryGetFont(names []string) (*canvas.Font, error) {
 // It's the caller's responsibility to release the transient resource (the temp file).
 func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string, fontNames []string) (string, error) {
 	_, cidrObj, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "", err
+	}
+
 	leadingOnes, totalBits := cidrObj.Mask.Size()
 	bitSize := uint8(totalBits - leadingOnes)
 

@@ -18,7 +18,7 @@ import (
 const defaultGridCellSize = 32
 
 type ProbeCLI struct {
-	From string `name:"from" help:"Specify the node that originate packets"`
+	From string `short:"s" name:"from" help:"Specify the source node for originating packets"`
 	CIDR string `arg:"" name:"cidr" help:"CIDR of the subnet to probe, e.g. 172.23.0.0/24"`
 }
 
@@ -28,10 +28,11 @@ type ProbeHandler struct {
 }
 
 func (prober *ProbeHandler) GetUsage() string {
-	return "/probe <from> <cidr>"
+	return "/probe -s=<source_node_id> <cidr>"
 }
 
 func (prober *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
+
 	cliSegs := pkgutils.SplitBySpace(cliString)
 	if len(cliSegs) == 0 {
 		return nil, nil, errors.New("no arguments provided")
@@ -45,7 +46,7 @@ func (prober *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.C
 
 	kongCtx, err := parser.Parse(cliSegs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse ping CLI: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse CLI: %w", err)
 	}
 
 	return pingCLI, kongCtx, nil
@@ -64,12 +65,29 @@ func (prober *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update 
 		return
 	}
 
-	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
-	probeCLI, _, err := prober.parseCLIString(cliString)
-
 	chatId := update.Message.Chat.ID
 	msgId := update.Message.ID
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
+
+	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
+	probeCLI, _, err := prober.parseCLIString(cliString)
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Error: %s\nUsage: %s", err.Error(), prober.GetUsage()),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+
+	if probeCLI.From == "" {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Empty or invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
 
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		defaultGridCellSize,
