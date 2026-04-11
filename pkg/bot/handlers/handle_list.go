@@ -26,14 +26,24 @@ func (handler *ListHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) 
 }
 
 func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := handler.EventsProvider
-	allLocs, err := provider.GetAllLocations(ctx)
 	chatId := update.Message.Chat.ID
 	msgId := update.Message.ID
 	replyParam := &models.ReplyParameters{
 		ChatID:    chatId,
 		MessageID: msgId,
 	}
+
+	provider, err := handler.getEVsProvider()
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Can't get location provider: %s", err.Error()),
+			ReplyParameters: replyParam,
+		})
+		return
+	}
+
+	allLocs, err := provider.GetAllLocations(ctx)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -42,6 +52,7 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 		})
 		return
 	}
+
 	if len(allLocs) == 0 {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,

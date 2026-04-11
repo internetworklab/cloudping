@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 
 	"github.com/alecthomas/kong"
 	"github.com/go-telegram/bot"
@@ -25,6 +26,15 @@ type ProbeCLI struct {
 type ProbeHandler struct {
 	// Name of fonts to search
 	FontNames []string
+
+	EventsProvider pkgbot.PingEventsProvider
+}
+
+func (handler *ProbeHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
+	if handler.EventsProvider == nil {
+		return nil, errors.New("PingEventsProvider is not provided")
+	}
+	return handler.EventsProvider, nil
 }
 
 func (handler *ProbeHandler) GetUsage() string {
@@ -69,6 +79,26 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	msgId := update.Message.ID
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
+	provider, err := handler.getEVsProvider()
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Can't get location provider: %s", err.Error()),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+
+	allLocs, err := provider.GetAllLocations(ctx)
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Can't get locations: %s", err.Error()),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+
 	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
 	probeCLI, _, err := handler.parseCLIString(cliString)
 	if err != nil {
@@ -80,7 +110,10 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	if probeCLI.From == "" {
+	idx := slices.IndexFunc(allLocs, func(elem pkgbot.LocationDescriptor) bool {
+		return elem.Id == probeCLI.From
+	})
+	if idx == -1 {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
 			Text:            fmt.Sprintf("Empty or invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From),
