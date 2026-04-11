@@ -1,53 +1,78 @@
 package utils
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
+	"math/rand"
 	"os"
+	"time"
 
 	"github.com/tdewolff/canvas"
 	"github.com/tdewolff/canvas/renderers"
 )
 
 const fontPath = "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"
+const minL = 1024
 
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
-func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
+func GenerateRandomRGBAPNGBitmap(bitSize uint8, gridSize uint16, cidr string) (string, error) {
 
-	contentL := 1024
-
-	_, _, originContentRGBA, err := BitmapPlot(nil, bitSize)
+	originContentRGBA, err := BitmapPlot(nil, bitSize)
 	if err != nil {
 		return "", err
 	}
 
-	scaledContentRGBA := RGBAImgIntgScaleUpTo(uint64(contentL), originContentRGBA)
-	contentH := scaledContentRGBA.Rect.Dy()
-	contentW := scaledContentRGBA.Rect.Dx()
+	nCols, nRows := getDimentionFromBitsize(bitSize)
 
-	h := contentH + padding*2
-	w := contentW + padding*2
+	bitmapW := nCols * gridSize
+	bitmapH := nRows * gridSize
+
+	if bitmapW < minL {
+		// let x = (desired) gridSize, solve nColw * x >= minL for x
+		// how much is x ?
+	}
+
+	scaledContentRGBA := RGBAImgIntgScaleUpTo(bitmapW, originContentRGBA)
+
+	canvasH := bitmapH + 2*gridSize
+	canvasW := bitmapW + 2*gridSize
 
 	font, err := canvas.LoadFontFile(fontPath, canvas.FontRegular)
 	if err != nil {
 		return "", err
 	}
 
-	fontFace := font.Face(13.0, canvas.Black)
-
 	// Create canvas with pixel dimensions (1 canvas unit = 1 pixel at DPMM=1).
 	// Note: canvas.New takes (width, height).
-	canv := canvas.New(float64(w), float64(h))
+	canv := canvas.New(float64(canvasW), float64(canvasH))
+
+	canvRd := renderers.PNG()
+
+	canvCtx := canvas.NewContext(canv)
+	canvCtx.SetCoordSystem(canvas.CartesianIV)
+
+	fontFace := font.Face(float64(gridSize), canvas.Black)
 
 	// Render the scaled content image centered on the canvas with padding.
 	// Canvas uses Cartesian I coordinates (origin bottom-left, Y upward).
 	// Translating to (padding, padding) places the image centered with equal padding
 	// around all sides.
-	canv.RenderImage(scaledContentRGBA, canvas.Identity.Translate(float64(padding), float64(padding)))
+	canvCtx.DrawImage(float64(2*gridSize), float64(2*gridSize), scaledContentRGBA, 1.0)
 
-	canv.RenderText(canvas.NewTextLine(fontFace, "HelloWorld", canvas.Left), canvas.Identity.Translate(100, 100))
+	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s", cidr), 0, 0, canvas.Left, canvas.Middle, nil)
+	canvCtx.DrawText(float64(gridSize)*0.25, 0.5*float64(gridSize), text)
+
+	now := time.Now()
+	text = canvas.NewTextBox(fontFace, fmt.Sprintf("Date: %s", now.Format(time.RFC3339)), 0, 0, canvas.Left, canvas.Middle, nil)
+	canvCtx.DrawText(float64(gridSize)*0.25, 1.5*float64(gridSize), text)
+
+	for i := range nRows {
+		text := canvas.NewTextBox(fontFace, fmt.Sprintf("+0x%04x", i*nCols), 0, 0, canvas.Left, canvas.Middle, nil)
+		canvCtx.DrawText(float64(gridSize)*0.25, float64(gridSize)*(float64(i)+2.5), text)
+	}
 
 	tmpFile, err := os.CreateTemp("", "random_image_*.png")
 	if err != nil {
@@ -56,7 +81,7 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
 	defer tmpFile.Close()
 
 	// Use the PNG renderer to rasterize and encode the canvas directly to the temp file.
-	err = canv.Write(tmpFile, renderers.PNG(canvas.DPMM(1.0)))
+	err = canv.Write(tmpFile, canvRd)
 	if err != nil {
 		return "", err
 	}
@@ -86,12 +111,6 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, padding int) (string, error) {
 //
 // For even bitSize values the result is a square (w == h); for odd values width is
 // exactly twice the height (w == 2×h), producing a landscape rectangle.
-//
-// # Usage context
-//
-// This helper is called by [BitmapPlot] to derive the grid dimensions for a bitmap
-// image whose raw pixel data array contains one RGBA pixel per "bit" of the given
-// bitSize, i.e. w × h × 4 bytes of RGBA data.
 func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
 	w = 1
 	h = 1
@@ -111,9 +130,10 @@ func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
 // data[i*4+1] -> G
 // data[i*4+2] -> B
 // data[i*4+3] -> A
-func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGBA, err error) {
+func BitmapPlot(data []uint8, bitSize uint8) (img *image.RGBA, err error) {
+
 	err = nil
-	w, h = getDimentionFromBitsize(bitSize)
+	w, h := getDimentionFromBitsize(bitSize)
 
 	const numChannels uint16 = 4
 
@@ -123,10 +143,10 @@ func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGB
 		for y := range h {
 			for x := range w {
 				i := y*w + x
-				v := uint8(255) * uint8(i%2)
-				data[i*4] = v
-				data[i*4+1] = v
-				data[i*4+2] = v
+
+				data[i*4] = uint8(rand.Int())
+				data[i*4+1] = uint8(rand.Int())
+				data[i*4+2] = uint8(rand.Int())
 				data[i*4+3] = 255
 			}
 		}
@@ -148,13 +168,13 @@ func BitmapPlot(data []uint8, bitSize uint8) (w uint16, h uint16, img *image.RGB
 		}
 	}
 
-	return w, h, img, nil
+	return img, nil
 }
 
 // RGBAImgIntgScaleUpTo scales the given RGBA image up by the largest integer factor
 // such that both resulting dimensions are <= maxL. The aspect ratio is preserved.
 // Precondition: maxL >= max(w, h) of the original image (no overflow).
-func RGBAImgIntgScaleUpTo(maxL uint64, img *image.RGBA) *image.RGBA {
+func RGBAImgIntgScaleUpTo(maxL uint16, img *image.RGBA) *image.RGBA {
 
 	w := img.Rect.Dx()
 	h := img.Rect.Dy()
