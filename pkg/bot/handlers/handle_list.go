@@ -76,8 +76,8 @@ func (handler *ListHandler) getExampleTable() pkgtable.Table {
 	table := pkgtable.Table{}
 	table.Rows = append(
 		table.Rows,
-		pkgtable.Row{Cells: []string{"NodeId", "ASNs", "City,Country"}},
-		pkgtable.Row{Cells: []string{"", "", "(Location)"}},
+		pkgtable.Row{Cells: []string{"NodeId", "Network", "City,Country"}},
+		pkgtable.Row{Cells: []string{"", "(Alternative Networks)", "(Location)"}},
 		pkgtable.Row{Cells: []string{}},
 	)
 
