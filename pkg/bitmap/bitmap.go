@@ -29,18 +29,52 @@ func tryGetFont(names []string) (*canvas.Font, error) {
 	return nil, errors.New("No font is found")
 }
 
+const numChannels uint32 = 4
+const chanIdxRed uint32 = 0
+const chanIdxGreen uint32 = 1
+const chanIdxBlue uint32 = 2
+const chanIdxAlpha uint32 = 3
+
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
-func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string, fontNames []string) (string, error) {
+// rttMs []int is a slice that maps address (in terms of offset) to latency (in unit of milliseconds), if the ping is timed-out, rtt would be -1.
+func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidr string, fontNames []string) (string, error) {
 	_, cidrObj, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return "", err
 	}
 
 	leadingOnes, totalBits := cidrObj.Mask.Size()
-	bitSize := uint8(totalBits - leadingOnes)
+	bitSize := uint32(totalBits - leadingOnes)
+	numGrids := uint32(1) << bitSize
 
-	originContentRGBA, err := BitmapPlot(nil, bitSize)
+	if uint32(len(rttMS)) != numGrids {
+		return "", fmt.Errorf("the size of rttMS []int should be exactly 2^bitSize, where bitSize is the number of host bits of the CIDR representation.")
+	}
+
+	pixelRawData := make([]uint8, numChannels*numGrids)
+	for pixelIdx := range numGrids {
+		color := make([]uint8, 3)
+		if rttMS[pixelIdx] < 0 {
+			// timeout, gray
+			color[chanIdxRed] = 127
+			color[chanIdxGreen] = 127
+			color[chanIdxBlue] = 127
+		} else {
+			// normal, reply packet is received
+			color[chanIdxRed] = 0
+			color[chanIdxGreen] = 127 // this is the green channel, i suppose
+			color[chanIdxBlue] = 0
+		}
+
+		for channelIdx, c := range color {
+			pixelRawData[pixelIdx*numChannels+uint32(channelIdx)] = c
+		}
+		// the last channel is the alpha channel.
+		pixelRawData[pixelIdx*numChannels+chanIdxAlpha] = 255
+	}
+
+	originContentRGBA, err := BitmapPlot(pixelRawData, bitSize)
 	if err != nil {
 		return "", err
 	}
@@ -53,7 +87,7 @@ func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string, fontNames []strin
 	if bitmapW < minL {
 		// let x = (desired) gridSize, solve nCols * x >= minL for x
 		// x = ceil(minL / nCols)
-		gridSize = uint16(math.Ceil(float64(minL) / float64(nCols)))
+		gridSize = uint32(math.Ceil(float64(minL) / float64(nCols)))
 		// log.Printf("For cidr %s, gridSize scaled to %d", cidr, gridSize)
 		bitmapW = nCols * gridSize
 		bitmapH = nRows * gridSize
@@ -136,7 +170,7 @@ func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string, fontNames []strin
 //
 // For even bitSize values the result is a square (w == h); for odd values width is
 // exactly twice the height (w == 2×h), producing a landscape rectangle.
-func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
+func getDimentionFromBitsize(bitSize uint32) (w uint32, h uint32) {
 	w = 1
 	h = 1
 	for i := range bitSize {
@@ -149,18 +183,16 @@ func getDimentionFromBitsize(bitSize uint8) (w uint16, h uint16) {
 	return w, h
 }
 
-// pixel layout:
+// pixel layout, assuming 4 channels:
 // for pixel index i,
 // data[i*4] -> R
 // data[i*4+1] -> G
 // data[i*4+2] -> B
 // data[i*4+3] -> A
-func BitmapPlot(data []uint8, bitSize uint8) (img *image.RGBA, err error) {
+func BitmapPlot(data []uint8, bitSize uint32) (img *image.RGBA, err error) {
 
 	err = nil
 	w, h := getDimentionFromBitsize(bitSize)
-
-	const numChannels uint16 = 4
 
 	if data == nil {
 		// if data is nil, fill it with some random data
@@ -169,10 +201,10 @@ func BitmapPlot(data []uint8, bitSize uint8) (img *image.RGBA, err error) {
 			for x := range w {
 				i := y*w + x
 
-				data[i*4] = uint8(rand.Int())
-				data[i*4+1] = uint8(rand.Int())
-				data[i*4+2] = uint8(rand.Int())
-				data[i*4+3] = 255
+				data[i*numChannels+chanIdxRed] = uint8(rand.Int())
+				data[i*numChannels+chanIdxGreen] = uint8(rand.Int())
+				data[i*numChannels+chanIdxBlue] = uint8(rand.Int())
+				data[i*numChannels+chanIdxAlpha] = 255
 			}
 		}
 	}
@@ -185,10 +217,10 @@ func BitmapPlot(data []uint8, bitSize uint8) (img *image.RGBA, err error) {
 		for j := range w {
 			idx := i*w + j
 			img.Set(int(j), int(i), color.RGBA{
-				R: data[idx*4],
-				G: data[idx*4+1],
-				B: data[idx*4+2],
-				A: data[idx*4+3],
+				R: data[idx*numChannels+chanIdxRed],
+				G: data[idx*numChannels+chanIdxGreen],
+				B: data[idx*numChannels+chanIdxBlue],
+				A: data[idx*numChannels+chanIdxAlpha],
 			})
 		}
 	}
@@ -199,7 +231,7 @@ func BitmapPlot(data []uint8, bitSize uint8) (img *image.RGBA, err error) {
 // RGBAImgIntgScaleUpTo scales the given RGBA image up by the largest integer factor
 // such that both resulting dimensions are <= maxL. The aspect ratio is preserved.
 // Precondition: maxL >= max(w, h) of the original image (no overflow).
-func RGBAImgIntgScaleUpTo(maxL uint16, img *image.RGBA) *image.RGBA {
+func RGBAImgIntgScaleUpTo(maxL uint32, img *image.RGBA) *image.RGBA {
 
 	w := img.Rect.Dx()
 	h := img.Rect.Dy()

@@ -122,7 +122,10 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
+	rttMs := make([]int, 0) // todo
+
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
+		rttMs,
 		defaultGridCellSize,
 		probeCLI.CIDR,
 		handler.getFontNames(),
