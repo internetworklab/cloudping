@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -14,13 +16,22 @@ import (
 	"github.com/tdewolff/canvas/renderers"
 )
 
-const fontPath = "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"
 const minL = 1024
 const maxFontSize float64 = 128.0
 
+func tryGetFont(names []string) (*canvas.Font, error) {
+	for _, name := range names {
+		if font, err := canvas.LoadSystemFont(name, canvas.FontRegular); err == nil {
+			log.Printf("Found font %s from system font", name)
+			return font, nil
+		}
+	}
+	return nil, errors.New("No font is found")
+}
+
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
-func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string) (string, error) {
+func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string, fontNames []string) (string, error) {
 	_, cidrObj, err := net.ParseCIDR(cidr)
 	leadingOnes, totalBits := cidrObj.Mask.Size()
 	bitSize := uint8(totalBits - leadingOnes)
@@ -49,7 +60,7 @@ func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string) (string, error) {
 	canvasH := bitmapH + 2*gridSize
 	canvasW := bitmapW + 2*gridSize
 
-	font, err := canvas.LoadFontFile(fontPath, canvas.FontRegular)
+	font, err := tryGetFont(fontNames)
 	if err != nil {
 		return "", err
 	}
