@@ -35,6 +35,7 @@ type BotCmd struct {
 	PingResolver             string        `name:"ping-resolver" help:"Resolver being used to resolver hostname to IP address during an ICMP ping or traceroute task" default:"172.20.0.53:53"`
 	UpstreamJWTSecretFromEnv string        `name:"upstream-jwt-sec-env" help:"Name of the enviornment variable that stores the JWT token use to authenticate with the upstream ping events provider" default:"UPSTREAM_JWT_TOKEN"`
 	UpstreamJWTAPIPrefix     string        `name:"upstream-api-prefix" help:"The API prefix of the upstream server where to get ping events data" default:"https://ping2.sh/api"`
+	CustomFontNames          []string      `name:"custom-font-names" help:"Customize font names to search"`
 }
 
 func (botCmd *BotCmd) getJWTSecret() ([]byte, error) {
@@ -130,6 +131,9 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	botPingCmdHandler := &pkgbothandlers.PingCommandHandler{}
 	traceCmdHandler := &pkgbothandlers.TracerouteCommandHandler{}
+	probeHandler := &pkgbothandlers.ProbeHandler{
+		FontNames: botCmd.CustomFontNames,
+	}
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), pkgbothandlers.HandleStart)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), botPingCmdHandler.HandlePing)
@@ -137,7 +141,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), pkgbothandlers.HandleUptime)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), pkgbothandlers.HandleVersion)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/probe`), pkgbothandlers.HandleProbe)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/probe`), probeHandler.HandleProbe)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
 
@@ -147,7 +151,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
 			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
 			{Command: "/version", Description: "Show build version information."},
-			{Command: "/probe", Description: "Responds with pong."},
+			{Command: "/probe", Description: "Probe specified CIDR. Usage: " + probeHandler.GetUsage()},
 		},
 	})
 	if err != nil {
