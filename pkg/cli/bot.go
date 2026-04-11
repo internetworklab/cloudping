@@ -134,6 +134,9 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	probeHandler := &pkgbothandlers.ProbeHandler{
 		FontNames: botCmd.CustomFontNames,
 	}
+	listHandler := &pkgbothandlers.ListHandler{
+		EventsProvider: pingEVProvider,
+	}
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), pkgbothandlers.HandleStart)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), botPingCmdHandler.HandlePing)
@@ -142,6 +145,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), pkgbothandlers.HandleVersion)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/probe`), probeHandler.HandleProbe)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/list`), listHandler.HandleList)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
 
@@ -152,6 +156,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
 			{Command: "/version", Description: "Show build version information."},
 			{Command: "/probe", Description: "Probe specified CIDR. Usage: " + probeHandler.GetUsage()},
+			{Command: "/list", Description: "List all available nodes"},
 		},
 	})
 	if err != nil {
