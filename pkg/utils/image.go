@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"time"
 
@@ -15,10 +16,14 @@ import (
 
 const fontPath = "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"
 const minL = 1024
+const maxFontSize float64 = 128.0
 
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
-func GenerateRandomRGBAPNGBitmap(bitSize uint8, gridSize uint16, cidr string) (string, error) {
+func GenerateRandomRGBAPNGBitmap(gridSize uint16, cidr string) (string, error) {
+	_, cidrObj, err := net.ParseCIDR(cidr)
+	leadingOnes, totalBits := cidrObj.Mask.Size()
+	bitSize := uint8(totalBits - leadingOnes)
 
 	originContentRGBA, err := BitmapPlot(nil, bitSize)
 	if err != nil {
@@ -31,8 +36,12 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, gridSize uint16, cidr string) (s
 	bitmapH := nRows * gridSize
 
 	if bitmapW < minL {
-		// let x = (desired) gridSize, solve nColw * x >= minL for x
-		// how much is x ?
+		// let x = (desired) gridSize, solve nCols * x >= minL for x
+		// x = ceil(minL / nCols)
+		gridSize = uint16(math.Ceil(float64(minL) / float64(nCols)))
+		// log.Printf("For cidr %s, gridSize scaled to %d", cidr, gridSize)
+		bitmapW = nCols * gridSize
+		bitmapH = nRows * gridSize
 	}
 
 	scaledContentRGBA := RGBAImgIntgScaleUpTo(bitmapW, originContentRGBA)
@@ -54,7 +63,8 @@ func GenerateRandomRGBAPNGBitmap(bitSize uint8, gridSize uint16, cidr string) (s
 	canvCtx := canvas.NewContext(canv)
 	canvCtx.SetCoordSystem(canvas.CartesianIV)
 
-	fontFace := font.Face(float64(gridSize), canvas.Black)
+	var fontSize float64 = math.Min(float64(gridSize), maxFontSize)
+	fontFace := font.Face(fontSize, canvas.Black)
 
 	// Render the scaled content image centered on the canvas with padding.
 	// Canvas uses Cartesian I coordinates (origin bottom-left, Y upward).

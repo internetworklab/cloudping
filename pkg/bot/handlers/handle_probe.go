@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -14,7 +15,10 @@ func HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
-	imgFilename, err := pkgutils.GenerateRandomRGBAPNGBitmap(10, 32, "fdda:8ca4:1556:4000:a:b:c:d/128")
+
+	cidr := strings.Split(update.Message.Text, " ")
+
+	imgFilename, err := pkgutils.GenerateRandomRGBAPNGBitmap(32, cidr[1])
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{Text: err.Error()})
 		return
