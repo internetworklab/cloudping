@@ -19,7 +19,7 @@ func GetOffset(network net.IPNet, host net.IP) uint64 {
 	if v4 := host.To4(); v4 != nil {
 		netIP := network.IP.To4()
 		var offset uint64
-		for i := 0; i < net.IPv4len; i++ {
+		for i := range net.IPv4len {
 			offset = (offset << 8) | uint64((v4[i]^netIP[i])&^network.Mask[i])
 		}
 		return offset
@@ -31,7 +31,7 @@ func GetOffset(network net.IPNet, host net.IP) uint64 {
 	v6 := host.To16()
 	netIP := network.IP.To16()
 	var offset uint64
-	for i := 0; i < net.IPv6len; i++ {
+	for i := range net.IPv6len {
 		offset = (offset << 8) | uint64((v6[i]^netIP[i])&^network.Mask[i])
 	}
 	return offset
