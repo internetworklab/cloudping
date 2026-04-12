@@ -49,7 +49,7 @@ func (handler *ProbeHandler) getEVsProvider() (pkgbot.PingEventsProvider, error)
 }
 
 func (handler *ProbeHandler) GetUsage() string {
-	return "/probe -s=<source_node_id> <cidr>"
+	return "/probe -s <source_node_id> <cidr>"
 }
 
 func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
@@ -158,9 +158,10 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	numSamples := uint32(1) << uint32(bitSize)
 	rttMs := make([]int, numSamples)
 	for i := range rttMs {
-		// mocking an all-timeout scenario
+		// mocking an all-timeout scenario, except the first idx
 		rttMs[i] = -1
 	}
+	rttMs[0] = 1
 
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		rttMs,

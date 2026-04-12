@@ -133,7 +133,7 @@ Currently, only Telegram Bot is supported.
 |-----------|----------|--------|
 | `/ping` | Ping a destination with real-time streaming statistics. Supports IPv4/IPv6 preference and interactive location switching. | `/ping -c 3 example.com` |
 | `/traceroute` | Traceroute to a destination with hop-by-hop peer and latency details. Supports IPv4/IPv6 preference and packet count. | `/traceroute -6 example.com` |
-| `/probe` | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node. **(WIP)** | `/probe -s=us-lax1 172.23.0.0/24` |
+| `/probe` | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node. **(WIP)** | `/probe -s us-lax1 172.23.0.0/24` |
 | `/list` | List all available probe nodes with their network (ASN/ISP) and location information. | `/list` |
 | `/version` | Show build version information as a JSON payload. | `/version` |
 

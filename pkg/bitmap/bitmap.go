@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -22,7 +21,6 @@ const maxFontSize float64 = 128.0
 func tryGetFont(names []string) (*canvas.Font, error) {
 	for _, name := range names {
 		if font, err := canvas.LoadSystemFont(name, canvas.FontRegular); err == nil {
-			log.Printf("Found font %s from system font", name)
 			return font, nil
 		}
 	}
@@ -117,7 +115,15 @@ func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet
 	// around all sides.
 	canvCtx.DrawImage(float64(2*gridSize), float64(2*gridSize), scaledContentRGBA, 1.0)
 
-	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s", cidrObj.String()), 0, 0, canvas.Left, canvas.Middle, nil)
+	numTimeouts := 0
+	for _, x := range rttMS {
+		if x < 0 {
+			numTimeouts += 1
+		}
+	}
+	numReachables := len(rttMS) - numTimeouts
+
+	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s, %d / %d host(s) reachable", cidrObj.String(), numReachables, len(rttMS)), 0, 0, canvas.Left, canvas.Middle, nil)
 	canvCtx.DrawText(float64(gridSize)*0.25, 0.5*float64(gridSize), text)
 
 	now := time.Now()
