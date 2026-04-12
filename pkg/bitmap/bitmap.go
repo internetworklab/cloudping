@@ -36,7 +36,7 @@ const chanIdxAlpha uint32 = 3
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
 // rttMs []int is a slice that maps address (in terms of offset) to latency (in unit of milliseconds), if the ping is timed-out, rtt would be -1.
-func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet, fontNames []string) (string, error) {
+func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, probed int, cidrObj net.IPNet, fontNames []string) (string, error) {
 
 	leadingOnes, totalBits := cidrObj.Mask.Size()
 	bitSize := uint32(totalBits - leadingOnes)
@@ -47,9 +47,15 @@ func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet
 	}
 
 	pixelRawData := make([]uint8, numChannels*numGrids)
-	for pixelIdx := range numGrids {
+	reachables := 0
+	for pixelIdx := range rttMS {
 		color := make([]uint8, 3)
-		if rttMS[pixelIdx] < 0 {
+		if pixelIdx >= probed {
+			// not probed, white
+			color[chanIdxRed] = 255
+			color[chanIdxGreen] = 255
+			color[chanIdxBlue] = 255
+		} else if rttMS[pixelIdx] < 0 {
 			// timeout, gray
 			color[chanIdxRed] = 127
 			color[chanIdxGreen] = 127
@@ -59,13 +65,14 @@ func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet
 			color[chanIdxRed] = 0
 			color[chanIdxGreen] = 127 // this is the green channel, i suppose
 			color[chanIdxBlue] = 0
+			reachables++
 		}
 
 		for channelIdx, c := range color {
-			pixelRawData[pixelIdx*numChannels+uint32(channelIdx)] = c
+			pixelRawData[uint32(pixelIdx)*numChannels+uint32(channelIdx)] = c
 		}
 		// the last channel is the alpha channel.
-		pixelRawData[pixelIdx*numChannels+chanIdxAlpha] = 255
+		pixelRawData[uint32(pixelIdx)*numChannels+chanIdxAlpha] = 255
 	}
 
 	originContentRGBA, err := BitmapPlot(pixelRawData, bitSize)
@@ -115,20 +122,15 @@ func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet
 	// around all sides.
 	canvCtx.DrawImage(float64(2*gridSize), float64(2*gridSize), scaledContentRGBA, 1.0)
 
-	numTimeouts := 0
-	for _, x := range rttMS {
-		if x < 0 {
-			numTimeouts += 1
-		}
-	}
-	numReachables := len(rttMS) - numTimeouts
+	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s", cidrObj.String()), 0, 0, canvas.Left, canvas.Middle, nil)
+	canvCtx.DrawText(float64(gridSize)*0.25, 0.5*(2.0/3.0)*float64(gridSize), text)
 
-	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s, %d / %d host(s) reachable", cidrObj.String(), numReachables, len(rttMS)), 0, 0, canvas.Left, canvas.Middle, nil)
-	canvCtx.DrawText(float64(gridSize)*0.25, 0.5*float64(gridSize), text)
+	text = canvas.NewTextBox(fontFace, fmt.Sprintf("Reachable: %d / %d, Probed: %d / %d", reachables, probed, probed, numGrids), 0, 0, canvas.Left, canvas.Middle, nil)
+	canvCtx.DrawText(float64(gridSize)*0.25, 1.5*(2.0/3.0)*float64(gridSize), text)
 
 	now := time.Now()
 	text = canvas.NewTextBox(fontFace, fmt.Sprintf("Date: %s", now.Format(time.RFC3339)), 0, 0, canvas.Left, canvas.Middle, nil)
-	canvCtx.DrawText(float64(gridSize)*0.25, 1.5*float64(gridSize), text)
+	canvCtx.DrawText(float64(gridSize)*0.25, 2.5*(2.0/3.0)*float64(gridSize), text)
 
 	for i := range nRows {
 		text := canvas.NewTextBox(fontFace, fmt.Sprintf("+0x%04x", i*nCols), 0, 0, canvas.Left, canvas.Middle, nil)

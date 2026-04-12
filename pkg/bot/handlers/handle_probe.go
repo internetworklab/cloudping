@@ -166,7 +166,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 	numSamples := uint32(1) << uint32(bitSize)
 	rttMs := make([]int, numSamples)
-	evProvider, err := handler.getEVsProvider()
+	_, err = handler.getEVsProvider()
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -179,6 +179,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		rttMs,
 		defaultGridCellSize,
+		len(rttMs)/2,
 		*cidrObj,
 		handler.getFontNames(),
 	)
