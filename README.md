@@ -77,6 +77,8 @@ Currently the looking is still rugged, but we are actively iterating it.
 
 ![screenshot-4](docs/screenshots/4.png)
 
+![screenshot-5](docs/screenshots/5.jpeg)
+
 ## API Design
 
 ### Endpoints Overview
