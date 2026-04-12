@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/binary"
 	"log"
 	"net"
 )
@@ -17,28 +18,27 @@ import (
 // For IPv6, up to 64 host bits are supported (subnets as narrow as /64);
 // prefix lengths shorter than /64 are not supported and will cause a panic.
 func GetOffset(network net.IPNet, host net.IP) uint64 {
-	// IPv4 case: normalize both IPs to 4-byte form.
+	// IPv4 case: normalize both IPs to 4-byte form, then XOR and mask
+	// using native uint32 arithmetic loaded via binary.BigEndian.
 	if v4 := host.To4(); v4 != nil {
 		netIP := network.IP.To4()
-		var offset uint64
-		for i := range net.IPv4len {
-			offset = (offset << 8) | uint64((v4[i]^netIP[i])&^network.Mask[i])
-		}
-		return offset
+		hostVal := binary.BigEndian.Uint32(v4)
+		netVal := binary.BigEndian.Uint32(netIP)
+		maskVal := binary.BigEndian.Uint32(network.Mask)
+		return uint64((hostVal ^ netVal) &^ maskVal)
 	}
 
-	// IPv6 case: normalize both IPs to 16-byte form.
-	// For prefixes of /64 or longer, the upper 8 bytes are fully masked out,
-	// so only the lower 8 bytes contribute to the offset, fitting in uint64.
+	// IPv6 case: for prefixes >= /64 the upper 8 bytes are fully masked out,
+	// so only the lower 8 bytes contribute to the offset. Load them as uint64
+	// via binary.BigEndian, then XOR and mask with native arithmetic.
 	prefixLen, _ := network.Mask.Size()
 	if prefixLen < 64 {
 		log.Panicf("GetOffset: IPv6 prefix /%d is shorter than /64, offset would overflow uint64", prefixLen)
 	}
 	v6 := host.To16()
 	netIP := network.IP.To16()
-	var offset uint64
-	for i := range net.IPv6len {
-		offset = (offset << 8) | uint64((v6[i]^netIP[i])&^network.Mask[i])
-	}
-	return offset
+	hostLower := binary.BigEndian.Uint64(v6[8:])
+	netLower := binary.BigEndian.Uint64(netIP[8:])
+	maskLower := binary.BigEndian.Uint64(network.Mask[8:])
+	return (hostLower ^ netLower) &^ maskLower
 }
