@@ -132,9 +132,11 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	botPingCmdHandler := &pkgbothandlers.PingCommandHandler{}
 	traceCmdHandler := &pkgbothandlers.TracerouteCommandHandler{}
 	probeHandler := &pkgbothandlers.ProbeHandler{
-		FontNames:           botCmd.CustomFontNames,
-		LocationsProvider:   pingEVProvider,
-		ProbeEventsProvider: nil, // todo: fill it
+		FontNames:         botCmd.CustomFontNames,
+		LocationsProvider: pingEVProvider,
+		ProbeEventsProvider: &pkgbotdata.MockedProbeEventsProvider{
+			SampleIntv: time.Second,
+		},
 	}
 	listHandler := &pkgbothandlers.ListHandler{
 		EventsProvider: pingEVProvider,
