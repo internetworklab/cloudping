@@ -1,6 +1,9 @@
 package utils
 
-import "net"
+import (
+	"log"
+	"net"
+)
 
 // GetOffset computes the numerical offset of a host address relative to its
 // parent subnet's network (base) address. Conceptually, it is host minus network,
@@ -12,8 +15,7 @@ import "net"
 //
 // For IPv4, up to 32 host bits are supported (subnets as broad as /0).
 // For IPv6, up to 64 host bits are supported (subnets as narrow as /64);
-// prefix lengths shorter than /64 are not supported and will silently
-// overflow the returned value.
+// prefix lengths shorter than /64 are not supported and will cause a panic.
 func GetOffset(network net.IPNet, host net.IP) uint64 {
 	// IPv4 case: normalize both IPs to 4-byte form.
 	if v4 := host.To4(); v4 != nil {
@@ -28,6 +30,10 @@ func GetOffset(network net.IPNet, host net.IP) uint64 {
 	// IPv6 case: normalize both IPs to 16-byte form.
 	// For prefixes of /64 or longer, the upper 8 bytes are fully masked out,
 	// so only the lower 8 bytes contribute to the offset, fitting in uint64.
+	prefixLen, _ := network.Mask.Size()
+	if prefixLen < 64 {
+		log.Panicf("GetOffset: IPv6 prefix /%d is shorter than /64, offset would overflow uint64", prefixLen)
+	}
 	v6 := host.To16()
 	netIP := network.IP.To16()
 	var offset uint64
