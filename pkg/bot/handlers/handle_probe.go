@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"slices"
 
@@ -28,6 +29,16 @@ type ProbeHandler struct {
 	FontNames []string
 
 	EventsProvider pkgbot.PingEventsProvider
+
+	MaxBitsizeAllowed *int
+}
+
+func (handler *ProbeHandler) getMaxBitsize() int {
+	if x := handler.MaxBitsizeAllowed; x != nil {
+		return *x
+	}
+	const defaultMaxBitSize = 10
+	return defaultMaxBitSize
 }
 
 func (handler *ProbeHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
@@ -122,12 +133,39 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	rttMs := make([]int, 0) // todo
+	_, cidrObj, err := net.ParseCIDR(probeCLI.CIDR)
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("Failed to parse CIDR %s: %s", probeCLI.CIDR, err.Error()),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+
+	ones, bits := cidrObj.Mask.Size()
+	bitSize := bits - ones // number of host bits, ones is the number of bits for network address
+	maxBitSize := handler.getMaxBitsize()
+	if bitSize > maxBitSize {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            fmt.Sprintf("CIDR %s is too large, maximum bit size is %d", probeCLI.CIDR, maxBitSize),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+
+	numSamples := uint32(1) << uint32(bitSize)
+	rttMs := make([]int, numSamples)
+	for i := range rttMs {
+		// mocking an all-timeout scenario
+		rttMs[i] = -1
+	}
 
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		rttMs,
 		defaultGridCellSize,
-		probeCLI.CIDR,
+		*cidrObj,
 		handler.getFontNames(),
 	)
 

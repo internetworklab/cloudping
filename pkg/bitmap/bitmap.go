@@ -38,11 +38,7 @@ const chanIdxAlpha uint32 = 3
 // GenerateRandomRGBAPNGBitmap generates a random RGBA PNG encoded image, returns the path to the temporary file.
 // It's the caller's responsibility to release the transient resource (the temp file).
 // rttMs []int is a slice that maps address (in terms of offset) to latency (in unit of milliseconds), if the ping is timed-out, rtt would be -1.
-func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidr string, fontNames []string) (string, error) {
-	_, cidrObj, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return "", err
-	}
+func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidrObj net.IPNet, fontNames []string) (string, error) {
 
 	leadingOnes, totalBits := cidrObj.Mask.Size()
 	bitSize := uint32(totalBits - leadingOnes)
@@ -121,7 +117,7 @@ func GenerateRandomRGBAPNGBitmap(rttMS []int, gridSize uint32, cidr string, font
 	// around all sides.
 	canvCtx.DrawImage(float64(2*gridSize), float64(2*gridSize), scaledContentRGBA, 1.0)
 
-	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s", cidr), 0, 0, canvas.Left, canvas.Middle, nil)
+	text := canvas.NewTextBox(fontFace, fmt.Sprintf("Target: %s", cidrObj.String()), 0, 0, canvas.Left, canvas.Middle, nil)
 	canvCtx.DrawText(float64(gridSize)*0.25, 0.5*float64(gridSize), text)
 
 	now := time.Now()
