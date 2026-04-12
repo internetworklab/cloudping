@@ -2,13 +2,37 @@ package utils
 
 import "net"
 
-// Return the diff between the host address and the network address.
-// For example:
-// network=1.0.0.0/24, host=1.0.0.3, diff=3
-// network=fd00::/64, host=fd00::7, diff=7
-// For IPv4, up to 32 bits of host addresses are supported, i.e. the subnet can be as large as /0.
-// For IPv6, up to 64 bits of host addresses are supported, i.e. the subnet can be as large as /64,
-// /64, /65, ..., /128 are all valid IPv6 subnet while /64 or broader are not.
+// GetOffset computes the numerical offset of a host address relative to its
+// parent subnet's network (base) address. Conceptually, it is host minus network,
+// treating both as integers and masking out the prefix portion.
+//
+// Examples:
+//   - network=1.0.0.0/24, host=1.0.0.3 → offset=3
+//   - network=fd00::/64,  host=fd00::7  → offset=7
+//
+// For IPv4, up to 32 host bits are supported (subnets as broad as /0).
+// For IPv6, up to 64 host bits are supported (subnets as narrow as /64);
+// prefix lengths shorter than /64 are not supported and will silently
+// overflow the returned value.
 func GetOffset(network net.IPNet, host net.IP) uint64 {
-	return 0
+	// IPv4 case: normalize both IPs to 4-byte form.
+	if v4 := host.To4(); v4 != nil {
+		netIP := network.IP.To4()
+		var offset uint64
+		for i := 0; i < net.IPv4len; i++ {
+			offset = (offset << 8) | uint64((v4[i]^netIP[i])&^network.Mask[i])
+		}
+		return offset
+	}
+
+	// IPv6 case: normalize both IPs to 16-byte form.
+	// For prefixes of /64 or longer, the upper 8 bytes are fully masked out,
+	// so only the lower 8 bytes contribute to the offset, fitting in uint64.
+	v6 := host.To16()
+	netIP := network.IP.To16()
+	var offset uint64
+	for i := 0; i < net.IPv6len; i++ {
+		offset = (offset << 8) | uint64((v6[i]^netIP[i])&^network.Mask[i])
+	}
+	return offset
 }
