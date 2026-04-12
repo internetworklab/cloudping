@@ -28,7 +28,9 @@ type ProbeHandler struct {
 	// Name of fonts to search
 	FontNames []string
 
-	EventsProvider pkgbot.PingEventsProvider
+	LocationsProvider pkgbot.LocationsProvider
+
+	ProbeEventsProvider pkgbot.ProbeEventsProvider
 
 	MaxBitsizeAllowed *int
 }
@@ -41,11 +43,18 @@ func (handler *ProbeHandler) getMaxBitsize() int {
 	return defaultMaxBitSize
 }
 
-func (handler *ProbeHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
-	if handler.EventsProvider == nil {
-		return nil, errors.New("PingEventsProvider is not provided")
+func (handler *ProbeHandler) getLocationsProvider() (pkgbot.LocationsProvider, error) {
+	if handler.LocationsProvider == nil {
+		return nil, errors.New("Locations provider is not provided")
 	}
-	return handler.EventsProvider, nil
+	return handler.LocationsProvider, nil
+}
+
+func (handler *ProbeHandler) getEVsProvider() (pkgbot.ProbeEventsProvider, error) {
+	if handler.ProbeEventsProvider == nil {
+		return nil, errors.New("Events provider is not provided")
+	}
+	return handler.ProbeEventsProvider, nil
 }
 
 func (handler *ProbeHandler) GetUsage() string {
@@ -90,7 +99,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	msgId := update.Message.ID
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
-	provider, err := handler.getEVsProvider()
+	locsProvider, err := handler.getLocationsProvider()
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -100,7 +109,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	allLocs, err := provider.GetAllLocations(ctx)
+	allLocs, err := locsProvider.GetAllLocations(ctx)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -161,7 +170,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		// mocking an all-timeout scenario, except the first idx
 		rttMs[i] = -1
 	}
-	rttMs[0] = 1
+	rttMs[len(rttMs)-1] = 1
 
 	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
 		rttMs,

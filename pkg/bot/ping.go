@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"net"
 
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 )
@@ -52,6 +53,25 @@ type PingRequestDescriptor struct {
 type PingEventsProvider interface {
 	GetEvents(ctx context.Context, requst *PingRequestDescriptor) <-chan PingEvent
 	GetAllLocations(ctx context.Context) ([]LocationDescriptor, error)
+}
+
+type LocationsProvider interface {
+	GetAllLocations(ctx context.Context) ([]LocationDescriptor, error)
+}
+
+type ProbeRequestDescriptor struct {
+	FromNodeId string
+	TargetCIDR net.IPNet
+}
+
+type ProbeEvent struct {
+	Err   error
+	IP    net.IP
+	RTTMs int
+}
+
+type ProbeEventsProvider interface {
+	GetEvents(ctx context.Context, request ProbeRequestDescriptor) <-chan ProbeEvent
 }
 
 // String returns a formatted string representation of the ping event
