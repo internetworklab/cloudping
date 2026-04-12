@@ -127,15 +127,17 @@ These APIs are intended for developers only. End users should use the Web UI.
 
 ## Bot Command
 
-Currently, on Telegram Bot is supported.
+Currently, only Telegram Bot is supported.
 
 | Command | Description | Example |
 |-----------|----------|--------|
-| `/ping` | 
-| `/traceroute` | 
-| `/probe` |
-| `/list` |
-| `/version` |
+| `/ping` | Ping a destination with real-time streaming statistics. Supports IPv4/IPv6 preference and interactive location switching. | `/ping -c 3 example.com` |
+| `/traceroute` | Traceroute to a destination with hop-by-hop peer and latency details. Supports IPv4/IPv6 preference and packet count. | `/traceroute -6 example.com` |
+| `/probe` | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node. **(WIP)** | `/probe -s=us-lax1 172.23.0.0/24` |
+| `/list` | List all available probe nodes with their network (ASN/ISP) and location information. | `/list` |
+| `/version` | Show build version information as a JSON payload. | `/version` |
+
+For how to deploy your own bot, see the `docker-compose.yaml` file in [example1](./docker/example1/docker-compose.yaml) or the dev scripts in [scripts/](./scripts).
 
 ## Deployment
 
