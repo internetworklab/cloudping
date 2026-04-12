@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/go-telegram/bot"
@@ -176,36 +178,68 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
-		rttMs,
-		defaultGridCellSize,
-		len(rttMs)/2,
-		*cidrObj,
-		handler.getFontNames(),
-	)
+	sendImg := func(probed int, lastMsgId *int) *int {
+		imgFilename, err := pkgbitmap.GenerateRandomRGBAPNGBitmap(
+			rttMs,
+			defaultGridCellSize,
+			probed,
+			*cidrObj,
+			handler.getFontNames(),
+		)
 
-	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          chatId,
-			Text:            err.Error(),
-			ReplyParameters: replyParams,
-		})
-		return
-	}
-	defer os.Remove(imgFilename)
-	imgFile, err := os.Open(imgFilename)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer imgFile.Close()
-	imgFileUp := models.InputFileUpload{Filename: imgFilename, Data: imgFile}
+		if err != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:          chatId,
+				Text:            err.Error(),
+				ReplyParameters: replyParams,
+			})
+			return nil
+		}
+		defer os.Remove(imgFilename)
+		imgFile, err := os.Open(imgFilename)
+		if err != nil {
+			log.Panic(err)
+		}
+		defer imgFile.Close()
+		imgFileUp := models.InputFileUpload{Filename: imgFilename, Data: imgFile}
 
-	_, err = b.SendPhoto(ctx, &bot.SendPhotoParams{
-		ChatID:          chatId,
-		Photo:           &imgFileUp,
-		ReplyParameters: replyParams,
-	})
-	if err != nil {
-		log.Printf("failed to send probe response: %v", err)
+		if lastMsgId != nil {
+			msg, err := b.EditMessageMedia(ctx, &bot.EditMessageMediaParams{
+				ChatID:    chatId,
+				MessageID: *lastMsgId,
+				Media: &models.InputMediaPhoto{
+					Media:           fmt.Sprintf("attach://%s", filepath.Base(imgFilename)),
+					MediaAttachment: imgFile,
+				},
+			})
+			if err != nil {
+				log.Printf("failed to edit message %d in chat %d: %v", *lastMsgId, chatId, err)
+				return lastMsgId
+			}
+			log.Printf("Message %d chat %d has been edit.", msg.ID, chatId)
+			return lastMsgId
+		} else {
+			msg, err := b.SendPhoto(ctx, &bot.SendPhotoParams{
+				ChatID:          chatId,
+				Photo:           &imgFileUp,
+				ReplyParameters: replyParams,
+			})
+			if err != nil {
+				log.Printf("failed to send probe response: %v", err)
+				return nil
+			}
+			msgId := msg.ID
+			log.Printf("Message %d chat %d has been sent.", msg.ID, chatId)
+			return &msgId
+		}
+	}
+
+	const mediaMsgEditIntv time.Duration = 10 * time.Second
+	var lastMsgId *int = nil
+	for probed := range rttMs {
+		lastMsgId = sendImg(probed, lastMsgId)
+		if probed != len(rttMs)-1 {
+			<-time.After(mediaMsgEditIntv)
+		}
 	}
 }
