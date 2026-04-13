@@ -10,6 +10,6 @@ go run ./cmd/globalping hub \
   --server-cert-key="test/certs/peer-key.pem" \
   --public-http-listen-address=":8084" \
   --jwt-quic-listen-address=":18449" \
-  --min-pkt-interval="300ms" \
+  --min-pkt-interval="30ms" \
   --max-pkt-timeout="3000ms" \
   --jwt-auth-secret-from-env="JWT_SECRET"

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -239,7 +240,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	buttonsMarkup := &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 
 	gridCellSize := handler.getGridSize(bitSize)
-	sendImg := func(ctx context.Context, probed int, lastMsgId *int, rttMs []int) *int {
+	sendImg := func(ctx context.Context, probed int, total int, lastMsgId *int, rttMs []int) *int {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -266,6 +267,29 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		defer imgFile.Close()
 		imgFileUp := models.InputFileUpload{Filename: imgFilename, Data: imgFile}
 
+		reachables := probed
+		for i, x := range rttMs {
+			if x < 0 && i < probed {
+				reachables--
+			}
+		}
+
+		captionBuf := strings.Builder{}
+		fmt.Fprintf(&captionBuf, "Scan report of %s\n", cidrObj.String())
+		fmt.Fprintf(&captionBuf, "Probed: %d / %d\n", probed, total)
+		fmt.Fprintf(&captionBuf, "Reachable: %d / %d\n", reachables, probed)
+
+		replyMarkup := buttonsMarkup
+		if probed == total {
+			replyMarkup = &models.InlineKeyboardMarkup{
+				InlineKeyboard: make([][]models.InlineKeyboardButton, 0),
+			}
+		} else {
+			fmt.Fprintf(&captionBuf, "In progress ...")
+		}
+
+		captionText := captionBuf.String()
+
 		if lastMsgId != nil {
 			_, err := b.EditMessageMedia(ctx, &bot.EditMessageMediaParams{
 				ChatID:    chatId,
@@ -273,9 +297,9 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 				Media: &models.InputMediaPhoto{
 					Media:           fmt.Sprintf("attach://%s", filepath.Base(imgFilename)),
 					MediaAttachment: imgFile,
-					Caption:         fmt.Sprintf("Scan report of %s", cidrObj.String()),
+					Caption:         captionText,
 				},
-				ReplyMarkup: buttonsMarkup,
+				ReplyMarkup: replyMarkup,
 			})
 			if err != nil {
 				log.Printf("failed to edit message %d in chat %d: %v", *lastMsgId, chatId, err)
@@ -287,8 +311,8 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 				ChatID:          chatId,
 				Photo:           &imgFileUp,
 				ReplyParameters: replyParams,
-				Caption:         fmt.Sprintf("Scan report of %s", cidrObj.String()),
-				ReplyMarkup:     buttonsMarkup,
+				Caption:         captionText,
+				ReplyMarkup:     replyMarkup,
 			})
 			if err != nil {
 				log.Printf("failed to send probe response: %v", err)
@@ -354,7 +378,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	rttMs := make([]int, numSamples)
 	var probed *int = new(int)
 	*probed = 0
-	lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
+	lastMsgId = sendImg(ctx, *probed, int(numSamples), lastMsgId, rttMs)
 	if lastMsgId != nil {
 		conversationKey := &pkgbot.ConversationKey{
 			ChatId: chatId,
@@ -371,7 +395,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	defer func(ctx context.Context) {
 		if *probed > 0 {
 			<-time.After(mediaMsgEditIntv)
-			lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
+			lastMsgId = sendImg(ctx, *probed, int(numSamples), lastMsgId, rttMs)
 		}
 	}(ctx)
 
@@ -381,7 +405,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
+			lastMsgId = sendImg(ctx, *probed, int(numSamples), lastMsgId, rttMs)
 		case probeResult, ok := <-rttMsChan:
 			if !ok {
 				return
