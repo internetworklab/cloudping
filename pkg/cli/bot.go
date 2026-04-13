@@ -135,6 +135,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		FontNames:           botCmd.CustomFontNames,
 		LocationsProvider:   pingEVProvider,
 		ProbeEventsProvider: pingEVProvider,
+		ConversationManager: convMngr,
 	}
 	listHandler := &pkgbothandlers.ListHandler{
 		EventsProvider: pingEVProvider,
@@ -150,6 +151,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/list`), listHandler.HandleList)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^trace_location_.+$`), traceCmdHandler.HandleTraceQueryCallback)
+	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^probe_cancel$`), probeHandler.HandleProbeCancelQueryCallback)
 
 	_, err = b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
 		Commands: []models.BotCommand{

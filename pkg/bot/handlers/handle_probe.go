@@ -19,8 +19,6 @@ import (
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
-const defaultGridCellSize = 32
-
 type ProbeCLI struct {
 	From string `short:"s" name:"from" help:"Specify the source node for originating packets"`
 	CIDR string `arg:"" name:"cidr" help:"CIDR of the subnet to probe, e.g. 172.23.0.0/24"`
@@ -35,14 +33,23 @@ type ProbeHandler struct {
 	ProbeEventsProvider pkgbot.ProbeEventsProvider
 
 	MaxBitsizeAllowed *int
+
+	ConversationManager *pkgbot.ConversationManager
 }
 
 func (handler *ProbeHandler) getMaxBitsize() int {
 	if x := handler.MaxBitsizeAllowed; x != nil {
 		return *x
 	}
-	const defaultMaxBitSize = 10
+	const defaultMaxBitSize = 20
 	return defaultMaxBitSize
+}
+
+func (handler *ProbeHandler) getConversationManager() (*pkgbot.ConversationManager, error) {
+	if handler.ConversationManager == nil {
+		return nil, errors.New("ConversationManager is not provided")
+	}
+	return handler.ConversationManager, nil
 }
 
 func (handler *ProbeHandler) getLocationsProvider() (pkgbot.LocationsProvider, error) {
@@ -92,13 +99,79 @@ func (handler *ProbeHandler) getFontNames() []string {
 	return handler.FontNames
 }
 
+func (handler *ProbeHandler) getGridSize(bits int) int {
+	if bits >= 0 && bits < 13 {
+		// bits = 0,1,2,...,10,11,12
+		return 32
+	} else if bits >= 13 && bits < 17 {
+		// bits = 13, 14, 15, 16
+		return 16
+	} else if bits >= 17 && bits < 21 {
+		// bits = 17, 18, 19, 20
+		return 8
+	} else {
+		// bits >= 21
+		return 4
+	}
+}
+
+func (handler *ProbeHandler) HandleProbeCancelQueryCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
+	convMngr, err := handler.getConversationManager()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	chatId := update.CallbackQuery.Message.Message.Chat.ID
+	msgId := update.CallbackQuery.Message.Message.ID
+
+	conversationKey := &pkgbot.ConversationKey{
+		ChatId: chatId,
+		MsgId:  msgId,
+		FromId: update.CallbackQuery.From.ID,
+	}
+	ctx, canceller := context.WithCancel(ctx)
+	defer canceller()
+
+	if _, err := convMngr.CutIn(ctx, conversationKey, nil); err != nil {
+		log.Printf("Failed to cancel conversation: %v", err)
+	}
+
+	newCaption := "Cancelled"
+	if msg := update.CallbackQuery.Message.Message; msg != nil {
+		newCaption = msg.Caption + " " + newCaption
+	}
+
+	_, err = b.EditMessageCaption(ctx, &bot.EditMessageCaptionParams{
+		ChatID:    chatId,
+		MessageID: msgId,
+		Caption:   newCaption,
+	})
+	if err != nil {
+		log.Printf("failed to edit message %d in chat %d: %v", msgId, chatId, err)
+	}
+}
+
 func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update *models.Update) {
+
 	if update.Message == nil {
 		return
 	}
 
+	ctx, canceller := context.WithCancel(ctx)
+
+	sessMngr, err := handler.getConversationManager()
+	if err != nil {
+		log.Panic(err)
+	}
+
 	chatId := update.Message.Chat.ID
 	msgId := update.Message.ID
+
+	msgRecord := pkgbot.MessageRecord{
+		DateTime: time.Now(),
+		Content:  update.Message.Text,
+	}
+
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
 	sendText := func(text string) {
@@ -157,10 +230,25 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	sendImg := func(probed int, lastMsgId *int, rttMs []int) *int {
+	buttons := make([][]models.InlineKeyboardButton, 1)
+	buttons[0] = make([]models.InlineKeyboardButton, 1)
+	buttons[0][0] = models.InlineKeyboardButton{
+		Text:         "Cancel",
+		CallbackData: "probe_cancel",
+	}
+	buttonsMarkup := &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
+
+	gridCellSize := handler.getGridSize(bitSize)
+	sendImg := func(ctx context.Context, probed int, lastMsgId *int, rttMs []int) *int {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		imgFilename, err := pkgbitmap.RenderProbeHeatmap(
 			rttMs,
-			defaultGridCellSize,
+			uint32(gridCellSize),
 			probed,
 			*cidrObj,
 			handler.getFontNames(),
@@ -187,6 +275,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 					MediaAttachment: imgFile,
 					Caption:         fmt.Sprintf("Scan report of %s", cidrObj.String()),
 				},
+				ReplyMarkup: buttonsMarkup,
 			})
 			if err != nil {
 				log.Printf("failed to edit message %d in chat %d: %v", *lastMsgId, chatId, err)
@@ -199,6 +288,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 				Photo:           &imgFileUp,
 				ReplyParameters: replyParams,
 				Caption:         fmt.Sprintf("Scan report of %s", cidrObj.String()),
+				ReplyMarkup:     buttonsMarkup,
 			})
 			if err != nil {
 				log.Printf("failed to send probe response: %v", err)
@@ -258,22 +348,40 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 	const mediaMsgEditIntv time.Duration = 10 * time.Second
 	ticker := time.NewTicker(mediaMsgEditIntv)
+	defer ticker.Stop()
+
 	var lastMsgId *int = nil
 	rttMs := make([]int, numSamples)
 	var probed *int = new(int)
 	*probed = 0
-	defer func() {
+	lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
+	if lastMsgId != nil {
+		conversationKey := &pkgbot.ConversationKey{
+			ChatId: chatId,
+			FromId: update.Message.From.ID,
+			MsgId:  *lastMsgId,
+		}
+
+		// Register the Canceller for checking in, so that the user can cancell it later.
+		if err := sessMngr.CheckIn(ctx, conversationKey, msgRecord, canceller); err != nil {
+			log.Panic(err)
+		}
+	}
+
+	defer func(ctx context.Context) {
 		if *probed > 0 {
 			<-time.After(mediaMsgEditIntv)
-			lastMsgId = sendImg(*probed, lastMsgId, rttMs)
+			lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
 		}
-	}()
+	}(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
+			ticker.Stop()
 			return
 		case <-ticker.C:
-			lastMsgId = sendImg(*probed, lastMsgId, rttMs)
+			lastMsgId = sendImg(ctx, *probed, lastMsgId, rttMs)
 		case probeResult, ok := <-rttMsChan:
 			if !ok {
 				return

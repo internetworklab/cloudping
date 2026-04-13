@@ -31,7 +31,7 @@ type CloudPingEventsProvider struct {
 }
 
 const defaultPingIntv time.Duration = 1000 * time.Millisecond
-const defaultProbeIntv time.Duration = 100 * time.Millisecond
+const defaultProbeIntv time.Duration = 50 * time.Millisecond
 const defaultPktTiemoutMs int = 3000
 const defaultIPInfoProviderName string = "auto"
 const maxPktCountAllowed int = 128
@@ -167,6 +167,12 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			if err := scanner.Err(); err != nil {
 				dataCh <- pkgbot.ProbeEvent{
 					Err: fmt.Errorf("scanner error: %w", err),
