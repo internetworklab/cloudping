@@ -116,6 +116,8 @@ func (handler *ProbeHandler) getGridSize(bits int) int {
 	}
 }
 
+const inProgressText = "In progress ..."
+
 func (handler *ProbeHandler) HandleProbeCancelQueryCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
 	convMngr, err := handler.getConversationManager()
 	if err != nil {
@@ -139,7 +141,7 @@ func (handler *ProbeHandler) HandleProbeCancelQueryCallback(ctx context.Context,
 
 	newCaption := "Cancelled"
 	if msg := update.CallbackQuery.Message.Message; msg != nil {
-		newCaption = msg.Caption + " " + newCaption
+		newCaption = strings.Replace(msg.Caption, inProgressText, "Cancelled", 1)
 	}
 
 	_, err = b.EditMessageCaption(ctx, &bot.EditMessageCaptionParams{
@@ -159,6 +161,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	}
 
 	ctx, canceller := context.WithCancel(ctx)
+	defer canceller()
 
 	sessMngr, err := handler.getConversationManager()
 	if err != nil {
@@ -285,7 +288,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 				InlineKeyboard: make([][]models.InlineKeyboardButton, 0),
 			}
 		} else {
-			fmt.Fprintf(&captionBuf, "In progress ...")
+			fmt.Fprintf(&captionBuf, inProgressText)
 		}
 
 		captionText := captionBuf.String()
