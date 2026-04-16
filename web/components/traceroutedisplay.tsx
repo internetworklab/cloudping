@@ -62,7 +62,6 @@ import {
 import ShareIcon from "@mui/icons-material/Share";
 import { firstLetterCap } from "./strings";
 import { defaultResolver } from "@/apis/resolver";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
 
@@ -162,11 +161,10 @@ function DisplayCurrentNode(props: {
 
 function getMarkersAndPaths(
   traceStats: TraceStats | undefined,
-  showMap: boolean,
   sourceMarkers: Marker[],
   ratio: number,
 ): { markers: Marker[]; extraPaths: Path[] | undefined } {
-  if (!showMap || !traceStats) {
+  if (!traceStats) {
     return { markers: [], extraPaths: undefined };
   }
 
@@ -515,7 +513,6 @@ export function TracerouteResultDisplay(props: {
   const [openPreview, setOpenPreview] = useState(false);
   const { markers, extraPaths } = getMarkersAndPaths(
     traceStats,
-    showMap,
     sourceMarkers,
     ratio,
   );

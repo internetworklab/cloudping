@@ -5,4 +5,5 @@
 docker build \
   --target prod-nginx \
   --build-arg NEXT_PUBLIC_DEFAULT_RESOLVER=172.20.0.53:53 \
+  --load \
   --tag cloudping-web:nginx .
