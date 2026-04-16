@@ -1,0 +1,27 @@
+.masonry-container {
+    display: grid;
+    /* This creates as many columns as possible, minimum 300px each */
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+
+    width: 100%;
+    box-sizing: border-box;
+
+    /* This helps items align to the top if they have different heights */
+    align-items: start;
+}
+
+/* Optional: If you want the cards to have varying heights for a "true" masonry look */
+.masonry-container .custom-card {
+    width: 100%; /* Overwrite the fixed 350px from the previous step */
+    height: auto;
+    aspect-ratio: 3 / 4; /* Keeps them uniform, or remove for varying heights */
+}
+
+/* Mobile Tweak: Ensure padding doesn't cause overflow */
+@media (max-width: 600px) {
+    .masonry-container {
+        grid-template-columns: 1fr; /* Force 1 track on small screens */
+        padding: 10px;
+        grid-gap: 15px;
+    }
+}

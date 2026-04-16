@@ -1,0 +1,72 @@
+.custom-card {
+    position: relative;
+    overflow: hidden;
+    /* Straight corners */
+    border-radius: 0;
+    /* Borderless */
+    border: none;
+    cursor: pointer;
+    font-family: sans-serif;
+    color: white;
+}
+
+.card-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+}
+
+.card-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Top: lighter/more opaque, Bottom: darker */
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.4) 0%,
+        rgba(0, 0, 0, 0.95) 100%
+    );
+    z-index: 2;
+}
+
+.card-content {
+    position: absolute;
+    bottom: 0;
+    padding: 20px;
+    z-index: 3;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.card-title {
+    margin: 0 0 10px 0;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.card-description {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+
+    /* Ellipsis logic: restrict to 2 lines by default */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    transition: all 0.3s ease-in-out;
+}
+
+/* Hover Effect: Show full description */
+.custom-card:hover .card-description {
+    -webkit-line-clamp: unset; /* Removes the line restriction */
+    overflow: visible;
+}
