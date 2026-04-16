@@ -57,9 +57,16 @@ import {
   PingReportPreviewDialog,
   TracerouteReportMode,
 } from "./traceroutereport";
+import ScreenRotationIcon from "@mui/icons-material/ScreenRotation";
 import ShareIcon from "@mui/icons-material/Share";
 import { firstLetterCap } from "./strings";
 import { defaultResolver } from "@/apis/resolver";
+
+// Describe the orientation of the ping display table
+enum Orientation {
+  TGT_SRC = "tgt_src", // One row per destination (target), with sources as columns
+  SRC_TGT = "src_tgt", // One row per source, with destinations (targets) as columns
+}
 
 type RowObject = {
   target: string;
@@ -240,6 +247,10 @@ export function PingResultDisplay(props: {
     {},
   );
 
+  const [orientation, setOrientation] = useState<Orientation>(
+    Orientation.TGT_SRC,
+  );
+
   const [running, setRunning] = useState<boolean>(true);
 
   function launchStream(): [
@@ -313,10 +324,6 @@ export function PingResultDisplay(props: {
     };
   }, [pendingTask.taskId, running]);
 
-  const rowObjects: RowObject[] = targets.map((target) => ({
-    target: target,
-  }));
-
   const [report, setReport] = useState<PingReport | undefined>(undefined);
   const [reportGenerating, setReportGenerating] = useState<boolean>(false);
 
@@ -335,6 +342,19 @@ export function PingResultDisplay(props: {
           {firstLetterCap(pendingTask.type)} Task #{pendingTask.taskId}
         </Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+          <Tooltip title="Rotate Orientation">
+            <IconButton
+              onClick={() =>
+                setOrientation((prev) =>
+                  prev === Orientation.TGT_SRC
+                    ? Orientation.SRC_TGT
+                    : Orientation.TGT_SRC,
+                )
+              }
+            >
+              <ScreenRotationIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Share Report">
             <IconButton
               loading={reportGenerating}
@@ -385,23 +405,55 @@ export function PingResultDisplay(props: {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Target</TableCell>
-              {sources.map((source) => (
-                <TableCell key={source}>{source.toUpperCase()}</TableCell>
-              ))}
-              <TableCell>Overview</TableCell>
+              {orientation === Orientation.TGT_SRC ? (
+                <Fragment>
+                  <TableCell>Target</TableCell>
+                  {sources.map((source, idx) => (
+                    <TableCell key={`${source}:${idx}`}>
+                      {source.toUpperCase()}
+                    </TableCell>
+                  ))}
+                  <TableCell>Overview</TableCell>
+                </Fragment>
+              ) : orientation === Orientation.SRC_TGT ? (
+                <Fragment>
+                  <TableCell>Source</TableCell>
+                  {targets.map((target, idx) => (
+                    <TableCell key={`${target}:${idx}`}>{target}</TableCell>
+                  ))}
+                </Fragment>
+              ) : (
+                <Fragment>Invalid Orientation</Fragment>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
-            {rowObjects.map(({ target }, idx) => (
-              <RowMap
-                key={idx}
-                target={target}
-                sources={sources}
-                rowLength={sources.length + 2}
-                tableCellDataMap={tableCellDataMap}
-              />
-            ))}
+            {orientation === Orientation.TGT_SRC ? (
+              <Fragment>
+                {targets.map((target, idx) => (
+                  <PerTGTRowMap
+                    key={`${target}:${idx}`}
+                    firstCol={target}
+                    sources={sources}
+                    rowLength={sources.length + 2}
+                    tableCellDataMap={tableCellDataMap}
+                  />
+                ))}
+              </Fragment>
+            ) : orientation === Orientation.SRC_TGT ? (
+              <Fragment>
+                {sources.map((source, idx) => (
+                  <PerSrcRowMap
+                    key={`${source}:${idx}`}
+                    firstCol={source}
+                    targets={targets}
+                    tableCellDataMap={tableCellDataMap}
+                  />
+                ))}
+              </Fragment>
+            ) : (
+              <Fragment>Invalid Orientation</Fragment>
+            )}
           </TableBody>
         </Table>
       </TableContainer>
@@ -559,13 +611,69 @@ const CustomWidthTooltip = styled(({ className, ...props }: TooltipProps) => (
   },
 });
 
-function RowMap(props: {
-  target: string;
+function PerSrcRowMap(props: {
+  firstCol: string;
+  targets: string[];
+  tableCellDataMap: TableCellDataMap;
+}) {
+  const { firstCol, targets, tableCellDataMap } = props;
+
+  return (
+    <TableRow>
+      <TableCell>{firstCol.toUpperCase()}</TableCell>
+      {targets.map((target, idx) => {
+        const {
+          latency,
+          mss,
+          datum: sample,
+          historySamples,
+        } = getLatestDataFromMap(tableCellDataMap, target, firstCol);
+
+        return (
+          <TableCell
+            key={`${target}:${idx}`}
+            sx={{
+              fontWeight: 500,
+              minWidth: 100,
+            }}
+          >
+            <Box>
+              <CustomWidthTooltip
+                title={
+                  sample ? (
+                    <ShowMoreDetails
+                      sample={sample}
+                      historySamples={historySamples}
+                    />
+                  ) : (
+                    <Fragment></Fragment>
+                  )
+                }
+              >
+                <Box component="span" sx={{ color: getLatencyColor(latency) }}>
+                  {!sample?.isTimeout &&
+                  latency !== null &&
+                  latency !== undefined
+                    ? `${latency.toFixed(3)} ms`
+                    : "—"}
+                </Box>
+              </CustomWidthTooltip>
+            </Box>
+            {mss !== null && mss !== undefined && <Box>MSS={mss}</Box>}
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+}
+
+function PerTGTRowMap(props: {
+  firstCol: string;
   sources: string[];
   rowLength: number;
   tableCellDataMap: TableCellDataMap;
 }) {
-  const { target, sources, rowLength, tableCellDataMap } = props;
+  const { firstCol, sources, rowLength, tableCellDataMap } = props;
   const [expanded, setExpanded] = useState<boolean>(false);
 
   const canvasX = 360000;
@@ -608,7 +716,7 @@ function RowMap(props: {
       }
       const { latency } = getLatestDataFromMap(
         tableCellDataMap,
-        target,
+        firstCol,
         node.node_name,
       );
       if (
@@ -653,7 +761,7 @@ function RowMap(props: {
   for (const source of sources) {
     const { historySamples } = getLatestDataFromMap(
       tableCellDataMap,
-      target,
+      firstCol,
       source,
     );
     for (const sample of historySamples) {
@@ -670,14 +778,14 @@ function RowMap(props: {
   return (
     <Fragment>
       <TableRow>
-        <TableCell>{target}</TableCell>
+        <TableCell>{firstCol}</TableCell>
         {sources.map((source) => {
           const {
             latency,
             mss,
             datum: sample,
             historySamples,
-          } = getLatestDataFromMap(tableCellDataMap, target, source);
+          } = getLatestDataFromMap(tableCellDataMap, firstCol, source);
 
           return (
             <TableCell
