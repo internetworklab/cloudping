@@ -83,3 +83,41 @@ func (tb *Table) GetHumanReadableText(colGap int, rowGap int, maxColWidth int) s
 
 	return sb.String()
 }
+
+func (tb *Table) GetReadableHTMLTable() string {
+	if len(tb.Rows) == 0 {
+		return "<table></table>"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<table>")
+
+	for rowIdx, row := range tb.Rows {
+		// Skip empty separator rows
+		if len(row.Cells) == 0 {
+			continue
+		}
+
+		sb.WriteString("<tr>")
+		for _, cell := range row.Cells {
+			if rowIdx == 0 {
+				fmt.Fprintf(&sb, "<th>%s</th>", tb.escapeHTML(cell))
+			} else {
+				fmt.Fprintf(&sb, "<td>%s</td>", tb.escapeHTML(cell))
+			}
+		}
+		sb.WriteString("</tr>")
+	}
+
+	sb.WriteString("</table>")
+	return sb.String()
+}
+
+func (tb *Table) escapeHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
+	return s
+}

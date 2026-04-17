@@ -20,10 +20,11 @@ import (
 	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
 	pkgraw "github.com/internetworklab/cloudping/pkg/raw"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 )
 
 // CloudPingEventsProvider is an implementation
-// of pkgbot.PingEventsProvider interface
+// of pkgtui.PingEventsProvider interface
 type CloudPingEventsProvider struct {
 	APIPrefix string
 	JWTToken  string
@@ -253,14 +254,14 @@ func (provider *CloudPingEventsProvider) convertToProbeEvent(pingEV *pkgpinger.P
 	return &botEV, nil
 }
 
-func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
-	dataCh := make(chan pkgbot.PingEvent, 1)
+func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgtui.PingEvent {
+	dataCh := make(chan pkgtui.PingEvent, 1)
 	go func() {
 		defer close(dataCh)
 
 		urlObj, err := provider.getPingURL(pingRequest)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("can't get ping event stream URL: %s", err.Error()),
 			}
 			return
@@ -268,7 +269,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlObj.String(), nil)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("failed to create request: %s", err.Error()),
 			}
 			return
@@ -280,7 +281,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("failed to fetch ping events: %s", err.Error()),
 			}
 			return
@@ -288,7 +289,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("unexpected status code: %d", resp.StatusCode),
 			}
 			return
@@ -297,7 +298,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			if err := scanner.Err(); err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: fmt.Sprintf("scanner error: %s", err.Error()),
 				}
 				return
@@ -306,21 +307,21 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 			line := scanner.Bytes()
 			var pingEVObj pkgpinger.PingEvent
 			if err := json.Unmarshal(line, &pingEVObj); err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: fmt.Sprintf("failed to parse ping event: %s", err.Error()),
 				}
 				continue
 			}
 
 			if pingEVObj.Err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: *pingEVObj.Err,
 				}
 				continue
 			}
 
 			if pingEVObj.Error != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: pingEVObj.Error.Error(),
 				}
 				continue
@@ -334,7 +335,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 			botEvent, err := provider.convertPingEventToBotEvent(&pingEVObj)
 			if err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: err.Error(),
 				}
 				continue
@@ -346,7 +347,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		}
 
 		if err := scanner.Err(); err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("scanner error: %s", err.Error()),
 			}
 		}
@@ -355,8 +356,8 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 	return dataCh
 }
 
-func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent, error) {
-	botEV := pkgbot.PingEvent{}
+func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgtui.PingEvent, error) {
+	botEV := pkgtui.PingEvent{}
 
 	if pingEV.Data == nil {
 		return &botEV, errors.New("ping event data is nil")

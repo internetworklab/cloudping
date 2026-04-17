@@ -11,10 +11,6 @@ import (
 
 type CtxKey string
 
-const defaultMaxColWidth int = 24
-const defaultColGap int = 2
-const defaultRowGap int = 0
-
 const (
 	CtxKeyJWTSecret           = CtxKey("jwt_secret")
 	CtxKeyIssuerName          = CtxKey("issuer_name")

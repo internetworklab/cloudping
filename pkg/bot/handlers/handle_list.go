@@ -64,6 +64,10 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 
 	var nodesTable pkgtable.Table = handler.getNodeTable(allLocs)
 	const maxColWidth = 30
+	const defaultMaxColWidth int = 24
+	const defaultColGap int = 2
+	const defaultRowGap int = 0
+
 	tableText := nodesTable.GetHumanReadableText(defaultColGap, defaultRowGap, maxColWidth)
 	entities := []models.MessageEntity{
 		{

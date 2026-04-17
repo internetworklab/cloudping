@@ -5,18 +5,19 @@ import (
 	"strings"
 
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 )
 
 // MockPingEventsProvider is an implementation
-// of pkgbot.PingEventsProvider interface
+// of pkgtui.PingEventsProvider interface
 type MockPingEventsProvider struct{}
 
-func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
+func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgtui.PingEvent {
 	lcode := strings.ToLower(pingRequest.Sources[0])
 
-	evsToEVChan := func(evs []pkgbot.PingEvent) <-chan pkgbot.PingEvent {
-		evsChan := make(chan pkgbot.PingEvent, 0)
-		go func(evs []pkgbot.PingEvent) {
+	evsToEVChan := func(evs []pkgtui.PingEvent) <-chan pkgtui.PingEvent {
+		evsChan := make(chan pkgtui.PingEvent, 0)
+		go func(evs []pkgtui.PingEvent) {
 			defer close(evsChan)
 			for _, ev := range evs {
 				evsChan <- ev
@@ -26,7 +27,7 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 	}
 
 	if lcode == "hk-hkg1" {
-		evs := []pkgbot.PingEvent{
+		evs := []pkgtui.PingEvent{
 			{Seq: 0, RTTMs: 12, Peer: "10.0.1.1", PeerRDNS: "server-a1.local", IPPacketSize: 64, Timeout: false},
 			{Seq: 1, RTTMs: 15, Peer: "10.0.1.2", PeerRDNS: "server-a2.local", IPPacketSize: 64, Timeout: false},
 			{Seq: 2, RTTMs: 11, Peer: "10.0.1.3", PeerRDNS: "server-a3.local", IPPacketSize: 64, Timeout: false},
@@ -40,7 +41,7 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 		}
 		return evsToEVChan(evs)
 	} else if lcode == "us-lax1" {
-		return evsToEVChan([]pkgbot.PingEvent{
+		return evsToEVChan([]pkgtui.PingEvent{
 			{Seq: 10, RTTMs: 65, Peer: "10.0.2.1", PeerRDNS: "node-b1.example.com", IPPacketSize: 64, Timeout: false},
 			{Seq: 11, RTTMs: 72, Peer: "10.0.2.2", PeerRDNS: "node-b2.example.com", IPPacketSize: 64, Timeout: false},
 			{Seq: 12, RTTMs: 58, Peer: "10.0.2.3", PeerRDNS: "", IPPacketSize: 64, Timeout: false},
@@ -53,7 +54,7 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 			{Seq: 19, RTTMs: 103, Peer: "10.0.2.10", PeerRDNS: "node-b10.example.com", IPPacketSize: 64, Timeout: false},
 		})
 	} else if lcode == "jp-tyo1" {
-		return evsToEVChan([]pkgbot.PingEvent{
+		return evsToEVChan([]pkgtui.PingEvent{
 			{Seq: 20, RTTMs: 145, Peer: "192.168.100.1", PeerRDNS: "host-c1.remote.net", IPPacketSize: 64, Timeout: false},
 			{Seq: 21, RTTMs: 187, Peer: "192.168.100.2", PeerRDNS: "host-c2.remote.net", IPPacketSize: 64, Timeout: false},
 			{Seq: 22, RTTMs: 0, Peer: "192.168.100.3", PeerRDNS: "", IPPacketSize: 64, Timeout: true},
@@ -66,7 +67,7 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 			{Seq: 29, RTTMs: 0, Peer: "192.168.100.10", PeerRDNS: "host-c10.remote.net", IPPacketSize: 64, Timeout: true},
 		})
 	} else if lcode == "de-fra1" {
-		return evsToEVChan([]pkgbot.PingEvent{
+		return evsToEVChan([]pkgtui.PingEvent{
 			{Seq: 30, RTTMs: 312, Peer: "172.16.50.1", PeerRDNS: "far-d1.distant.io", IPPacketSize: 64, Timeout: false},
 			{Seq: 31, RTTMs: 0, Peer: "172.16.50.2", PeerRDNS: "far-d2.distant.io", IPPacketSize: 64, Timeout: true},
 			{Seq: 32, RTTMs: 378, Peer: "172.16.50.3", PeerRDNS: "", IPPacketSize: 64, Timeout: false},
@@ -79,7 +80,7 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 			{Seq: 39, RTTMs: 0, Peer: "172.16.50.10", PeerRDNS: "far-d10.distant.io", IPPacketSize: 64, Timeout: true},
 		})
 	} else {
-		return evsToEVChan([]pkgbot.PingEvent{})
+		return evsToEVChan([]pkgtui.PingEvent{})
 	}
 }
 
