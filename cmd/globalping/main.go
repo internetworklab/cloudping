@@ -7,9 +7,9 @@ import (
 
 	_ "embed"
 
+	"github.com/alecthomas/kong"
 	pkgcli "github.com/internetworklab/cloudping/pkg/cli"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/alecthomas/kong"
 	"github.com/joho/godotenv"
 )
 
@@ -21,6 +21,7 @@ var CLI struct {
 	Hub   pkgcli.HubCmd     `cmd:"hub"`
 	Bot   pkgcli.BotCmd     `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
 	Jwt   pkgcli.JWTCommand `cmd:"jwt" help:"Manage JWT tokens"`
+	Tui   pkgcli.TUICmd     `cmd:"tui" help:"Text-based UI HTTP Handler"`
 }
 
 func main() {

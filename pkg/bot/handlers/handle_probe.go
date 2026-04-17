@@ -17,6 +17,7 @@ import (
 	"github.com/go-telegram/bot/models"
 	pkgbitmap "github.com/internetworklab/cloudping/pkg/bitmap"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
@@ -29,9 +30,9 @@ type ProbeHandler struct {
 	// Name of fonts to search
 	FontNames []string
 
-	LocationsProvider pkgbot.LocationsProvider
+	LocationsProvider pkgtui.LocationsProvider
 
-	ProbeEventsProvider pkgbot.ProbeEventsProvider
+	ProbeEventsProvider pkgtui.ProbeEventsProvider
 
 	MaxBitsizeAllowed *int
 
@@ -53,14 +54,14 @@ func (handler *ProbeHandler) getConversationManager() (*pkgbot.ConversationManag
 	return handler.ConversationManager, nil
 }
 
-func (handler *ProbeHandler) getLocationsProvider() (pkgbot.LocationsProvider, error) {
+func (handler *ProbeHandler) getLocationsProvider() (pkgtui.LocationsProvider, error) {
 	if handler.LocationsProvider == nil {
 		return nil, errors.New("Locations provider is not provided")
 	}
 	return handler.LocationsProvider, nil
 }
 
-func (handler *ProbeHandler) getEVsProvider() (pkgbot.ProbeEventsProvider, error) {
+func (handler *ProbeHandler) getEVsProvider() (pkgtui.ProbeEventsProvider, error) {
 	if handler.ProbeEventsProvider == nil {
 		return nil, errors.New("Events provider is not provided")
 	}
@@ -205,7 +206,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	idx := slices.IndexFunc(allLocs, func(elem pkgbot.LocationDescriptor) bool {
+	idx := slices.IndexFunc(allLocs, func(elem pkgtui.LocationDescriptor) bool {
 		return elem.Id == probeCLI.From
 	})
 	if idx == -1 {
@@ -333,9 +334,9 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	}
 	rttMsChan := make(chan probeResultT, 1)
 
-	go func(ctx context.Context, evsProvider pkgbot.ProbeEventsProvider) {
+	go func(ctx context.Context, evsProvider pkgtui.ProbeEventsProvider) {
 		cidr := *cidrObj
-		evsChan := evsProvider.GetProbeEvents(ctx, pkgbot.ProbeRequestDescriptor{
+		evsChan := evsProvider.GetProbeEvents(ctx, pkgtui.ProbeRequestDescriptor{
 			FromNodeId: probeCLI.From,
 			TargetCIDR: cidr,
 		})

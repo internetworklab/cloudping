@@ -17,13 +17,3 @@ func (cvKey *ConversationKey) String() string {
 	}
 	return fmt.Sprintf("chatId=%v:fromId=%v:msgId=%v", cvKey.ChatId, cvKey.FromId, cvKey.MsgId)
 }
-
-type LocationDescriptor struct {
-	Id                string
-	Label             string
-	Alpha2CountryCode string
-	CityIATACode      string
-
-	// This field is optional and implementation-specific
-	ExtendedAttributes map[string]string
-}

@@ -15,15 +15,15 @@ import (
 	"strings"
 	"time"
 
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
 	pkgraw "github.com/internetworklab/cloudping/pkg/raw"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 )
 
 // CloudPingEventsProvider is an implementation
-// of pkgbot.PingEventsProvider interface
+// of pkgtui.PingEventsProvider interface
 type CloudPingEventsProvider struct {
 	APIPrefix string
 	JWTToken  string
@@ -45,8 +45,9 @@ func (provider *CloudPingEventsProvider) GetAuthorizationHeader() string {
 
 var ErrReqURLInvalid = errors.New("invalid request url")
 var ErrInvalidPingRequest = errors.New("invalid ping request")
+var ErrInvalidL4Protocol = errors.New("invalid l4 protocol")
 
-func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgbot.PingRequestDescriptor) (*url.URL, error) {
+func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgtui.PingRequestDescriptor) (*url.URL, error) {
 	fullPath := provider.APIPrefix + "/ping"
 	urlObj, err := url.Parse(fullPath)
 	if err != nil {
@@ -58,8 +59,20 @@ func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgbot.Ping
 		Targets:          pingRequestDesc.Destinations,
 		IntvMilliseconds: int(defaultPingIntv.Milliseconds()),
 	}
-	l4Ty := pkgpinger.L4ProtoICMP
-	pingRequest.L4PacketType = &l4Ty
+
+	if pingRequestDesc.ICMP {
+		l4Ty := pkgpinger.L4ProtoICMP
+		pingRequest.L4PacketType = &l4Ty
+	} else if pingRequestDesc.UDP {
+		l4Ty := pkgpinger.L4ProtoUDP
+		pingRequest.L4PacketType = &l4Ty
+	} else if pingRequestDesc.TCP {
+		l4Ty := pkgpinger.L4ProtoTCP
+		pingRequest.L4PacketType = &l4Ty
+	} else {
+		return nil, ErrInvalidL4Protocol
+	}
+
 	pingRequest.PktTimeoutMilliseconds = defaultPktTiemoutMs
 	ipInfoPr := defaultIPInfoProviderName
 	pingRequest.IPInfoProviderName = &ipInfoPr
@@ -83,10 +96,19 @@ func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgbot.Ping
 	}
 	pingRequest.TotalPkts = &totalPkts
 
+	// use provider's default resolver at first
 	resolver := provider.Resolver
+
+	if customResolver := pingRequestDesc.Resolver; customResolver != "" {
+		// if there is some custom resolver specified by the ping request, use it
+		resolver = customResolver
+	}
+
 	if resolver == "" {
+		// the resolver must not be empty.
 		return nil, ErrInvalidPingRequest
 	}
+
 	pingRequest.Resolver = &resolver
 
 	urlObj.RawQuery = pingRequest.ToURLValues().Encode()
@@ -94,7 +116,7 @@ func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgbot.Ping
 	return urlObj, nil
 }
 
-func (provider *CloudPingEventsProvider) getProbeURL(probeRequestDesc *pkgbot.ProbeRequestDescriptor) (*url.URL, error) {
+func (provider *CloudPingEventsProvider) getProbeURL(probeRequestDesc *pkgtui.ProbeRequestDescriptor) (*url.URL, error) {
 	fullPath := provider.APIPrefix + "/ping"
 	urlObj, err := url.Parse(fullPath)
 	if err != nil {
@@ -124,14 +146,14 @@ func (provider *CloudPingEventsProvider) GetLocationsURL() (*url.URL, error) {
 	return urlObj, nil
 }
 
-func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, request pkgbot.ProbeRequestDescriptor) <-chan pkgbot.ProbeEvent {
-	dataCh := make(chan pkgbot.ProbeEvent, 1)
+func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, request pkgtui.ProbeRequestDescriptor) <-chan pkgtui.ProbeEvent {
+	dataCh := make(chan pkgtui.ProbeEvent, 1)
 	go func() {
 		defer close(dataCh)
 
 		urlObj, err := provider.getProbeURL(&request)
 		if err != nil {
-			dataCh <- pkgbot.ProbeEvent{
+			dataCh <- pkgtui.ProbeEvent{
 				Err: fmt.Errorf("can't get ping event stream URL: %w", err),
 			}
 			return
@@ -139,7 +161,7 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlObj.String(), nil)
 		if err != nil {
-			dataCh <- pkgbot.ProbeEvent{
+			dataCh <- pkgtui.ProbeEvent{
 				Err: fmt.Errorf("failed to create request: %w", err),
 			}
 			return
@@ -151,7 +173,7 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			dataCh <- pkgbot.ProbeEvent{
+			dataCh <- pkgtui.ProbeEvent{
 				Err: fmt.Errorf("failed to fetch ping events: %w", err),
 			}
 			return
@@ -159,7 +181,7 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			dataCh <- pkgbot.ProbeEvent{
+			dataCh <- pkgtui.ProbeEvent{
 				Err: fmt.Errorf("unexpected status code: %d", resp.StatusCode),
 			}
 			return
@@ -174,7 +196,7 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 			}
 
 			if err := scanner.Err(); err != nil {
-				dataCh <- pkgbot.ProbeEvent{
+				dataCh <- pkgtui.ProbeEvent{
 					Err: fmt.Errorf("scanner error: %w", err),
 				}
 				return
@@ -183,21 +205,21 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 			line := scanner.Bytes()
 			var pingEVObj pkgpinger.PingEvent
 			if err := json.Unmarshal(line, &pingEVObj); err != nil {
-				dataCh <- pkgbot.ProbeEvent{
+				dataCh <- pkgtui.ProbeEvent{
 					Err: fmt.Errorf("failed to parse ping event: %w", err),
 				}
 				continue
 			}
 
 			if pingEVObj.Err != nil {
-				dataCh <- pkgbot.ProbeEvent{
+				dataCh <- pkgtui.ProbeEvent{
 					Err: errors.New(*pingEVObj.Err),
 				}
 				continue
 			}
 
 			if pingEVObj.Error != nil {
-				dataCh <- pkgbot.ProbeEvent{
+				dataCh <- pkgtui.ProbeEvent{
 					Err: pingEVObj.Error,
 				}
 				continue
@@ -208,7 +230,7 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 
 			probeEvent, err := provider.convertToProbeEvent(&pingEVObj)
 			if err != nil {
-				dataCh <- pkgbot.ProbeEvent{
+				dataCh <- pkgtui.ProbeEvent{
 					Err: err,
 				}
 				continue
@@ -223,9 +245,9 @@ func (provider *CloudPingEventsProvider) GetProbeEvents(ctx context.Context, req
 	return dataCh
 }
 
-func (provider *CloudPingEventsProvider) convertToProbeEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.ProbeEvent, error) {
+func (provider *CloudPingEventsProvider) convertToProbeEvent(pingEV *pkgpinger.PingEvent) (*pkgtui.ProbeEvent, error) {
 
-	botEV := pkgbot.ProbeEvent{}
+	botEV := pkgtui.ProbeEvent{}
 
 	if pingEV.Data == nil {
 		return &botEV, errors.New("ping event data is nil")
@@ -253,14 +275,14 @@ func (provider *CloudPingEventsProvider) convertToProbeEvent(pingEV *pkgpinger.P
 	return &botEV, nil
 }
 
-func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgbot.PingEvent {
-	dataCh := make(chan pkgbot.PingEvent, 1)
+func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgtui.PingRequestDescriptor) <-chan pkgtui.PingEvent {
+	dataCh := make(chan pkgtui.PingEvent, 1)
 	go func() {
 		defer close(dataCh)
 
 		urlObj, err := provider.getPingURL(pingRequest)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("can't get ping event stream URL: %s", err.Error()),
 			}
 			return
@@ -268,7 +290,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlObj.String(), nil)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("failed to create request: %s", err.Error()),
 			}
 			return
@@ -280,7 +302,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("failed to fetch ping events: %s", err.Error()),
 			}
 			return
@@ -288,7 +310,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("unexpected status code: %d", resp.StatusCode),
 			}
 			return
@@ -297,7 +319,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			if err := scanner.Err(); err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: fmt.Sprintf("scanner error: %s", err.Error()),
 				}
 				return
@@ -306,21 +328,21 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 			line := scanner.Bytes()
 			var pingEVObj pkgpinger.PingEvent
 			if err := json.Unmarshal(line, &pingEVObj); err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: fmt.Sprintf("failed to parse ping event: %s", err.Error()),
 				}
 				continue
 			}
 
 			if pingEVObj.Err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: *pingEVObj.Err,
 				}
 				continue
 			}
 
 			if pingEVObj.Error != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: pingEVObj.Error.Error(),
 				}
 				continue
@@ -334,7 +356,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 
 			botEvent, err := provider.convertPingEventToBotEvent(&pingEVObj)
 			if err != nil {
-				dataCh <- pkgbot.PingEvent{
+				dataCh <- pkgtui.PingEvent{
 					Err: err.Error(),
 				}
 				continue
@@ -346,7 +368,7 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 		}
 
 		if err := scanner.Err(); err != nil {
-			dataCh <- pkgbot.PingEvent{
+			dataCh <- pkgtui.PingEvent{
 				Err: fmt.Sprintf("scanner error: %s", err.Error()),
 			}
 		}
@@ -355,11 +377,19 @@ func (provider *CloudPingEventsProvider) GetEvents(ctx context.Context, pingRequ
 	return dataCh
 }
 
-func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgbot.PingEvent, error) {
-	botEV := pkgbot.PingEvent{}
+func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgpinger.PingEvent) (*pkgtui.PingEvent, error) {
+	botEV := pkgtui.PingEvent{}
 
-	if pingEV.Data == nil {
+	if pingEV == nil || pingEV.Data == nil {
 		return &botEV, errors.New("ping event data is nil")
+	}
+
+	if from, ok := pingEV.Metadata[pkgpinger.MetadataKeyFrom]; ok {
+		botEV.From = from
+	}
+
+	if tgt, ok := pingEV.Metadata[pkgpinger.MetadataKeyTarget]; ok {
+		botEV.To = tgt
 	}
 
 	// Marshal and unmarshal to convert interface{} to ICMPTrackerEntry
@@ -376,7 +406,12 @@ func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgp
 	botEV.Seq = icmpEntry.Seq
 
 	if len(icmpEntry.RTTMilliSecs) > 0 {
-		botEV.RTTMs = int(icmpEntry.RTTMilliSecs[0])
+		botEV.RTTMs = int(icmpEntry.RTTMilliSecs[len(icmpEntry.RTTMilliSecs)-1])
+
+	}
+	if len(icmpEntry.RTTNanoSecs) > 0 {
+		flt := float64(icmpEntry.RTTNanoSecs[len(icmpEntry.RTTNanoSecs)-1]) / (1000000.0)
+		botEV.RttMsFlt = &flt
 	}
 
 	botEV.Timeout = len(icmpEntry.ReceivedAt) == 0
@@ -425,7 +460,7 @@ func (provider *CloudPingEventsProvider) convertPingEventToBotEvent(pingEV *pkgp
 	return &botEV, nil
 }
 
-func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgbot.LocationDescriptor, error) {
+func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgtui.LocationDescriptor, error) {
 	urlObj, err := provider.GetLocationsURL()
 	if err != nil {
 		return nil, errors.New("can't get locations from upstream data provider")
@@ -460,13 +495,13 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	locations := make([]pkgbot.LocationDescriptor, 0, len(conns))
+	locations := make([]pkgtui.LocationDescriptor, 0, len(conns))
 	for _, conn := range conns {
 		if conn.NodeName == nil {
 			continue
 		}
 
-		loc := pkgbot.LocationDescriptor{
+		loc := pkgtui.LocationDescriptor{
 			Id:    *conn.NodeName,
 			Label: strings.ToUpper(*conn.NodeName),
 		}

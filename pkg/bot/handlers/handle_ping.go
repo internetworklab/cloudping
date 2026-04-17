@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/alecthomas/kong"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
+	pkgtuiping "github.com/internetworklab/cloudping/pkg/tui/ping"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type PingCLI struct {
@@ -48,7 +50,7 @@ func (handler *PingCommandHandler) parseCLIString(cliString string) (*PingCLI, *
 	return pingCLI, kongCtx, nil
 }
 
-func (handler *PingCommandHandler) formatCallbackQuery(loc pkgbot.LocationDescriptor) string {
+func (handler *PingCommandHandler) formatCallbackQuery(loc pkgtui.LocationDescriptor) string {
 	return fmt.Sprintf("ping_location_%s", loc.Id)
 }
 
@@ -60,8 +62,8 @@ func (handler *PingCommandHandler) parseCallbackQuery(pingCallbackData string) s
 }
 
 func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
-	statsWriter := &PingStatisticsBuilder{}
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
+	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
@@ -126,7 +128,7 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 		// Emulate network latency and middleware overhead
 		time.Sleep(1000 * time.Millisecond)
 
-		pingRequest := &pkgbot.PingRequestDescriptor{
+		pingRequest := &pkgtui.PingRequestDescriptor{
 			PreferV4:     pingCLI.IPv4,
 			PreferV6:     pingCLI.IPv6,
 			Sources:      []string{locationCode},
@@ -175,9 +177,9 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 	}
 
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
-	statsWriter := &PingStatisticsBuilder{}
+	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
 
 	activeLocationCode := handler.parseCallbackQuery(update.CallbackQuery.Data)
 
@@ -239,7 +241,7 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 
 	// Emulate network latency and middleware overhead
 	time.Sleep(1000 * time.Millisecond)
-	pingRequest := &pkgbot.PingRequestDescriptor{
+	pingRequest := &pkgtui.PingRequestDescriptor{
 		PreferV4:     pingCLI.IPv4,
 		PreferV6:     pingCLI.IPv6,
 		Sources:      []string{activeLocationCode},
@@ -272,111 +274,4 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 			<-time.After(streamInterval)
 		}
 	}
-}
-
-// PingStatistics holds calculated statistics for a ping task
-type PingStatistics struct {
-	ReceivedPktCount int
-	LossPktCount     int
-	MinRTT           int
-	MaxRTT           int
-	AvgRTT           int
-}
-
-// String returns a formatted string representation of the ping statistics
-func (s *PingStatistics) String() string {
-	totalPkts := s.ReceivedPktCount + s.LossPktCount
-	lossPercent := 0.0
-	if totalPkts > 0 {
-		lossPercent = float64(s.LossPktCount) / float64(totalPkts) * 100
-	}
-	return fmt.Sprintf("--- ping statistics ---\n"+
-		"%d packets transmitted, %d packets received, %.1f%% packet loss\n"+
-		"round-trip min/avg/max = %d/%d/%d ms",
-		totalPkts, s.ReceivedPktCount, lossPercent, s.MinRTT, s.AvgRTT, s.MaxRTT)
-}
-
-type PingStatisticsBuilder struct {
-	pingEvs          []pkgbot.PingEvent
-	receivedPktCount int
-	lossPktCount     int
-	minRTT           int
-	maxRTT           int
-	totalRTT         int
-}
-
-func (statsBuilder *PingStatisticsBuilder) WriteEvent(ev pkgbot.PingEvent) {
-	statsBuilder.pingEvs = append(statsBuilder.pingEvs, ev)
-
-	// Update packet counts
-	if ev.Timeout {
-		statsBuilder.lossPktCount++
-	} else {
-		statsBuilder.receivedPktCount++
-		// Update RTT statistics for non-timeout packets
-		// For the first received packet, initialize min and max RTT
-		if statsBuilder.receivedPktCount == 1 {
-			statsBuilder.minRTT = ev.RTTMs
-			statsBuilder.maxRTT = ev.RTTMs
-		} else {
-			if ev.RTTMs < statsBuilder.minRTT {
-				statsBuilder.minRTT = ev.RTTMs
-			}
-			if ev.RTTMs > statsBuilder.maxRTT {
-				statsBuilder.maxRTT = ev.RTTMs
-			}
-		}
-		statsBuilder.totalRTT += ev.RTTMs
-	}
-}
-
-// getPingStatistics calculates and returns statistics for a given ping task.
-// Returns nil if no events found for the task.
-func (statsBuilder *PingStatisticsBuilder) GetPingStatistics() *PingStatistics {
-	if len(statsBuilder.pingEvs) == 0 {
-		return nil
-	}
-
-	// Calculate average RTT
-	avgRTT := 0
-	if statsBuilder.receivedPktCount > 0 {
-		avgRTT = statsBuilder.totalRTT / statsBuilder.receivedPktCount
-	}
-
-	return &PingStatistics{
-		ReceivedPktCount: statsBuilder.receivedPktCount,
-		LossPktCount:     statsBuilder.lossPktCount,
-		MinRTT:           statsBuilder.minRTT,
-		MaxRTT:           statsBuilder.maxRTT,
-		AvgRTT:           avgRTT,
-	}
-}
-
-// getFormattedPingEvents returns a formatted string of ping events for a given ping task,
-// similar to the output of a ping command (individual replies, not statistics).
-// Returns an empty string if no events found for the ping task.
-func (statsBuilder *PingStatisticsBuilder) GetFormattedPingEvents() string {
-	pingEvs := statsBuilder.pingEvs
-
-	if len(pingEvs) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	for _, event := range pingEvs {
-		sb.WriteString(event.String() + "\n")
-	}
-
-	return sb.String()
-}
-
-func (statsBuilder *PingStatisticsBuilder) GetHumanReadableText() string {
-	stats := ""
-	if s := statsBuilder.GetPingStatistics(); s != nil {
-		stats = s.String()
-	}
-
-	pingEvents := statsBuilder.GetFormattedPingEvents()
-	txt := pingEvents + "\n" + stats
-	return txt
 }
