@@ -90,7 +90,7 @@ func (tb *Table) GetReadableHTMLTable() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<table>")
+	sb.WriteString("<table border=\"1\" style=\"border-collapse: collapse;\">")
 
 	for rowIdx, row := range tb.Rows {
 		// Skip empty separator rows
@@ -101,9 +101,9 @@ func (tb *Table) GetReadableHTMLTable() string {
 		sb.WriteString("<tr>")
 		for _, cell := range row.Cells {
 			if rowIdx == 0 {
-				fmt.Fprintf(&sb, "<th>%s</th>", tb.escapeHTML(cell))
+				fmt.Fprintf(&sb, "<th style=\"border:1px solid;text-align:left\">%s</th>", tb.escapeHTML(cell))
 			} else {
-				fmt.Fprintf(&sb, "<td>%s</td>", tb.escapeHTML(cell))
+				fmt.Fprintf(&sb, "<td style=\"border:1px solid;text-align:left\">%s</td>", tb.escapeHTML(cell))
 			}
 		}
 		sb.WriteString("</tr>")
