@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgtuitraceroute "github.com/internetworklab/cloudping/pkg/tui/traceroute"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
@@ -49,7 +50,7 @@ func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*Trac
 	return pingCLI, kongCtx, nil
 }
 
-func (handler *TracerouteCommandHandler) formatCallbackQuery(loc pkgbot.LocationDescriptor) string {
+func (handler *TracerouteCommandHandler) formatCallbackQuery(loc pkgtui.LocationDescriptor) string {
 	return fmt.Sprintf("trace_location_%s", loc.Id)
 }
 
@@ -61,7 +62,7 @@ func (handler *TracerouteCommandHandler) parseCallbackQuery(pingCallbackData str
 }
 
 func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
@@ -127,7 +128,7 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 		// Emulate network latency and middleware overhead
 		time.Sleep(1000 * time.Millisecond)
 
-		pingRequest := &pkgbot.PingRequestDescriptor{
+		pingRequest := &pkgtui.PingRequestDescriptor{
 			PreferV4:     pingCLI.IPv4,
 			PreferV6:     pingCLI.IPv6,
 			Sources:      []string{locationCode},
@@ -177,7 +178,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	}
 
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
 
@@ -242,7 +243,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	// Emulate network latency and middleware overhead
 	time.Sleep(1000 * time.Millisecond)
 
-	pingRequest := &pkgbot.PingRequestDescriptor{
+	pingRequest := &pkgtui.PingRequestDescriptor{
 		PreferV4:     pingCLI.IPv4,
 		PreferV6:     pingCLI.IPv6,
 		Sources:      []string{activeLocationCode},

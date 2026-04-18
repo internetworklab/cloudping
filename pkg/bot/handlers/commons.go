@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/go-telegram/bot/models"
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
@@ -22,7 +22,7 @@ const (
 
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.
-func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgbot.PingEventsProvider, numCols int, callbackQueryFormatter func(loc pkgbot.LocationDescriptor) string) *models.InlineKeyboardMarkup {
+func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgtui.PingEventsProvider, numCols int, callbackQueryFormatter func(loc pkgtui.LocationDescriptor) string) *models.InlineKeyboardMarkup {
 	allLocations, err := provider.GetAllLocations(ctx)
 	if err != nil {
 		log.Printf("can't get locations: %s", err.Error())
@@ -47,7 +47,7 @@ func GetLocationButtons(ctx context.Context, selectedLocationCode string, provid
 }
 
 // getLocationButtonText returns the button text for a ping task, with a checkmark if selected.
-func getLocationButtonText(loc pkgbot.LocationDescriptor, activeLocationCode string) string {
+func getLocationButtonText(loc pkgtui.LocationDescriptor, activeLocationCode string) string {
 	activationMark := ""
 	if loc.Id == activeLocationCode {
 		activationMark = " ✓"

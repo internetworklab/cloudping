@@ -16,8 +16,8 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
-	pkgbotdata "github.com/internetworklab/cloudping/pkg/bot/datasource"
 	pkgbothandlers "github.com/internetworklab/cloudping/pkg/bot/handlers"
+	pkgbotdata "github.com/internetworklab/cloudping/pkg/tui/datasource"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
@@ -120,6 +120,8 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	convMngr := &pkgbot.ConversationManager{}
 
 	startedAt := time.Now()
+
+	// deprecated, upcoming handlers should take dependents directly from their members rather than the context.
 	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyBuildVersion, sharedCtx.BuildVersion)
 	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyJWTSecret, secret)
@@ -138,7 +140,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		ConversationManager: convMngr,
 	}
 	listHandler := &pkgbothandlers.ListHandler{
-		EventsProvider: pingEVProvider,
+		LocationsProvider: pingEVProvider,
 	}
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), pkgbothandlers.HandleStart)

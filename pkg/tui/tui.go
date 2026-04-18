@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"net"
 
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 )
@@ -64,4 +66,47 @@ func (e *PingEvent) String() string {
 	}
 	return fmt.Sprintf("%d bytes from %s: icmp_seq=%d ttl=%d time=%d ms",
 		e.IPPacketSize, e.Peer, e.Seq, e.TTL, e.RTTMs)
+}
+
+type PingRequestDescriptor struct {
+	Sources      []string
+	Destinations []string
+	PreferV4     bool
+	PreferV6     bool
+	Traceroute   bool
+	Count        int
+}
+
+type LocationDescriptor struct {
+	Id                string
+	Label             string
+	Alpha2CountryCode string
+	CityIATACode      string
+
+	// This field is optional and implementation-specific
+	ExtendedAttributes map[string]string
+}
+
+type PingEventsProvider interface {
+	GetEvents(ctx context.Context, requst *PingRequestDescriptor) <-chan PingEvent
+	GetAllLocations(ctx context.Context) ([]LocationDescriptor, error)
+}
+
+type LocationsProvider interface {
+	GetAllLocations(ctx context.Context) ([]LocationDescriptor, error)
+}
+
+type ProbeRequestDescriptor struct {
+	FromNodeId string
+	TargetCIDR net.IPNet
+}
+
+type ProbeEvent struct {
+	Err   error
+	IP    net.IP
+	RTTMs int
+}
+
+type ProbeEventsProvider interface {
+	GetProbeEvents(ctx context.Context, request ProbeRequestDescriptor) <-chan ProbeEvent
 }

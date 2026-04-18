@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 )
 
@@ -12,7 +11,7 @@ import (
 // of pkgtui.PingEventsProvider interface
 type MockPingEventsProvider struct{}
 
-func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgbot.PingRequestDescriptor) <-chan pkgtui.PingEvent {
+func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingRequest *pkgtui.PingRequestDescriptor) <-chan pkgtui.PingEvent {
 	lcode := strings.ToLower(pingRequest.Sources[0])
 
 	evsToEVChan := func(evs []pkgtui.PingEvent) <-chan pkgtui.PingEvent {
@@ -84,8 +83,8 @@ func (provider *MockPingEventsProvider) GetEvents(ctx context.Context, pingReque
 	}
 }
 
-func (provider *MockPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgbot.LocationDescriptor, error) {
-	return []pkgbot.LocationDescriptor{
+func (provider *MockPingEventsProvider) GetAllLocations(ctx context.Context) ([]pkgtui.LocationDescriptor, error) {
+	return []pkgtui.LocationDescriptor{
 		{Id: "hk-hkg1", Label: "HKG1", Alpha2CountryCode: "HK", CityIATACode: "HKG"},
 		{Id: "us-lax1", Label: "LAX1", Alpha2CountryCode: "US", CityIATACode: "LAX"},
 		{Id: "jp-tyo1", Label: "TYO1", Alpha2CountryCode: "JP", CityIATACode: "TYO"},

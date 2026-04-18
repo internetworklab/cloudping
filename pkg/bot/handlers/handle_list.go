@@ -9,20 +9,20 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgtable "github.com/internetworklab/cloudping/pkg/table"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 )
 
 type ListHandler struct {
-	EventsProvider pkgbot.PingEventsProvider
+	LocationsProvider pkgtui.LocationsProvider
 }
 
-func (handler *ListHandler) getEVsProvider() (pkgbot.PingEventsProvider, error) {
-	if handler.EventsProvider == nil {
-		return nil, errors.New("PingEventsProvider is not provided")
+func (handler *ListHandler) getLocsProvider() (pkgtui.LocationsProvider, error) {
+	if handler.LocationsProvider == nil {
+		return nil, errors.New("LocationsProvider is not provided")
 	}
-	return handler.EventsProvider, nil
+	return handler.LocationsProvider, nil
 }
 
 func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -33,7 +33,7 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 		MessageID: msgId,
 	}
 
-	provider, err := handler.getEVsProvider()
+	provider, err := handler.getLocsProvider()
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -87,7 +87,7 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 	}
 }
 
-func (handler *ListHandler) getNodeTable(locations []pkgbot.LocationDescriptor) pkgtable.Table {
+func (handler *ListHandler) getNodeTable(locations []pkgtui.LocationDescriptor) pkgtable.Table {
 	// Write header rows
 	table := pkgtable.Table{}
 	table.Rows = append(

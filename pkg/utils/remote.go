@@ -4,6 +4,7 @@ import "net/http"
 
 func GetRemoteAddr(r *http.Request) string {
 	headersToTry := []string{
+		"Cf-Connecting-Ip",
 		"X-Forwarded-For",
 		"x-forwarded-for",
 		"X-Real-IP",

@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgtuiping "github.com/internetworklab/cloudping/pkg/tui/ping"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
@@ -49,7 +50,7 @@ func (handler *PingCommandHandler) parseCLIString(cliString string) (*PingCLI, *
 	return pingCLI, kongCtx, nil
 }
 
-func (handler *PingCommandHandler) formatCallbackQuery(loc pkgbot.LocationDescriptor) string {
+func (handler *PingCommandHandler) formatCallbackQuery(loc pkgtui.LocationDescriptor) string {
 	return fmt.Sprintf("ping_location_%s", loc.Id)
 }
 
@@ -61,7 +62,7 @@ func (handler *PingCommandHandler) parseCallbackQuery(pingCallbackData string) s
 }
 
 func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
@@ -127,7 +128,7 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 		// Emulate network latency and middleware overhead
 		time.Sleep(1000 * time.Millisecond)
 
-		pingRequest := &pkgbot.PingRequestDescriptor{
+		pingRequest := &pkgtui.PingRequestDescriptor{
 			PreferV4:     pingCLI.IPv4,
 			PreferV6:     pingCLI.IPv6,
 			Sources:      []string{locationCode},
@@ -176,7 +177,7 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 	}
 
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgbot.PingEventsProvider)
+	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
 
@@ -240,7 +241,7 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 
 	// Emulate network latency and middleware overhead
 	time.Sleep(1000 * time.Millisecond)
-	pingRequest := &pkgbot.PingRequestDescriptor{
+	pingRequest := &pkgtui.PingRequestDescriptor{
 		PreferV4:     pingCLI.IPv4,
 		PreferV6:     pingCLI.IPv6,
 		Sources:      []string{activeLocationCode},

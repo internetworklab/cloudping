@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
+	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
@@ -19,8 +19,8 @@ func (provider *MockedProbeEventsProvider) getSampleIntv() time.Duration {
 	return time.Second
 }
 
-func (provider *MockedProbeEventsProvider) GetProbeEvents(ctx context.Context, request pkgbot.ProbeRequestDescriptor) <-chan pkgbot.ProbeEvent {
-	ch := make(chan pkgbot.ProbeEvent)
+func (provider *MockedProbeEventsProvider) GetProbeEvents(ctx context.Context, request pkgtui.ProbeRequestDescriptor) <-chan pkgtui.ProbeEvent {
+	ch := make(chan pkgtui.ProbeEvent)
 
 	go func() {
 		defer close(ch)
@@ -48,7 +48,7 @@ func (provider *MockedProbeEventsProvider) GetProbeEvents(ctx context.Context, r
 			}
 
 			select {
-			case ch <- pkgbot.ProbeEvent{
+			case ch <- pkgtui.ProbeEvent{
 				IP:    ip,
 				RTTMs: rttMs,
 			}:
