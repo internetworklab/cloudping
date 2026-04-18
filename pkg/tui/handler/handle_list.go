@@ -36,11 +36,6 @@ func (handler *ListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(allLocs) == 0 {
-		writeErrorResponse(w, "No node is available.", http.StatusServiceUnavailable)
-		return
-	}
-
 	renderer := &pkgtuirenderer.LocationsTableRenderer{}
 	var nodesTable pkgtable.Table = renderer.Render(allLocs)
 
