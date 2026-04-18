@@ -7,7 +7,7 @@ cd $script_dir/..
 
 go run ./cmd/globalping tui \
   --listen-address=":8088" \
-  --authentication="none" \
+  --authentication="cloudflare" \
   --ping-resolver="127.0.0.53:53" \
   --upstream-jwt-sec-env="UPSTREAM_JWT_TOKEN" \
   --upstream-api-prefix="http://localhost:8084" \

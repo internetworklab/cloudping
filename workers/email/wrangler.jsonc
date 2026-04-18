@@ -42,6 +42,18 @@
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 */
 	// "vars": {  "MY_VARIABLE": "production_value" }
+	"secrets_store_secrets": [
+		{
+			"binding": "TUI_SERVICE_TOKEN_ID",
+			"store_id": "be011cef0de241128edf059fa6294776",
+			"secret_name": "TUI_SERVICE_TOKEN_ID",
+		},
+		{
+			"binding": "TUI_SERVICE_TOKEN_SECRET",
+			"store_id": "be011cef0de241128edf059fa6294776",
+			"secret_name": "TUI_SERVICE_TOKEN_SECRET",
+		},
+	],
 	/**
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
