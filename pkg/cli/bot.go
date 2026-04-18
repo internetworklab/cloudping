@@ -34,7 +34,7 @@ type BotCmd struct {
 	ButtonLayoutColumns      int           `name:"tg-bot-button-layout-columns" help:"Specify the number of columns of the layout of buttons grid of the bot's response message" default:"4"`
 	PingResolver             string        `name:"ping-resolver" help:"Resolver being used to resolver hostname to IP address during an ICMP ping or traceroute task" default:"172.20.0.53:53"`
 	UpstreamJWTSecretFromEnv string        `name:"upstream-jwt-sec-env" help:"Name of the enviornment variable that stores the JWT token use to authenticate with the upstream ping events provider" default:"UPSTREAM_JWT_TOKEN"`
-	UpstreamJWTAPIPrefix     string        `name:"upstream-api-prefix" help:"The API prefix of the upstream server where to get ping events data" default:"https://ping2.sh/api"`
+	UpstreamAPIPrefix        string        `name:"upstream-api-prefix" help:"The API prefix of the upstream server where to get ping events data" default:"https://ping2.sh/api"`
 	CustomFontNames          []string      `name:"custom-font-names" help:"Customize font names to search"`
 }
 
@@ -112,7 +112,7 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	defer b.DeleteWebhook(ctx, &bot.DeleteWebhookParams{})
 
 	pingEVProvider := &pkgbotdata.CloudPingEventsProvider{
-		APIPrefix: botCmd.UpstreamJWTAPIPrefix,
+		APIPrefix: botCmd.UpstreamAPIPrefix,
 		JWTToken:  os.Getenv(botCmd.UpstreamJWTSecretFromEnv),
 		Resolver:  botCmd.PingResolver,
 	}
