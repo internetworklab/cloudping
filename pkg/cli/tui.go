@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
+	pkgtuidatasource "github.com/internetworklab/cloudping/pkg/tui/datasource"
+	pkgtuihandler "github.com/internetworklab/cloudping/pkg/tui/handler"
 )
 
 type AuthenticationMethod string
@@ -25,15 +26,19 @@ type TUICmd struct {
 }
 
 func (tuiCmd *TUICmd) Run() error {
-	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("--- Request: %s %s ---\n", r.Method, r.URL.Path)
-		for key, vals := range r.Header {
-			fmt.Printf("%s: %s\n", key, strings.Join(vals, ", "))
-		}
-		fmt.Println()
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK\n"))
+	pingEVProvider := &pkgtuidatasource.CloudPingEventsProvider{
+		APIPrefix: tuiCmd.UpstreamAPIPrefix,
+		JWTToken:  os.Getenv(tuiCmd.UpstreamJWTSecretFromEnv),
+		Resolver:  tuiCmd.PingResolver,
+	}
+
+	mux := http.NewServeMux()
+
+	mux.Handle("/list", &pkgtuihandler.ListHandler{
+		LocationsProvider: pingEVProvider,
 	})
+
+	var handler http.Handler = mux
 
 	if tuiCmd.Authentication == AuthenticationMethodCloudflare {
 		cfValidateMiddleware := &pkghandler.WithCloudflareJWTValidate{
