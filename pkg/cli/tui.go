@@ -33,10 +33,15 @@ func (tuiCmd *TUICmd) Run() error {
 	}
 
 	mux := http.NewServeMux()
-
-	mux.Handle("/", &pkgtuihandler.ListHandler{
+	cliHTTPHandler := &pkgtuihandler.CLIHandler{
 		LocationsProvider: pingEVProvider,
-	})
+	}
+	emailCLIHTTPHandler := &pkgtuihandler.WithEmailHandler{
+		Next: cliHTTPHandler,
+	}
+
+	mux.Handle("/cli", cliHTTPHandler)
+	mux.Handle("/mail", emailCLIHTTPHandler)
 
 	var handler http.Handler = mux
 
