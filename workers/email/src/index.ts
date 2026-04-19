@@ -20,6 +20,7 @@ export default {
 		const serviceTokenSecret = await env['TUI_SERVICE_TOKEN_SECRET'].get();
 
 		const upstreamResponse = await fetch('https://test-tui.ping2.sh/', {
+			method: 'POST',
 			body: message.raw,
 			headers: {
 				'Content-Type': message.headers.get('Content-Type') ?? '',
@@ -40,7 +41,7 @@ export default {
 		msg.setRecipient(message.from);
 		msg.setSubject(subjectOfReply);
 		msg.addMessage({
-			contentType: upstreamResponse.headers.get('Content-Type'),
+			contentType: 'text/html',
 			data: upstreamText,
 		});
 

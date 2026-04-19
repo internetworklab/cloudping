@@ -34,7 +34,7 @@ func (tuiCmd *TUICmd) Run() error {
 
 	mux := http.NewServeMux()
 
-	mux.Handle("/list", &pkgtuihandler.ListHandler{
+	mux.Handle("/", &pkgtuihandler.ListHandler{
 		LocationsProvider: pingEVProvider,
 	})
 
