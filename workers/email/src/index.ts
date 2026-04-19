@@ -18,8 +18,11 @@ export default {
 	async email(message, env, ctx) {
 		const serviceTokenId = await env['TUI_SERVICE_TOKEN_ID'].get();
 		const serviceTokenSecret = await env['TUI_SERVICE_TOKEN_SECRET'].get();
+		const upstreamMail2HTTPAPI = 'https://test-tui.ping2.sh/mail';
+		const senderOfReply = 'cli@ping2.sh';
+		const nameOfSenderOfReply = 'Cloudping';
 
-		const upstreamResponse = await fetch('https://test-tui.ping2.sh/', {
+		const upstreamResponse = await fetch(upstreamMail2HTTPAPI, {
 			method: 'POST',
 			body: message.raw,
 			headers: {
@@ -31,8 +34,6 @@ export default {
 
 		const upstreamText = await upstreamResponse.text();
 
-		const senderOfReply = 'cli@ping2.sh';
-		const nameOfSenderOfReply = 'Cloudping';
 		const subjectOfReply = 'Re: ' + message.headers.get('Subject');
 
 		const msg = createMimeMessage();
