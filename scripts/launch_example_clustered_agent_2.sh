@@ -11,7 +11,7 @@ go run ./cmd/globalping agent \
   --quic-server-address="127.0.0.1:18449" \
   --server-name="${HUB_SERVER_NAME}" \
   --peer-ca="test/certs/ca.pem" \
-  --node-name="at-vie1" \
+  --node-name="at/vie1" \
   --exact-location-lat-lon="48.1952,16.3503" \
   --country-code="AT" \
   --city-name="Vienna" \

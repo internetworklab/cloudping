@@ -376,6 +376,16 @@ func (handler *PingTaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	// Start multiple pings in parallel, and stream events as line-delimited JSON
 	encoder := json.NewEncoder(w)
 	for ev := range pkgpinger.StartMultiplePings(ctx, pingersFlat) {
+		if err := ev.Err; err != nil {
+			log.Printf("Error from upstream: %s", *err)
+		}
+		if err := ev.Error; err != nil {
+			evStr := err.Error()
+			if ev.Err == nil {
+				ev.Err = &evStr
+			}
+			log.Printf("Error from upstream: %s", err.Error())
+		}
 		if err := encoder.Encode(ev); err != nil {
 			log.Printf("Failed to encode event: %v", err)
 			encoder.Encode(pkgutils.ErrorResponse{Error: fmt.Errorf("failed to encode event: %w", err).Error()})
