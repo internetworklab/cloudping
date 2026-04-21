@@ -70,7 +70,9 @@ func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgtui.Ping
 		l4Ty := pkgpinger.L4ProtoTCP
 		pingRequest.L4PacketType = &l4Ty
 	} else {
-		return nil, ErrInvalidL4Protocol
+		// by default, it should be icmp, as for backward compatibility
+		l4Ty := pkgpinger.L4ProtoICMP
+		pingRequest.L4PacketType = &l4Ty
 	}
 
 	pingRequest.PktTimeoutMilliseconds = defaultPktTiemoutMs
