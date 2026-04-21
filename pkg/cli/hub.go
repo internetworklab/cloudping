@@ -13,14 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
 	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 	pkgproxy "github.com/internetworklab/cloudping/pkg/proxy"
 	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	pkgsession "github.com/internetworklab/cloudping/pkg/session"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/gorilla/websocket"
 	quicGo "github.com/quic-go/quic-go"
 )
 
@@ -58,6 +59,9 @@ type HubCmd struct {
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
+
+	UpstreamIPRegistryAPIEndpoint string `name:"upstream-ipregistry-apiendpoint" help:"The upstream IPRegistry APIEndpoint, it's needed when the hub also act as a IPRegistry proxy" default:"https://api.ipregistry.co"`
+	UpstreamIpRegistryAPIKeyEnv   string `name:"upstream-ipregistry-apikey-env" help:"The env that stores the apikey for accessing the upstream IPRegistry API, it's needed when the hub also act as a IPRegistry proxy" default:"IPREGISTRY_API_KEY"`
 
 	PublicSlidingWindowRateLimitWindowLength time.Duration `name:"public-sw-rl-window-len" help:"The window length for the public sliding window rate limiter" default:"15s"`
 	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"300"`
@@ -188,9 +192,20 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		HTTPResponseBodyClamp:   hubCmd.HTTPResponseBodyClamp,
 	}
 
-	var proxyHandler http.Handler = &pkgproxy.IP2LocationProxyHandler{
-		BackendEndpoint: hubCmd.UpstreamIP2LocationAPIEndpoint,
-		APIKey:          os.Getenv(hubCmd.UpstreamIP2LocationAPIKeyEnv),
+	ip2locProxyHandler := &pkgproxy.IP2LocationProxyHandler{
+		Requestor: &pkgipinfo.IP2LocationIPInfoAdapter{
+			CustomName:  "ip2location-upstream",
+			APIEndpoint: hubCmd.UpstreamIP2LocationAPIEndpoint,
+		},
+		APIKey: os.Getenv(hubCmd.UpstreamIP2LocationAPIKeyEnv),
+	}
+
+	ipregistryProxyHandler := &pkgproxy.IPRegistryProxyHandler{
+		APIKey: os.Getenv(hubCmd.UpstreamIpRegistryAPIKeyEnv),
+		Requestor: &pkgipinfo.IPRegistryAdapter{
+			Name:        "ipregistry-upstream",
+			APIEndpoint: hubCmd.UpstreamIPRegistryAPIEndpoint,
+		},
 	}
 
 	// muxerPrivate is for privileged rw operations
@@ -202,7 +217,8 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/conns", connsHandler)
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
-	muxerPublic.Handle("/proxy/ip2location", proxyHandler)
+	muxerPublic.Handle("/proxy/ip2location", ip2locProxyHandler)
+	muxerPublic.Handle("/proxy/ipregistry/", ipregistryProxyHandler)
 	muxerPublic.Handle("/count", pkghandler.NewCountHandler(0))
 	muxerPublic.Handle("/profile", &pkghandler.ProfileHandler{})
 

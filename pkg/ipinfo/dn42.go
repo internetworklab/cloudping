@@ -10,11 +10,13 @@ import (
 
 type DN42IPInfoAdapter struct {
 	apiEndpoint string
+	name        string
 }
 
-func NewDN42IPInfoAdapter(apiEndpoint string) GeneralIPInfoAdapter {
+func NewDN42IPInfoAdapter(apiEndpoint string, name string) GeneralIPInfoAdapter {
 	return &DN42IPInfoAdapter{
 		apiEndpoint: apiEndpoint,
+		name:        name,
 	}
 }
 
@@ -63,5 +65,8 @@ func (ia *DN42IPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIP
 }
 
 func (ia *DN42IPInfoAdapter) GetName() string {
+	if name := ia.name; name != "" {
+		return name
+	}
 	return "dn42"
 }

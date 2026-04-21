@@ -2,7 +2,7 @@ package ipinfo
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"math/rand"
 )
 
@@ -17,14 +17,16 @@ func NewIPInfoProviderRegistry() *IPInfoProviderRegistry {
 }
 
 func (reg *IPInfoProviderRegistry) RegisterAdapter(adapter GeneralIPInfoAdapter) {
-	reg.registeredAdapters[adapter.GetName()] = adapter
+	name := adapter.GetName()
+	log.Printf("Registering IPInfoProvidier %s", name)
+	reg.registeredAdapters[name] = adapter
 }
 
 func (reg *IPInfoProviderRegistry) GetAdapter(name string) (GeneralIPInfoAdapter, error) {
 	if adapter, ok := reg.registeredAdapters[name]; ok {
 		return adapter, nil
 	}
-	return nil, fmt.Errorf("adapter %s not found", name)
+	return nil, nil
 }
 
 type ExactLocation struct {

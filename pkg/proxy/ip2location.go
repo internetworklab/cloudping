@@ -11,9 +11,13 @@ import (
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
+type IP2LocationRequester interface {
+	GetFullURL(ip string, apiKey string) (*url.URL, error)
+}
+
 type IP2LocationProxyHandler struct {
-	BackendEndpoint string
-	APIKey          string
+	Requestor IP2LocationRequester
+	APIKey    string
 }
 
 func (h *IP2LocationProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,16 +33,12 @@ func (h *IP2LocationProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 
 	log.Printf("IP2Location proxy handle request for %s, remote: %s, query ip: %s", subj, pkgutils.GetRemoteAddr(r), r.URL.Query().Get("ip"))
 
-	urlObj, err := url.Parse(h.BackendEndpoint)
+	urlObj, err := h.Requestor.GetFullURL(r.URL.Query().Get("ip"), h.APIKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: err.Error()})
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("faild to get url of upstream ip2location api: %v", err)})
 		return
 	}
-	values := url.Values{}
-	values.Add("ip", r.URL.Query().Get("ip"))
-	values.Add("key", h.APIKey)
-	urlObj.RawQuery = values.Encode()
 
 	ctx := r.Context()
 
