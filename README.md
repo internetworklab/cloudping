@@ -15,7 +15,8 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - API-first design, CLI friendly (can be access through http clients like `curl`)
 - QUIC for hub-agent communication support and NAT-traversal
 - JWT authentication
-- Telegram Bot (currently supports: `/ping`, `/traceroute`, and `/probe`)
+- Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
+- Email Interface (Interact via Email)
 - Prometheus Metrics
 
 ## Try
@@ -69,15 +70,29 @@ It's better to use the web UI directly, since it has much richer feature set as 
 
 Currently the looking is still rugged, but we are actively iterating it.
 
-![screenshot-1](docs/screenshots/1.png)
+Traceroute screenshot:
 
-![screenshot-2](docs/screenshots/2.png)
+![Traceroute](docs/screenshots/1.png)
 
-![screenshot-3](docs/screenshots/3.png)
+Ping screenshot:
 
-![screenshot-4](docs/screenshots/4.png)
+![Ping matrix](docs/screenshots/2.png)
 
-![screenshot-5](docs/screenshots/5.jpeg)
+Traceroute exported to PNG via HTML5 Canvas:
+
+![Traceroute in Canvas](docs/screenshots/3.png)
+
+Traceroute from Telegram Bot (screenshot):
+
+![Screenshot: Traceroute from Telegram Bot](docs/screenshots/4.png)
+
+Probe (via Telegram Bot):
+
+![Probe](docs/screenshots/5.jpeg)
+
+Traceroute via the Email interface (screenshot):
+
+![Traceroute via the Email interface](docs/screenshots/6.png)
 
 ## API Design
 
@@ -127,7 +142,7 @@ Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimi
 
 These APIs are intended for developers only. End users should use the Web UI.
 
-## Bot Command
+## Bot Interface
 
 Currently, only Telegram Bot is supported.
 
@@ -140,6 +155,16 @@ Currently, only Telegram Bot is supported.
 | `/version` | Show build version information as a JSON payload. | `/version` |
 
 For how to deploy your own bot, see the `docker-compose.yaml` file in [example1](./docker/example1/docker-compose.yaml) or the dev scripts in [scripts/](./scripts).
+
+## Email Interface
+
+Send email to [cli at ping2.sh](mailto:cli@ping2.sh) to interact with it. To display the help, send `--help` or `[subcommand] --help` (e.g. `traceroute --help`, no backtick).
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `list` | List all available probe nodes with their network (ASN/ISP) and location information. | `list` |
+| `ping` | Ping one or more destinations from specified source nodes. Supports IPv4/IPv6 preference and protocol selection (ICMP/UDP/TCP). | `ping example.com` |
+| `traceroute` | Traceroute to a destination from a specified source node with hop-by-hop latency details. Supports IPv4/IPv6 preference and packet count. | `traceroute -s lax1 -c example.com` |
 
 ## Deployment
 
