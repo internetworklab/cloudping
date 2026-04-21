@@ -98,6 +98,10 @@ Ping matrix reply from the Email interface (screenshot):
 
 ![Ping matrix reply](docs/screenshots/7.png)
 
+Help sent back from the Email interface (screenshot):
+
+![Help from email reply](docs/screenshots/8.png)
+
 ## API Design
 
 ### Endpoints Overview
