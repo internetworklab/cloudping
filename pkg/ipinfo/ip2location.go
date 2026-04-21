@@ -40,18 +40,26 @@ type IP2LocationIPInfoResponse struct {
 	IsProxy     *bool    `json:"is_proxy,omitempty"`
 }
 
-func (ia *IP2LocationIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo, error) {
-
+func (ia *IP2LocationIPInfoAdapter) GetFullURL(ip string, key string) (*url.URL, error) {
 	urlObj, err := url.Parse(ia.APIEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("invalid api endpoint: %v", err)
 	}
 	urlValues := url.Values{}
 	urlValues.Add("ip", ip)
-	if ia.APIKey != "" {
-		urlValues.Add("key", ia.APIKey)
+	if key != "" {
+		urlValues.Add("key", key)
 	}
 	urlObj.RawQuery = urlValues.Encode()
+	return urlObj, nil
+}
+
+func (ia *IP2LocationIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo, error) {
+
+	urlObj, err := ia.GetFullURL(ip, ia.APIKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get full url of ip2location api: %v", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", urlObj.String(), nil)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 
 type AutoIPInfoDispatcher struct {
 	Router pkgrouting.Router
+	Name   string
 }
 
 func (autoProvider *AutoIPInfoDispatcher) SetUpDefaultRoutes(
@@ -52,5 +53,8 @@ func (autoProvider *AutoIPInfoDispatcher) GetIPInfo(ctx context.Context, ipAddr 
 }
 
 func (autoProvider *AutoIPInfoDispatcher) GetName() string {
+	if name := autoProvider.Name; name != "" {
+		return name
+	}
 	return "auto"
 }

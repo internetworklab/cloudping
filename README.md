@@ -266,5 +266,6 @@ Grab the JWT token from bot [@as4242421771_bot](http://t.me/as4242421771_bot), w
 
 Thanks the following GeoIP datasources, in no particular order:
 
-- [dn42-geoip](https://github.com/Xe-iu/dn42-geoip)
 - [IP2Location](https://www.ip2location.io/)
+- [IPRegistry.co](https://ipregistry.co)
+- [dn42-geoip](https://github.com/Xe-iu/dn42-geoip)

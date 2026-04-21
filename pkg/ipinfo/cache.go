@@ -44,6 +44,12 @@ type CacheStoreAccess struct {
 	Error chan error
 }
 
+func WithCache(ctx context.Context, upstream GeneralIPInfoAdapter, maxExpireTime time.Duration, hook RequestLoggerHook) GeneralIPInfoAdapter {
+	cachedProvider := NewCacheIPInfoProvider(upstream, maxExpireTime, hook)
+	cachedProvider.Run(ctx)
+	return cachedProvider
+}
+
 func NewCacheIPInfoProvider(upstream GeneralIPInfoAdapter, maxExpireTime time.Duration, hook RequestLoggerHook) *CacheIPInfoProvider {
 	return &CacheIPInfoProvider{
 		Upstream:      upstream,

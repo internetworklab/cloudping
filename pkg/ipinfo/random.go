@@ -5,10 +5,12 @@ import (
 	"math/rand"
 )
 
-type RandomIPInfoAdapter struct{}
+type RandomIPInfoAdapter struct {
+	name string
+}
 
-func NewRandomIPInfoAdapter() GeneralIPInfoAdapter {
-	return &RandomIPInfoAdapter{}
+func NewRandomIPInfoAdapter(name string) GeneralIPInfoAdapter {
+	return &RandomIPInfoAdapter{name: name}
 }
 
 func (ia *RandomIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo, error) {
@@ -50,5 +52,8 @@ func (ia *RandomIPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*Basic
 }
 
 func (ia *RandomIPInfoAdapter) GetName() string {
+	if name := ia.name; name != "" {
+		return name
+	}
 	return "random"
 }

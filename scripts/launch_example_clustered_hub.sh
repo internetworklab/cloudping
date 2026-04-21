@@ -6,6 +6,8 @@ script_dir=$(dirname $script_path)
 cd $script_dir/..
 
 go run ./cmd/globalping hub \
+  --upstream-ipregistry-apiendpoint="https://api.ipregistry.co" \
+  --upstream-ipregistry-apikey-env="IPREGISTRY_API_KEY" \
   --server-cert="test/certs/peer.pem" \
   --server-cert-key="test/certs/peer-key.pem" \
   --public-http-listen-address=":8084" \

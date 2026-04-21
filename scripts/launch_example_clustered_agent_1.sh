@@ -8,6 +8,9 @@ cd $script_dir/..
 HUB_SERVER_NAME=cloudping-hub.example.com
 
 go run ./cmd/globalping agent \
+  --ipregistry-api-endpoint=http://localhost:8084/proxy/ipregistry \
+  --ipregistry-apikey-env=IPREGISTRY_API_KEY \
+  --ipregistry-add-bearer-header=true \
   --quic-server-address="127.0.0.1:18449" \
   --server-name="${HUB_SERVER_NAME}" \
   --peer-ca="test/certs/ca.pem" \

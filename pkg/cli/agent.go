@@ -72,12 +72,30 @@ type AgentCmd struct {
 	// when http listen address is not empty, it will serve http requests without any TLS authentication
 	HTTPListenAddress string `help:"Address to listen on for plaintext HTTP requests, only use this for debugging purposes"`
 
-	// IPInfo/IP2Location related settings
-	DN42IPInfoProvider             string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
-	DN42IP2LocationAPIEndpoint     string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider" default:"https://regquery.ping2.sh/ip2location/v1/query"`
-	IPInfoCacheValiditySecs        int    `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600"`
-	IP2LocationAPIEndpoint         string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://ping2.sh/api/proxy/ip2location"`
-	AppendJWTTokenToIP2LocationAPI bool   `name:"append-bearer-header-to-ip2location-requests" help:"Append JWT token to IP2Location API endpoint" default:"true"`
+	// General GeoIP/IPInfoLike setting
+	GeneralIPInfoCacheValidity time.Duration `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600s"`
+	IPInfoProviderSearchOrder  []string      `name:"ipinfo-provider-search-order" help:"This allow to override the default search order of internet GeoIP/IPInfo provider"`
+
+	// DN42 GeoIP/IPInfo setting
+	DN42IPInfoProvider         string `name:"dn42-ipinfo-provider" help:"APIEndpoint of DN42 IPInfo provider, e.g. https://api.example.com/v1/ipinfo"`
+	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider, so it would be used first once provided." default:"https://regquery.ping2.sh/ip2location/v1/query"`
+
+	// About IPInfoLite service
+	IPInfoLiteAPIKeyEnv    string `name:"ipinfo-apikey-env" help:"Env that stores the APIKey of IPInfoLite API service" default:"IPINFO_TOKEN"`
+	IPInfoLiteAPIEndpoint  string `name:"ipinfo-lite-api-endpoint" help:"URL prefix of IPInfoLite API service" default:"https://api.ipinfo.io/lite"`
+	IPInfoLiteProviderName string `name:"ipinfo-lite-provider-name" help:"Name for identifying the clearnet IPInfoLite-compatible API service provider, useful especially in routing" default:"ipinfo"`
+
+	// About IPInfoLite service
+	IP2LocationAPIEndpoint     string `name:"ip2location-api-endpoint" help:"APIEndpoint of IP2Location IPInfo provider" default:"https://ping2.sh/api/proxy/ip2location"`
+	IP2LocationAPIKeyEnv       string `name:"ip2location-apikey-env" help:"Env that stores the APIKey of IP2Location API service" default:"IP2LOCATION_API_KEY"`
+	IP2LocationAddBearerHeader bool   `name:"append-bearer-header-to-ip2location-requests" help:"Append JWT token to IP2Location API endpoint, this would be useful when the endpoint also require a 'Authorization: bearer <token>' header" default:"true"`
+	IP2LocationProviderName    string `name:"ip2location-provider-name" help:"Name for identifying the clearnet IP2Location-compatible API service provider, useful especially in routing" default:"ip2location"`
+
+	// About IPRegistry.co
+	IPRegistryCOAPIEndpoint     string `name:"ipregistry-api-endpoint" help:"APIEndpoint of IPRegistry.co" default:"https://ping2.sh/api/proxy/ipregistry"`
+	IPRegistryCOAPIKeyEnv       string `name:"ipregistry-apikey-env" help:"Name of the environment variable that keep the APIKey for accessing ipregistry.co service" default:"IPREGISTRY_API_KEY"`
+	IPRegistryAddBearerHeader   bool   `name:"ipregistry-add-bearer-header" help:"Append JWT token to IPRegistry API endpoint, this would be useful when the endpoint also require a 'Authorization: bearer <token>' header" default:"true"`
+	IPRegistryCOAPIProviderName string `name:"ipregistry-provider-name" help:"Name for identifying the clearnet IPRegistry.co-compatible API service provider, useful especially in routing" default:"ipregistry"`
 
 	// Prometheus stuffs
 	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112"`
@@ -119,39 +137,109 @@ func (agentCmd *AgentCmd) getJWTToken() string {
 	return ""
 }
 
-func getClearnetIPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, error) {
-	ip2LocationEndpoint := agentCmd.IP2LocationAPIEndpoint
-	if ip2LocationEndpoint != "" {
-		ip2LocationAPIKey := os.Getenv("IP2LOCATION_API_KEY")
+// Note: clearnet ipinfo/geoip provider must not use this name, it's reserved for internal usage.
+const dn42IPInfoProviderName = "dn42"
+
+// Reserved for internal usage.
+const randomProviderName = "random"
+
+// Reserved for internal usage.
+const autoProviderName = "auto"
+
+func (agentCmd *AgentCmd) registerAllAvailableIPInfoProviders(ctx context.Context, registry *pkgipinfo.IPInfoProviderRegistry, ipinfoCacheHook func(ctx context.Context, stats pkgipinfo.IPInfoRequestStats)) error {
+	// We are just trying to register all available IPInfo/GeoIP providers here.
+
+	if apiendpoint := agentCmd.IPRegistryCOAPIEndpoint; apiendpoint != "" {
+		log.Printf("Using IP2Location API Service: %s", apiendpoint)
+		ipregistrycoAdapter := &pkgipinfo.IPRegistryAdapter{
+			APIEndpoint: apiendpoint,
+			Name:        agentCmd.IPRegistryCOAPIProviderName,
+		}
+		if agentCmd.IPRegistryAddBearerHeader {
+			if ipregistrycoAdapter.AdditionalHeaders == nil {
+				ipregistrycoAdapter.AdditionalHeaders = make(http.Header)
+			}
+			ipregistrycoAdapter.AdditionalHeaders.Set("Authorization", "bearer "+agentCmd.getJWTToken())
+		}
+		if envName := agentCmd.IPRegistryCOAPIKeyEnv; envName != "" {
+			ipregistrycoAdapter.APIKey = os.Getenv(envName)
+		}
+		registry.RegisterAdapter(
+			pkgipinfo.WithCache(ctx, ipregistrycoAdapter, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
+		)
+	}
+
+	if ip2LocationEndpoint := agentCmd.IP2LocationAPIEndpoint; ip2LocationEndpoint != "" {
+		ip2LocationAPIKey := ""
+		if envName := os.Getenv(agentCmd.IP2LocationAPIKeyEnv); envName != "" {
+			ip2LocationAPIKey = os.Getenv(envName)
+		}
 		log.Printf("Using IP2Location API Service: %s", ip2LocationEndpoint)
 		var extraHeaders http.Header = nil
-		if agentCmd.AppendJWTTokenToIP2LocationAPI {
+		if agentCmd.IP2LocationAddBearerHeader {
 			extraHeaders = http.Header{}
 			extraHeaders.Set("Authorization", fmt.Sprintf("Bearer %s", agentCmd.getJWTToken()))
 		}
-		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey, "ip2location", extraHeaders)
-		return ip2LocationIPInfoAdapter, nil
+		ip2LocationIPInfoAdapter := pkgipinfo.NewIP2LocationIPInfoAdapter(ip2LocationEndpoint, ip2LocationAPIKey, agentCmd.IP2LocationProviderName, extraHeaders)
+		registry.RegisterAdapter(
+			pkgipinfo.WithCache(ctx, ip2LocationIPInfoAdapter, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
+		)
 	}
 
-	ipinfoLiteToken := os.Getenv("IPINFO_TOKEN")
-	if ipinfoLiteToken != "" {
-		log.Printf("Using IPInfo Lite API Service: %s", ipinfoLiteToken)
-		ipinfoLiteIPInfoAdapter, err := pkgipinfo.NewIPInfoAdapter(&ipinfoLiteToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create IPInfo Lite adapter: %v", err)
+	if ipinfoEndpoint := agentCmd.IPInfoLiteAPIEndpoint; ipinfoEndpoint != "" {
+		var ipinfoLiteToken *string
+		if token := os.Getenv(agentCmd.IPInfoLiteAPIKeyEnv); token != "" {
+			ipinfoLiteToken = &token
 		}
-		return ipinfoLiteIPInfoAdapter, nil
+		log.Printf("Using IPInfo Lite API Service: %s", ipinfoEndpoint)
+		ipinfoLiteIPInfoAdapter, err := pkgipinfo.NewIPInfoAdapter(ipinfoLiteToken, ipinfoEndpoint, agentCmd.IPInfoLiteProviderName)
+		if err != nil {
+			return fmt.Errorf("Failed to create IPInfo Lite adapter: %v", err)
+		}
+		registry.RegisterAdapter(
+			pkgipinfo.WithCache(ctx, ipinfoLiteIPInfoAdapter, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
+		)
+	}
+
+	var dn42IPInfoProvider pkgipinfo.GeneralIPInfoAdapter
+	if apiEndpoint := agentCmd.DN42IP2LocationAPIEndpoint; apiEndpoint != "" {
+		dn42IPInfoProvider = pkgipinfo.NewIP2LocationIPInfoAdapter(apiEndpoint, "", dn42IPInfoProviderName, nil)
+
+	} else {
+		dn42IPInfoProvider = pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider, dn42IPInfoProviderName)
+	}
+	registry.RegisterAdapter(
+		pkgipinfo.WithCache(ctx, dn42IPInfoProvider, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
+	)
+
+	return nil
+}
+
+func getClearnetIPInfoAdapter(agentCmd *AgentCmd, registry *pkgipinfo.IPInfoProviderRegistry) (pkgipinfo.GeneralIPInfoAdapter, error) {
+
+	tryOrder := make([]string, 0)
+	if len(agentCmd.IPInfoProviderSearchOrder) > 0 {
+		// use user-provided search order to lookup internet geoip/ipinfo provider
+		tryOrder = append(tryOrder, agentCmd.IPInfoProviderSearchOrder...)
+	} else {
+		// use default order: try ipregistry if available, then ip2location, then ipinfo-lite.
+		tryOrder = append(tryOrder, agentCmd.IPRegistryCOAPIProviderName)
+		tryOrder = append(tryOrder, agentCmd.IP2LocationProviderName)
+		tryOrder = append(tryOrder, agentCmd.IPInfoLiteProviderName)
+	}
+
+	for _, name := range tryOrder {
+		if adapter, err := registry.GetAdapter(name); err == nil && adapter != nil {
+			log.Printf("Using provider %q for resolving clearnet GeoIP/IPInfo", name)
+			return adapter, nil
+		}
 	}
 
 	return nil, fmt.Errorf("no valid ipinfo provider found")
 }
 
-func getDN42IPInfoAdapter(agentCmd *AgentCmd) (pkgipinfo.GeneralIPInfoAdapter, error) {
-	if agentCmd.DN42IP2LocationAPIEndpoint != "" {
-		return pkgipinfo.NewIP2LocationIPInfoAdapter(agentCmd.DN42IP2LocationAPIEndpoint, "", "dn42", nil), nil
-	}
-
-	return pkgipinfo.NewDN42IPInfoAdapter(agentCmd.DN42IPInfoProvider), nil
+func (agentCmd *AgentCmd) getDN42IPInfoAdapter(registry *pkgipinfo.IPInfoProviderRegistry) (pkgipinfo.GeneralIPInfoAdapter, error) {
+	return registry.GetAdapter(dn42IPInfoProviderName)
 }
 
 const minTickInterval = 1000 * time.Millisecond
@@ -186,30 +274,7 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	counterStore.StartedTime.Set(float64(time.Now().Unix()))
 
 	ipinfoReg := pkgipinfo.NewIPInfoProviderRegistry()
-
-	classicIPInfoAdapter, err := getClearnetIPInfoAdapter(agentCmd)
-	if err != nil {
-		log.Fatalf("failed to initialize IPInfo adapter: %v", err)
-	}
-	// skip registering named ipinfo providers to the registry,
-	// to prevent users from intentionally bypassing the (cached) auto ipinfo dispatcher.
-	// ipinfoReg.RegisterAdapter(classicIPInfoAdapter)
-	dn42IPInfoAdapter, err := getDN42IPInfoAdapter(agentCmd)
-	if err != nil {
-		log.Fatalf("failed to initialize DN42 IPInfo adapter: %v", err)
-	}
-	// ipinfoReg.RegisterAdapter(dn42IPInfoAdapter)
-	randomIPInfoAdapter := pkgipinfo.NewRandomIPInfoAdapter()
-	ipinfoReg.RegisterAdapter(randomIPInfoAdapter)
-
-	autoIPInfoDispatcher := &pkgipinfo.AutoIPInfoDispatcher{
-		Router: pkgrouting.NewSimpleRouter(),
-	}
-	autoIPInfoDispatcher.SetUpDefaultRoutes(dn42IPInfoAdapter, classicIPInfoAdapter)
-
 	ipinfoCacheHook := func(ctx context.Context, stats pkgipinfo.IPInfoRequestStats) {
-		// will remove this logging code later
-
 		commonLabels := ctx.Value(pkgutils.CtxKeyPromCommonLabels).(prometheus.Labels)
 		counterStore.IPInfoServedDurationMs.With(commonLabels).Add(stats.DurationMs)
 		ipinfoRequestLabels := maps.Clone(commonLabels)
@@ -217,11 +282,34 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 		ipinfoRequestLabels[pkgmyprom.PromLabelHasError] = strconv.FormatBool(stats.HasError)
 		counterStore.IPInfoRequests.With(ipinfoRequestLabels).Add(1.0)
 	}
-	ipinfoCacheValidity := time.Duration(agentCmd.IPInfoCacheValiditySecs) * time.Second
-	log.Printf("IPInfo cache validity: %s", ipinfoCacheValidity.String())
-	cachedAutoIPInfoDispatcher := pkgipinfo.NewCacheIPInfoProvider(autoIPInfoDispatcher, ipinfoCacheValidity, ipinfoCacheHook)
-	cachedAutoIPInfoDispatcher.Run(ctx)
-	ipinfoReg.RegisterAdapter(cachedAutoIPInfoDispatcher)
+
+	if err := agentCmd.registerAllAvailableIPInfoProviders(ctx, ipinfoReg, ipinfoCacheHook); err != nil {
+		log.Panicf("failed to register IPInfo providers: %v", err)
+	}
+
+	classicIPInfoAdapter, err := getClearnetIPInfoAdapter(agentCmd, ipinfoReg)
+	if err != nil {
+		log.Panicf("failed to initialize IPInfo adapter: %v", err)
+	}
+
+	dn42IPInfoAdapter, err := agentCmd.getDN42IPInfoAdapter(ipinfoReg)
+	if err != nil {
+		log.Panicf("failed to initialize DN42 IPInfo adapter: %v", err)
+	}
+
+	randomIPInfoAdapter := pkgipinfo.NewRandomIPInfoAdapter(randomProviderName)
+	ipinfoReg.RegisterAdapter(randomIPInfoAdapter)
+
+	// Un-cached AutoIPInfoDispatcher MUST NOT be registered to the registry directly,
+	// since its cached version will be registered instead, and the cached provider shares the same name,
+	// which might leads to unintentional behaviors.
+	autoIPInfoDispatcher := &pkgipinfo.AutoIPInfoDispatcher{
+		Router: pkgrouting.NewSimpleRouter(),
+		Name:   autoProviderName,
+	}
+	autoIPInfoDispatcher.SetUpDefaultRoutes(dn42IPInfoAdapter, classicIPInfoAdapter)
+
+	ipinfoReg.RegisterAdapter(pkgipinfo.WithCache(ctx, autoIPInfoDispatcher, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook))
 
 	customCAs, err := pkgutils.NewCustomCAPool(agentCmd.PeerCA)
 	if err != nil {

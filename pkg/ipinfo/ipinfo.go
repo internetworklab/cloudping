@@ -17,22 +17,31 @@ type IPInfoLiteResponse struct {
 }
 
 type IPInfoAdapter struct {
-	Token *string
+	Token     *string
+	APIPrefix string
+	Name      string
 }
 
-func NewIPInfoAdapter(token *string) (GeneralIPInfoAdapter, error) {
-	if token != nil && *token != "" {
-		log.Printf("Using IPINFO_TOKEN: %s", *token)
-	} else {
-		return nil, fmt.Errorf("IPInfo adapter relies on a token to work, however none is provided")
+// IPInfoLite adapter
+func NewIPInfoAdapter(token *string, apiPrefix string, name string) (GeneralIPInfoAdapter, error) {
+	adapter := &IPInfoAdapter{
+		Token:     token,
+		APIPrefix: apiPrefix,
+		Name:      name,
 	}
-	return &IPInfoAdapter{
-		Token: token,
-	}, nil
+
+	return adapter, nil
+}
+
+func (ia *IPInfoAdapter) getAPIPrefix() string {
+	if s := ia.APIPrefix; s != "" {
+		return s
+	}
+	return "https://api.ipinfo.io/lite"
 }
 
 func (ia *IPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo, error) {
-	urlObj, err := url.Parse(fmt.Sprintf(`https://api.ipinfo.io/lite/%s`, ip))
+	urlObj, err := url.Parse(ia.getAPIPrefix() + "/" + ip)
 	if err != nil {
 		return nil, fmt.Errorf("invalid ip: %s", ip)
 	}
@@ -83,5 +92,8 @@ func (ia *IPInfoAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicIPInfo
 }
 
 func (ia *IPInfoAdapter) GetName() string {
+	if name := ia.Name; name != "" {
+		return name
+	}
 	return "ipinfo"
 }
