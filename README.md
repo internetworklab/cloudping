@@ -94,6 +94,10 @@ Traceroute via the Email interface (screenshot):
 
 ![Traceroute via the Email interface](docs/screenshots/6.png)
 
+Ping matrix reply from the Email interface (screenshot):
+
+![Ping matrix reply](docs/screenshots/7.png)
+
 ## API Design
 
 ### Endpoints Overview
