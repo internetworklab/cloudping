@@ -19,6 +19,50 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - Email Interface (Interact via Email)
 - Prometheus Metrics
 
+## Architecture
+
+CloudPing is designed with a three-layer architecture that separates user-facing interfaces, control logic, and actual probe execution.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Access Layer                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                       │
+│  │  Web Client  │  │ Telegram Bot │  │ Email Client │                       │
+│  │  (Next.js)   │  │   (@bot)     │  │  (SMTP/IMAP) │                       │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                       │
+└─────────┼─────────────────┼─────────────────┼─────────────────────────────-─┘
+          │                 │                 │
+          │                 │                 ▼
+          │                 │      ┌────────────────────┐
+          │                 │      │   Email Gateway    │
+          │                 │      │(Cloudflare Email)  │
+          │                 │      └─────────┬──────────┘
+          ▼                 ▼                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Control Layer                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                              Hub                                    │    │
+│  │   (HTTP API, WebSocket/QUIC for agents, JWT Auth, Request Routing)  │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │
+          │  QUIC / mTLS / WebSocket
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Execution Layer                                     │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐            │
+│  │ Agent 1 │  │ Agent 2 │  │ Agent 3 │  │ Agent N │  │  ...    │            │
+│  │(at-vie1)│  │(us-nyc1)│  │(us-lax1)│  │(jp-tyo1)│  │         │            │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘            │
+│      Ping, Traceroute, DNS Probe, HTTP Probe, TCP Ping                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Access Layer**: End-user interfaces including the web UI, Telegram bot, and email interface.
+- **Email Gateway**: Sits between the Email Client and the Hub. Currently, the only supported email gateway is **Cloudflare Email Service**.
+- **Control Layer**: The Hub acts as the central coordinator — it exposes the public API, authenticates requests, and routes probe tasks to the appropriate agents.
+- **Execution Layer**: Distributed agents running at various geographical locations that perform the actual network measurements (ping, traceroute, DNS, HTTP probes) and stream results back to the hub.
+
 ## Try
 
 If you are in a hurry, just go straight to try our deployed instance at [here](https://ping2.sh), or [here](http://ping.dn42)(DN42). Which is ready to use, and doesn't require you to build or install anything.
@@ -106,16 +150,17 @@ Help sent back from the Email interface (screenshot):
 
 ### Endpoints Overview
 
-| Component | Endpoint | Method | Target Parameter | Targets Supported |
-|-----------|----------|--------|------------------|-------------------|
-| Agent | `/simpleping` | GET | `destination` | Single target |
-| Hub | `/ping` | GET | `targets` | Multiple (comma-separated) |
+| Component | Endpoint      | Method | Target Parameter | Targets Supported          |
+| --------- | ------------- | ------ | ---------------- | -------------------------- |
+| Agent     | `/simpleping` | GET    | `destination`    | Single target              |
+| Hub       | `/ping`       | GET    | `targets`        | Multiple (comma-separated) |
 
 Port numbers are configured via command-line arguments.
 
 ### Request Format
 
 Parameters are encoded as URL search params. For available parameters and their effects, see:
+
 - [pkg/pinger/request.go](pkg/pinger/request.go) - Supported parameters
 - [pkg/pinger/ping.go](pkg/pinger/ping.go) - Parameter effects
 
@@ -154,13 +199,13 @@ These APIs are intended for developers only. End users should use the Web UI.
 
 Currently, only Telegram Bot is supported.
 
-| Command | Description | Example |
-|-----------|----------|--------|
-| `/ping` | Ping a destination with real-time streaming statistics. Supports IPv4/IPv6 preference and interactive location switching. | `/ping -c 3 example.com` |
-| `/traceroute` | Traceroute to a destination with hop-by-hop peer and latency details. Supports IPv4/IPv6 preference and packet count. | `/traceroute -6 example.com` |
-| `/probe` | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node. | `/probe -s us-lax1 172.23.0.0/24` |
-| `/list` | List all available probe nodes with their network (ASN/ISP) and location information. | `/list` |
-| `/version` | Show build version information as a JSON payload. | `/version` |
+| Command       | Description                                                                                                               | Example                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `/ping`       | Ping a destination with real-time streaming statistics. Supports IPv4/IPv6 preference and interactive location switching. | `/ping -c 3 example.com`          |
+| `/traceroute` | Traceroute to a destination with hop-by-hop peer and latency details. Supports IPv4/IPv6 preference and packet count.     | `/traceroute -6 example.com`      |
+| `/probe`      | Probe a CIDR subnet and generate a bitmap visualization. Requires a source node.                                          | `/probe -s us-lax1 172.23.0.0/24` |
+| `/list`       | List all available probe nodes with their network (ASN/ISP) and location information.                                     | `/list`                           |
+| `/version`    | Show build version information as a JSON payload.                                                                         | `/version`                        |
 
 For how to deploy your own bot, see the `docker-compose.yaml` file in [example1](./docker/example1/docker-compose.yaml) or the dev scripts in [scripts/](./scripts).
 
@@ -168,10 +213,10 @@ For how to deploy your own bot, see the `docker-compose.yaml` file in [example1]
 
 Send email to [cli at ping2.sh](mailto:cli@ping2.sh) to interact with it. To display the help, send `--help` or `[subcommand] --help` (e.g. `traceroute --help`, no backtick).
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `list` | List all available probe nodes with their network (ASN/ISP) and location information. | `list` |
-| `ping` | Ping one or more destinations from specified source nodes. Supports IPv4/IPv6 preference and protocol selection (ICMP/UDP/TCP). | `ping example.com` |
+| Command      | Description                                                                                                                               | Example                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `list`       | List all available probe nodes with their network (ASN/ISP) and location information.                                                     | `list`                              |
+| `ping`       | Ping one or more destinations from specified source nodes. Supports IPv4/IPv6 preference and protocol selection (ICMP/UDP/TCP).           | `ping example.com`                  |
 | `traceroute` | Traceroute to a destination from a specified source node with hop-by-hop latency details. Supports IPv4/IPv6 preference and packet count. | `traceroute -s lax1 -c example.com` |
 
 ## Deployment
@@ -180,13 +225,13 @@ Send email to [cli at ping2.sh](mailto:cli@ping2.sh) to interact with it. To dis
 
 The Web UI is built with Next.js and supports the following build-time environment variables:
 
-| Variable | Description | Default (Example) |
-|----------|-------------|-------------|
-| `NEXT_PUBLIC_API_ENDPOINT` | API endpoint to use (prefix prepended to every request path) | `/api` |
-| `NEXT_PUBLIC_GITHUB_REPO` | Link to the repository website | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
-| `NEXT_PUBLIC_TG_INVITE_LINK` | Invite link for the Telegram discussion group | Just a URL |
-| `NEXT_PUBLIC_SITE_NAME` | WebUI title for self-hosted deployments | `CloudPing` |
-| `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend | `127.0.0.11:53` |
+| Variable                       | Description                                                  | Default (Example)                                                         |
+| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_API_ENDPOINT`     | API endpoint to use (prefix prepended to every request path) | `/api`                                                                    |
+| `NEXT_PUBLIC_GITHUB_REPO`      | Link to the repository website                               | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
+| `NEXT_PUBLIC_TG_INVITE_LINK`   | Invite link for the Telegram discussion group                | Just a URL                                                                |
+| `NEXT_PUBLIC_SITE_NAME`        | WebUI title for self-hosted deployments                      | `CloudPing`                                                               |
+| `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend   | `127.0.0.11:53`                                                           |
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
