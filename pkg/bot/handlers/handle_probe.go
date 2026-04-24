@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
@@ -69,7 +70,7 @@ func (handler *ProbeHandler) getEVsProvider() (pkgtui.ProbeEventsProvider, error
 }
 
 func (handler *ProbeHandler) GetUsage() string {
-	return "-s <source_node_id> <cidr>"
+	return "[-s|--from <source_node_id>] <cidr>"
 }
 
 func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, error) {
@@ -252,12 +253,20 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	idx := slices.IndexFunc(allLocs, func(elem pkgtui.LocationDescriptor) bool {
-		return elem.Id == probeCLI.From
-	})
-	if idx == -1 {
-		sendText(fmt.Sprintf("Empty or invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From))
-		return
+	if probeCLI.From == "" {
+		if len(allLocs) == 0 {
+			sendText("No source nodes available. See /list for available nodes.")
+			return
+		}
+		probeCLI.From = allLocs[rand.IntN(len(allLocs))].Id
+	} else {
+		idx := slices.IndexFunc(allLocs, func(elem pkgtui.LocationDescriptor) bool {
+			return elem.Id == probeCLI.From
+		})
+		if idx == -1 {
+			sendText(fmt.Sprintf("Invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From))
+			return
+		}
 	}
 
 	_, cidrObj, err := net.ParseCIDR(probeCLI.CIDR)
@@ -326,6 +335,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 		captionBuf := strings.Builder{}
 		fmt.Fprintf(&captionBuf, "Scan report of %s\n", cidrObj.String())
+		fmt.Fprintf(&captionBuf, "Source: %s\n", probeCLI.From)
 		fmt.Fprintf(&captionBuf, "Probed: %d / %d\n", probed, total)
 		fmt.Fprintf(&captionBuf, "Reachable: %d / %d\n", reachables, probed)
 
