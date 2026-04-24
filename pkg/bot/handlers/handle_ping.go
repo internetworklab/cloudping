@@ -73,7 +73,7 @@ func (handler *PingCommandHandler) parseCLIString(cliString string) (*PingCLI, e
 	getHelp := func() string {
 		select {
 		case <-exitCh:
-			return fmt.Sprintf("Help:\n%s", helpBuff.String())
+			return helpBuff.String()
 		default:
 			return ""
 		}

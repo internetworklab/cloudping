@@ -72,7 +72,7 @@ func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*Trac
 	getHelp := func() string {
 		select {
 		case <-exitCh:
-			return fmt.Sprintf("Help:\n%s", helpBuff.String())
+			return helpBuff.String()
 		default:
 			return ""
 		}
@@ -220,8 +220,9 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 	}
 
 	initialMessage := pkgbot.MessageRecord{
-		DateTime: time.Unix(int64(update.Message.Date), 0),
-		Content:  update.Message.Text,
+		DateTime:       time.Unix(int64(update.Message.Date), 0),
+		Content:        update.Message.Text,
+		InitialCommand: tracerouteCLI,
 	}
 	ctx, canceller := context.WithCancel(ctx)
 	if err := conversationMng.CheckIn(ctx, conversationKey, initialMessage, canceller); err != nil {
@@ -314,8 +315,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		log.Printf("failed to edit message: %v", err)
 	}
 
-	// Emulate network latency and middleware overhead
-	time.Sleep(1000 * time.Millisecond)
+	<-time.After(handler.StreamIntv)
 
 	handler.doHandleTraceroute(ctx, tracerouteCLI, activeLocationCode, func(msg string) error { return doEditMsg(chatId, msgId, msg) })
 }
