@@ -69,7 +69,7 @@ func (handler *ProbeHandler) getEVsProvider() (pkgtui.ProbeEventsProvider, error
 }
 
 func (handler *ProbeHandler) GetUsage() string {
-	return "/probe -s <source_node_id> <cidr>"
+	return "-s <source_node_id> <cidr>"
 }
 
 func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {

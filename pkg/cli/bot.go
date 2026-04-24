@@ -172,12 +172,13 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	_, err = b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
 		Commands: []models.BotCommand{
 			{Command: "/start", Description: "No op, just a placeholder."},
-			{Command: "/ping", Description: "Usage: " + botPingCmdHandler.GetUsage()},
-			{Command: "/trace", Description: "Usage: " + traceCmdHandler.GetUsage()},
-			{Command: "/traceroute", Description: "Usage: " + traceCmdHandler.GetUsage()},
+			{Command: "/ping", Description: "Usage: /ping " + botPingCmdHandler.GetUsage()},
+			{Command: "/trace", Description: "Usage: /trace " + traceCmdHandler.GetUsage()},
+			{Command: "/traceroute", Description: "Usage: /traceroute " + traceCmdHandler.GetUsage()},
 			{Command: "/version", Description: "Show build version information."},
-			{Command: "/probe", Description: "Probe specified CIDR. Usage: " + probeHandler.GetUsage()},
+			{Command: "/probe", Description: "Probe specified CIDR. Usage: /probe " + probeHandler.GetUsage()},
 			{Command: "/list", Description: "List all available nodes"},
+			{Command: "/uptime", Description: "Show uptime"},
 		},
 	})
 	if err != nil {

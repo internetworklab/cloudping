@@ -39,7 +39,7 @@ func (handler *TracerouteCommandHandler) getBtnLayoutCols() int {
 }
 
 func (handler *TracerouteCommandHandler) GetUsage() string {
-	return "/traceroute [-4] [-6] [-c <count>] <destination>"
+	return "[-4] [-6] [-c <count>] <destination>"
 }
 
 func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*TracerouteCLI, *kong.Context, error) {
