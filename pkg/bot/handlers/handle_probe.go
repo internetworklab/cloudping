@@ -198,7 +198,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
+	cliString := update.Message.Text
 	probeCLI, _, err := handler.parseCLIString(cliString)
 	if err != nil {
 		sendText(fmt.Sprintf("Error: %s\nUsage: %s", err.Error(), handler.GetUsage()))

@@ -23,7 +23,20 @@ type TracerouteCLI struct {
 	Destination string `arg:"" name:"destination" help:"Destination to trace"`
 }
 
-type TracerouteCommandHandler struct{}
+type TracerouteCommandHandler struct {
+	LocationsProvider   pkgtui.LocationsProvider
+	ConversationManager *pkgbot.ConversationManager
+	PingEventsProvider  pkgtui.PingEventsProvider
+	StreamIntv          time.Duration
+	ButtonLayoutCols    int
+}
+
+func (handler *TracerouteCommandHandler) getBtnLayoutCols() int {
+	if handler.ButtonLayoutCols <= 0 {
+		return DefaultBtnLayoutCols
+	}
+	return handler.ButtonLayoutCols
+}
 
 func (handler *TracerouteCommandHandler) GetUsage() string {
 	return "/traceroute [-4] [-6] [-c <count>] <destination>"
@@ -61,10 +74,10 @@ func (handler *TracerouteCommandHandler) parseCallbackQuery(pingCallbackData str
 }
 
 func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
+	provider := handler.PingEventsProvider
 	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
-	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
+	streamInterval := handler.StreamIntv
+	conversationMng := handler.ConversationManager
 
 	if update.Message != nil {
 		replyParams := &models.ReplyParameters{
@@ -72,7 +85,7 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 			MessageID: update.Message.ID,
 		}
 
-		cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
+		cliString := update.Message.Text
 		pingCLI, _, err := handler.parseCLIString(cliString)
 		if err != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{
@@ -95,7 +108,7 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 		if len(allLocs) > 0 {
 			locationCode = allLocs[0].Id
 		}
-		buttons := GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int), handler.formatCallbackQuery)
+		buttons := GetLocationButtons(ctx, locationCode, provider, handler.getBtnLayoutCols(), handler.formatCallbackQuery)
 
 		txt := fmt.Sprintf("Traceroute to %s is starting...", destination)
 		// Send initial message with buttons
@@ -180,9 +193,9 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
-	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
+	streamInterval := handler.StreamIntv
+	provider := handler.PingEventsProvider
+	convMngr := handler.ConversationManager
 	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
 
 	activeLocationCode := handler.parseCallbackQuery(update.CallbackQuery.Data)
@@ -211,7 +224,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	cliString := pkgbot.TrimCommandPrefix(histMsgs[0].Content)
+	cliString := histMsgs[0].Content
 	pingCLI, _, err := handler.parseCLIString(cliString)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
@@ -234,7 +247,7 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int), handler.formatCallbackQuery),
+			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, handler.getBtnLayoutCols(), handler.formatCallbackQuery),
 		})
 		return err
 	}

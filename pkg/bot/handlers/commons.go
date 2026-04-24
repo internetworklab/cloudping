@@ -9,16 +9,7 @@ import (
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
-type CtxKey string
-
-const (
-	CtxKeyJWTSecret           = CtxKey("jwt_secret")
-	CtxKeyIssuerName          = CtxKey("issuer_name")
-	CtxKeyTxtStreamIntv       = CtxKey("txt_stream_intv")
-	CtxKeyTGBtnLayoutCol      = CtxKey("tg_btn_layout_col")
-	CtxKeyPingEVProvider      = CtxKey("ping_ev_provider")
-	CtxKeyConversationManager = CtxKey("conv_mng")
-)
+const DefaultBtnLayoutCols = 4
 
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.

@@ -120,19 +120,28 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	convMngr := &pkgbot.ConversationManager{}
 
 	startedAt := time.Now()
+	uptimeHandler := &pkgbothandlers.UptimeHandler{
+		StartedAt: startedAt,
+	}
 
-	// deprecated, upcoming handlers should take dependents directly from their members rather than the context.
-	ctx = context.WithValue(ctx, pkgutils.CtxKeyStartedAt, startedAt)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyBuildVersion, sharedCtx.BuildVersion)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyJWTSecret, secret)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyTxtStreamIntv, botCmd.TextStreamInterval)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyIssuerName, botCmd.JWTIssuerName)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyTGBtnLayoutCol, botCmd.ButtonLayoutColumns)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyPingEVProvider, pingEVProvider)
-	ctx = context.WithValue(ctx, pkgbothandlers.CtxKeyConversationManager, convMngr)
+	versionHandler := &pkgbothandlers.VersionHandler{
+		Version: sharedCtx.BuildVersion,
+	}
 
-	botPingCmdHandler := &pkgbothandlers.PingCommandHandler{}
-	traceCmdHandler := &pkgbothandlers.TracerouteCommandHandler{}
+	botPingCmdHandler := &pkgbothandlers.PingCommandHandler{
+		LocationsProvider:   pingEVProvider,
+		PingEventsProvider:  pingEVProvider,
+		StreamIntv:          botCmd.TextStreamInterval,
+		ConversationManager: convMngr,
+		ButtonLayoutCols:    botCmd.ButtonLayoutColumns,
+	}
+	traceCmdHandler := &pkgbothandlers.TracerouteCommandHandler{
+		LocationsProvider:   pingEVProvider,
+		PingEventsProvider:  pingEVProvider,
+		StreamIntv:          botCmd.TextStreamInterval,
+		ConversationManager: convMngr,
+		ButtonLayoutCols:    botCmd.ButtonLayoutColumns,
+	}
 	probeHandler := &pkgbothandlers.ProbeHandler{
 		FontNames:           botCmd.CustomFontNames,
 		LocationsProvider:   pingEVProvider,
@@ -142,14 +151,18 @@ func (botCmd *BotCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	listHandler := &pkgbothandlers.ListHandler{
 		LocationsProvider: pingEVProvider,
 	}
+	tokenHandler := &pkgbothandlers.JWTHandler{
+		Secret: secret,
+		Issuer: botCmd.JWTIssuerName,
+	}
 
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/start`), pkgbothandlers.HandleStart)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/ping`), botPingCmdHandler.HandlePing)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/trace`), traceCmdHandler.HandleTraceroute)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/traceroute`), traceCmdHandler.HandleTraceroute)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), pkgbothandlers.HandleUptime)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), pkgbothandlers.HandleToken)
-	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), pkgbothandlers.HandleVersion)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/uptime`), uptimeHandler.HandleUptime)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/token`), tokenHandler.HandleToken)
+	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/version`), versionHandler.HandleVersion)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/probe`), probeHandler.HandleProbe)
 	b.RegisterHandlerRegexp(bot.HandlerTypeMessageText, regexp.MustCompile(`^/list`), listHandler.HandleList)
 	b.RegisterHandlerRegexp(bot.HandlerTypeCallbackQueryData, regexp.MustCompile(`^ping_location_.+$`), botPingCmdHandler.HandlePingQueryCallback)
