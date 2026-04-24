@@ -178,6 +178,8 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
+	LogCommand(update, update.Message.Text)
+
 	sendText := func(text string) {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,

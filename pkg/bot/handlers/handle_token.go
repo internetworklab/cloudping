@@ -26,6 +26,9 @@ func (handler *JWTHandler) HandleToken(ctx context.Context, b *bot.Bot, update *
 	issuer := handler.Issuer
 
 	if update.Message != nil {
+
+		LogCommand(update, update.Message.Text)
+
 		if update.Message.Chat.Type == models.ChatTypePrivate {
 			subject := getSubjectFromMessage(update.Message)
 			if subject == "" {

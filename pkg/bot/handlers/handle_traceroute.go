@@ -86,6 +86,9 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 		}
 
 		cliString := update.Message.Text
+
+		LogCommand(update, cliString)
+
 		pingCLI, _, err := handler.parseCLIString(cliString)
 		if err != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{

@@ -11,6 +11,18 @@ import (
 
 const DefaultBtnLayoutCols = 4
 
+func LogCommand(update *models.Update, command string) {
+	if update != nil && update.Message != nil {
+		log.Printf("%v chat=%v, chatId=%v, from=%v, fromId=%v",
+			command,
+			update.Message.Chat.Title,
+			update.Message.Chat.ID,
+			update.Message.From.Username,
+			update.Message.From.ID,
+		)
+	}
+}
+
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.
 func GetLocationButtons(ctx context.Context, selectedLocationCode string, provider pkgtui.PingEventsProvider, numCols int, callbackQueryFormatter func(loc pkgtui.LocationDescriptor) string) *models.InlineKeyboardMarkup {

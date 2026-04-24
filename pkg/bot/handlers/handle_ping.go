@@ -127,9 +127,9 @@ func (handler *PingCommandHandler) getSrcLoc(ctx context.Context, pingCLI *PingC
 	return locationCode, nil
 }
 
+// return true if exitted normally, false otherwise (such as it was cancelled)
 func (handler *PingCommandHandler) doHandlePing(ctx context.Context, pingCLI *PingCLI, src string, updateMessage func(msg string) error) {
 	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
-	streamInterval := handler.StreamIntv
 	provider := handler.PingEventsProvider
 
 	pingRequest := &pkgtui.PingRequestDescriptor{
@@ -156,7 +156,7 @@ func (handler *PingCommandHandler) doHandlePing(ctx context.Context, pingCLI *Pi
 			if err != nil {
 				log.Printf("failed to edit message: %v", err)
 			}
-			<-time.After(streamInterval)
+			<-time.After(handler.StreamIntv)
 		}
 	}
 }
@@ -175,6 +175,9 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 	}
 
 	cliString := update.Message.Text
+
+	LogCommand(update, cliString)
+
 	pingCLI, err := handler.parseCLIString(cliString)
 	if err != nil {
 		helpText := err.Error()
@@ -330,13 +333,4 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 	<-time.After(handler.StreamIntv)
 
 	handler.doHandlePing(ctx, pingCLI, activeLocationCode, func(msg string) error { return doEditMsg(chatId, msgId, msg) })
-
-	// Answer the callback query to remove the loading state (only once, after all updates)
-	_, err = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
-		CallbackQueryID: update.CallbackQuery.ID,
-	})
-	if err != nil {
-		log.Printf("failed to answer callback query: %v", err)
-	}
-	return
 }

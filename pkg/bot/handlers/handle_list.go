@@ -32,6 +32,8 @@ func (handler *ListHandler) HandleList(ctx context.Context, b *bot.Bot, update *
 		MessageID: msgId,
 	}
 
+	LogCommand(update, update.Message.Text)
+
 	provider, err := handler.getLocsProvider()
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{
