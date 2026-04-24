@@ -9,16 +9,19 @@ import (
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
-type CtxKey string
+const DefaultBtnLayoutCols = 4
 
-const (
-	CtxKeyJWTSecret           = CtxKey("jwt_secret")
-	CtxKeyIssuerName          = CtxKey("issuer_name")
-	CtxKeyTxtStreamIntv       = CtxKey("txt_stream_intv")
-	CtxKeyTGBtnLayoutCol      = CtxKey("tg_btn_layout_col")
-	CtxKeyPingEVProvider      = CtxKey("ping_ev_provider")
-	CtxKeyConversationManager = CtxKey("conv_mng")
-)
+func LogCommand(update *models.Update, command string) {
+	if update != nil && update.Message != nil {
+		log.Printf("%v chat=%v, chatId=%v, from=%v, fromId=%v",
+			command,
+			update.Message.Chat.Title,
+			update.Message.Chat.ID,
+			update.Message.From.Username,
+			update.Message.From.ID,
+		)
+	}
+}
 
 // GetLocationButtons returns an inline keyboard markup with location buttons,
 // showing a checkmark indicator on the currently selected location.

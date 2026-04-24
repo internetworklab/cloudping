@@ -6,14 +6,17 @@ import (
 	"log"
 	"time"
 
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
-func HandleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
+type UptimeHandler struct {
+	StartedAt time.Time
+}
+
+func (handler *UptimeHandler) HandleUptime(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message != nil {
-		startedAt := ctx.Value(pkgutils.CtxKeyStartedAt).(time.Time)
+		startedAt := handler.StartedAt
 		uptime := time.Since(startedAt)
 		txt := fmt.Sprintf("Started at: %s\nUptime: %s", startedAt.Format(time.RFC3339), uptime.String())
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{

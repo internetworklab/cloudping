@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
@@ -69,28 +70,60 @@ func (handler *ProbeHandler) getEVsProvider() (pkgtui.ProbeEventsProvider, error
 }
 
 func (handler *ProbeHandler) GetUsage() string {
-	return "/probe -s <source_node_id> <cidr>"
+	return "[-s|--from <source_node_id>] <cidr>"
 }
 
-func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
+func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, error) {
+	// Buffer for storing help text
+	helpBuff := &strings.Builder{}
 
 	cliSegs := strings.Fields(cliString)
+	if len(cliSegs) > 0 && strings.HasPrefix(cliSegs[0], "/") {
+		// strip the first /-leading segment
+		cliSegs = cliSegs[1:]
+	}
+
 	if len(cliSegs) == 0 {
-		return nil, nil, errors.New("no arguments provided")
+		return nil, errors.New("no arguments provided")
 	}
 
-	pingCLI := new(ProbeCLI)
-	parser, err := kong.New(pingCLI)
+	probeCLI := &ProbeCLI{}
+	exitCh := make(chan int, 1)
+	defer close(exitCh)
+
+	kongInstance := kong.Must(
+		probeCLI,
+		kong.Writers(helpBuff, helpBuff),
+		kong.Name(""),
+		kong.Exit(func(code int) {
+			exitCh <- code
+		}),
+	)
+
+	getHelp := func() string {
+		select {
+		case <-exitCh:
+			return helpBuff.String()
+		default:
+			return ""
+		}
+	}
+
+	_, err := kongInstance.Parse(cliSegs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create kong parser: %w", err)
+		fmt.Fprintf(helpBuff, "Error: %v", err)
+		if help := getHelp(); help != "" {
+			return nil, fmt.Errorf("Help:\n%s\n", help)
+		} else {
+			return nil, fmt.Errorf("Unknown error: %v", err)
+		}
 	}
 
-	kongCtx, err := parser.Parse(cliSegs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CLI: %w", err)
+	if help := getHelp(); help != "" {
+		return nil, fmt.Errorf("Help:\n%s\n", help)
 	}
 
-	return pingCLI, kongCtx, nil
+	return probeCLI, nil
 }
 
 func (handler *ProbeHandler) getFontNames() []string {
@@ -178,6 +211,8 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 	replyParams := &models.ReplyParameters{ChatID: chatId, MessageID: msgId}
 
+	LogCommand(update, update.Message.Text)
+
 	sendText := func(text string) {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatId,
@@ -198,19 +233,40 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 		return
 	}
 
-	cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
-	probeCLI, _, err := handler.parseCLIString(cliString)
+	cliString := update.Message.Text
+	probeCLI, err := handler.parseCLIString(cliString)
 	if err != nil {
-		sendText(fmt.Sprintf("Error: %s\nUsage: %s", err.Error(), handler.GetUsage()))
+		helpText := err.Error()
+		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatId,
+			Text:            helpText,
+			ReplyParameters: replyParams,
+			Entities: []models.MessageEntity{
+				{
+					Type:   models.MessageEntityTypePre,
+					Offset: 0,
+					Length: len(helpText),
+				},
+			},
+		})
+		log.Printf("failed to send help message: %v", err)
 		return
 	}
 
-	idx := slices.IndexFunc(allLocs, func(elem pkgtui.LocationDescriptor) bool {
-		return elem.Id == probeCLI.From
-	})
-	if idx == -1 {
-		sendText(fmt.Sprintf("Empty or invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From))
-		return
+	if probeCLI.From == "" {
+		if len(allLocs) == 0 {
+			sendText("No source nodes available. See /list for available nodes.")
+			return
+		}
+		probeCLI.From = allLocs[rand.IntN(len(allLocs))].Id
+	} else {
+		idx := slices.IndexFunc(allLocs, func(elem pkgtui.LocationDescriptor) bool {
+			return elem.Id == probeCLI.From
+		})
+		if idx == -1 {
+			sendText(fmt.Sprintf("Invalid source node %q.\nSee /list for available nodes and specify the source node with --from=<node_id>", probeCLI.From))
+			return
+		}
 	}
 
 	_, cidrObj, err := net.ParseCIDR(probeCLI.CIDR)
@@ -279,6 +335,7 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 
 		captionBuf := strings.Builder{}
 		fmt.Fprintf(&captionBuf, "Scan report of %s\n", cidrObj.String())
+		fmt.Fprintf(&captionBuf, "Source: %s\n", probeCLI.From)
 		fmt.Fprintf(&captionBuf, "Probed: %d / %d\n", probed, total)
 		fmt.Fprintf(&captionBuf, "Reachable: %d / %d\n", reachables, probed)
 

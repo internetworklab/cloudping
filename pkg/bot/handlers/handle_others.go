@@ -14,6 +14,10 @@ func HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID: update.Message.Chat.ID,
 				Text:   "Already started!",
+				ReplyParameters: &models.ReplyParameters{
+					ChatID:    update.Message.Chat.ID,
+					MessageID: update.Message.ID,
+				},
 			})
 			if err != nil {
 				log.Printf("failed to send message: %v", err)

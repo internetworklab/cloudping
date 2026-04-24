@@ -7,16 +7,19 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
-const CtxKeyBuildVersion CtxKey = "build_version"
+type VersionHandler struct {
+	Version *pkgutils.BuildVersion
+}
 
-func HandleVersion(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (handler *VersionHandler) HandleVersion(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
 
-	bv := ctx.Value(CtxKeyBuildVersion)
+	bv := handler.Version
 
 	versionJSON, err := json.MarshalIndent(bv, "", "  ")
 	if err != nil {

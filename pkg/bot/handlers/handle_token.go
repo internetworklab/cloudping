@@ -12,20 +12,24 @@ import (
 	"github.com/google/uuid"
 )
 
-func HandleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
-	secret := ctx.Value(CtxKeyJWTSecret).([]byte)
+type JWTHandler struct {
+	Secret []byte
+	Issuer string
+}
+
+func (handler *JWTHandler) HandleToken(ctx context.Context, b *bot.Bot, update *models.Update) {
+	secret := handler.Secret
 	if secret == nil {
 		panic("JWT secret is not set in the context")
 	}
 
-	issuerName := ctx.Value(CtxKeyIssuerName)
-	if issuerName == nil {
-		panic("Issuer name is not set in the context")
-	}
+	issuer := handler.Issuer
 
 	if update.Message != nil {
+
+		LogCommand(update, update.Message.Text)
+
 		if update.Message.Chat.Type == models.ChatTypePrivate {
-			issuer := issuerName.(string)
 			subject := getSubjectFromMessage(update.Message)
 			if subject == "" {
 				_, err := b.SendMessage(ctx, &bot.SendMessageParams{

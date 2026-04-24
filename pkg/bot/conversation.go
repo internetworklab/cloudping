@@ -10,6 +10,9 @@ import (
 type MessageRecord struct {
 	DateTime time.Time
 	Content  string
+
+	// The conversation tracker could be used at many place, so we leave this type as 'any'
+	InitialCommand any
 }
 
 type ConversationContext struct {

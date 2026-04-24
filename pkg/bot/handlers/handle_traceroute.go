@@ -23,30 +23,76 @@ type TracerouteCLI struct {
 	Destination string `arg:"" name:"destination" help:"Destination to trace"`
 }
 
-type TracerouteCommandHandler struct{}
-
-func (handler *TracerouteCommandHandler) GetUsage() string {
-	return "/traceroute [-4] [-6] [-c <count>] <destination>"
+type TracerouteCommandHandler struct {
+	LocationsProvider   pkgtui.LocationsProvider
+	ConversationManager *pkgbot.ConversationManager
+	PingEventsProvider  pkgtui.PingEventsProvider
+	StreamIntv          time.Duration
+	ButtonLayoutCols    int
 }
 
-func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*TracerouteCLI, *kong.Context, error) {
+func (handler *TracerouteCommandHandler) getBtnLayoutCols() int {
+	if handler.ButtonLayoutCols <= 0 {
+		return DefaultBtnLayoutCols
+	}
+	return handler.ButtonLayoutCols
+}
+
+func (handler *TracerouteCommandHandler) GetUsage() string {
+	return "[-4] [-6] [-c <count>] <destination>"
+}
+
+func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*TracerouteCLI, error) {
+	// Buffer for storing help text
+	helpBuff := &strings.Builder{}
+
 	cliSegs := strings.Fields(cliString)
+	if len(cliSegs) > 0 && strings.HasPrefix(cliSegs[0], "/") {
+		// strip the first /-leading segment
+		cliSegs = cliSegs[1:]
+	}
+
 	if len(cliSegs) == 0 {
-		return nil, nil, errors.New("no arguments provided")
+		return nil, errors.New("no arguments provided")
 	}
 
-	pingCLI := new(TracerouteCLI)
-	parser, err := kong.New(pingCLI)
+	tracerouteCLI := &TracerouteCLI{}
+	exitCh := make(chan int, 1)
+	defer close(exitCh)
+
+	kongInstance := kong.Must(
+		tracerouteCLI,
+		kong.Writers(helpBuff, helpBuff),
+		kong.Name(""),
+		kong.Exit(func(code int) {
+			exitCh <- code
+		}),
+	)
+
+	getHelp := func() string {
+		select {
+		case <-exitCh:
+			return helpBuff.String()
+		default:
+			return ""
+		}
+	}
+
+	_, err := kongInstance.Parse(cliSegs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create kong parser: %w", err)
+		fmt.Fprintf(helpBuff, "Error: %v", err)
+		if help := getHelp(); help != "" {
+			return nil, fmt.Errorf("Help:\n%s\n", help)
+		} else {
+			return nil, fmt.Errorf("Unknown error: %v", err)
+		}
 	}
 
-	kongCtx, err := parser.Parse(cliSegs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse ping CLI: %w", err)
+	if help := getHelp(); help != "" {
+		return nil, fmt.Errorf("Help:\n%s\n", help)
 	}
 
-	return pingCLI, kongCtx, nil
+	return tracerouteCLI, nil
 }
 
 func (handler *TracerouteCommandHandler) formatCallbackQuery(loc pkgtui.LocationDescriptor) string {
@@ -60,48 +106,136 @@ func (handler *TracerouteCommandHandler) parseCallbackQuery(pingCallbackData str
 	return ""
 }
 
-func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
+// doHandleTraceroute runs the traceroute event loop. Returns true if exited
+// normally (all events consumed), false if cancelled via context.
+func (handler *TracerouteCommandHandler) doHandleTraceroute(ctx context.Context, tracerouteCLI *TracerouteCLI, src string, updateMessage func(msg string) error) {
 	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
-	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
+	provider := handler.PingEventsProvider
 
-	if update.Message != nil {
-		replyParams := &models.ReplyParameters{
+	pingRequest := &pkgtui.PingRequestDescriptor{
+		PreferV4:     tracerouteCLI.IPv4,
+		PreferV6:     tracerouteCLI.IPv6,
+		Sources:      []string{src},
+		Destinations: []string{tracerouteCLI.Destination},
+		Count:        tracerouteCLI.Count,
+		Traceroute:   true,
+	}
+	evDataCh := provider.GetEvents(ctx, pingRequest)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok := <-evDataCh:
+			if !ok {
+				return
+			}
+			statsWriter.WriteEvent(ev)
+			txt := statsWriter.GetHumanReadableText()
+			err := updateMessage(txt)
+			if err != nil {
+				log.Printf("failed to edit message: %v", err)
+			}
+			<-time.After(handler.StreamIntv)
+		}
+	}
+}
+
+func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b *bot.Bot, update *models.Update) {
+	provider := handler.PingEventsProvider
+	conversationMng := handler.ConversationManager
+
+	if update.Message == nil {
+		return
+	}
+
+	replyParams := &models.ReplyParameters{
+		ChatID:    update.Message.Chat.ID,
+		MessageID: update.Message.ID,
+	}
+
+	cliString := update.Message.Text
+
+	LogCommand(update, cliString)
+
+	tracerouteCLI, err := handler.parseCLIString(cliString)
+	if err != nil {
+		helpText := err.Error()
+		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          update.Message.Chat.ID,
+			Text:            helpText,
+			ReplyParameters: replyParams,
+			Entities: []models.MessageEntity{
+				{
+					Type:   models.MessageEntityTypePre,
+					Offset: 0,
+					Length: len(helpText),
+				},
+			},
+		})
+		if err != nil {
+			log.Printf("Failed to send message: %v", err)
+		}
+		return
+	}
+
+	destination := tracerouteCLI.Destination
+
+	locationCode := ""
+	allLocs, err := provider.GetAllLocations(ctx)
+	if err != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          update.Message.Chat.ID,
+			Text:            fmt.Sprintf("Can't get locations: %s", err.Error()),
+			ReplyParameters: replyParams,
+		})
+		return
+	}
+	if len(allLocs) > 0 {
+		locationCode = allLocs[0].Id
+	}
+
+	buttons := GetLocationButtons(ctx, locationCode, provider, handler.getBtnLayoutCols(), handler.formatCallbackQuery)
+
+	txt := fmt.Sprintf("Traceroute to %s is starting...", destination)
+	// Send initial message with buttons
+	msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: update.Message.Chat.ID,
+		Text:   txt,
+		Entities: []models.MessageEntity{
+			{
+				Type:   models.MessageEntityTypePre,
+				Offset: 0,
+				Length: len(txt),
+			},
+		},
+		ReplyMarkup:     buttons,
+		ReplyParameters: replyParams,
+	})
+	if err != nil {
+		log.Printf("failed to send message: %v", err)
+	}
+	conversationKey := &pkgbot.ConversationKey{
+		ChatId: update.Message.Chat.ID,
+		MsgId:  msg.ID,
+	}
+
+	initialMessage := pkgbot.MessageRecord{
+		DateTime:       time.Unix(int64(update.Message.Date), 0),
+		Content:        update.Message.Text,
+		InitialCommand: tracerouteCLI,
+	}
+	ctx, canceller := context.WithCancel(ctx)
+	if err := conversationMng.CheckIn(ctx, conversationKey, initialMessage, canceller); err != nil {
+		log.Printf("failed to checkin, conversationKey=%q", conversationKey.String())
+	}
+
+	<-time.After(handler.StreamIntv)
+
+	updateMessage := func(txt string) error {
+		_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{
 			ChatID:    update.Message.Chat.ID,
-			MessageID: update.Message.ID,
-		}
-
-		cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
-		pingCLI, _, err := handler.parseCLIString(cliString)
-		if err != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
-				Text:   fmt.Sprintf("Error: %v. Usage: %s", err, handler.GetUsage()),
-			})
-			return
-		}
-		destination := pingCLI.Destination
-
-		locationCode := ""
-		allLocs, err := provider.GetAllLocations(ctx)
-		if err != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
-				Text:   fmt.Sprintf("Can't get locations: %s", err.Error()),
-			})
-			return
-		}
-		if len(allLocs) > 0 {
-			locationCode = allLocs[0].Id
-		}
-		buttons := GetLocationButtons(ctx, locationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int), handler.formatCallbackQuery)
-
-		txt := fmt.Sprintf("Traceroute to %s is starting...", destination)
-		// Send initial message with buttons
-		msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: update.Message.Chat.ID,
-			Text:   txt,
+			MessageID: msg.ID,
+			Text:      txt,
 			Entities: []models.MessageEntity{
 				{
 					Type:   models.MessageEntityTypePre,
@@ -109,70 +243,12 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup:     buttons,
-			ReplyParameters: replyParams,
+			ReplyMarkup: buttons,
 		})
-		if err != nil {
-			log.Printf("failed to send message: %v", err)
-		}
-		conversationKey := &pkgbot.ConversationKey{
-			ChatId: update.Message.Chat.ID,
-			MsgId:  msg.ID,
-		}
-
-		initialMessage := pkgbot.MessageRecord{
-			DateTime: time.Unix(int64(update.Message.Date), 0),
-			Content:  update.Message.Text,
-		}
-		ctx, canceller := context.WithCancel(ctx)
-		if err := conversationMng.CheckIn(ctx, conversationKey, initialMessage, canceller); err != nil {
-			log.Printf("failed to checkin, conversationKey=%q", conversationKey.String())
-		}
-
-		time.Sleep(streamInterval)
-
-		pingRequest := &pkgtui.PingRequestDescriptor{
-			PreferV4:     pingCLI.IPv4,
-			PreferV6:     pingCLI.IPv6,
-			Sources:      []string{locationCode},
-			Destinations: []string{destination},
-			Count:        pingCLI.Count,
-			Traceroute:   true,
-		}
-		evDataCh := provider.GetEvents(ctx, pingRequest)
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("conversationKey=%q, cancelled", conversationKey.String())
-				return
-			case ev, ok := <-evDataCh:
-				if !ok {
-					// no more data to consume
-					return
-				}
-				statsWriter.WriteEvent(ev)
-				txt := statsWriter.GetHumanReadableText()
-				// Edit the original message with the statistics
-				_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{
-					ChatID:    update.Message.Chat.ID,
-					MessageID: msg.ID,
-					Text:      txt,
-					Entities: []models.MessageEntity{
-						{
-							Type:   models.MessageEntityTypePre,
-							Offset: 0,
-							Length: len(txt),
-						},
-					},
-					ReplyMarkup: buttons,
-				})
-				if err != nil {
-					log.Printf("failed to edit message: %v", err)
-				}
-				<-time.After(streamInterval)
-			}
-		}
+		return err
 	}
+
+	handler.doHandleTraceroute(ctx, tracerouteCLI, locationCode, updateMessage)
 }
 
 func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -180,10 +256,8 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
-	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
-	convMngr := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
-	statsWriter := pkgtuitraceroute.NewTraceStatsBuilder()
+	provider := handler.PingEventsProvider
+	convMngr := handler.ConversationManager
 
 	activeLocationCode := handler.parseCallbackQuery(update.CallbackQuery.Data)
 
@@ -202,7 +276,6 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	var destination string = ""
 	if len(histMsgs) == 0 {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatId,
@@ -211,16 +284,14 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	cliString := pkgbot.TrimCommandPrefix(histMsgs[0].Content)
-	pingCLI, _, err := handler.parseCLIString(cliString)
-	if err != nil {
+	tracerouteCLI, ok := histMsgs[0].InitialCommand.(*TracerouteCLI)
+	if !ok {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatId,
-			Text:   fmt.Sprintf("Error: %v. Usage: %s", err, handler.GetUsage()),
+			Text:   "Missing history context, please start a new conversation",
 		})
 		return
 	}
-	destination = pingCLI.Destination
 
 	doEditMsg := func(chatId int64, msgId int, txt string) error {
 		_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{
@@ -234,50 +305,16 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, ctx.Value(CtxKeyTGBtnLayoutCol).(int), handler.formatCallbackQuery),
+			ReplyMarkup: GetLocationButtons(ctx, activeLocationCode, provider, handler.getBtnLayoutCols(), handler.formatCallbackQuery),
 		})
 		return err
 	}
 
-	if err := doEditMsg(chatId, msgId, fmt.Sprintf("Traceroute to %s is starting...", destination)); err != nil {
+	if err := doEditMsg(chatId, msgId, fmt.Sprintf("Traceroute to %s is starting...", tracerouteCLI.Destination)); err != nil {
 		log.Printf("failed to edit message: %v", err)
 	}
 
-	// Emulate network latency and middleware overhead
-	time.Sleep(1000 * time.Millisecond)
+	<-time.After(handler.StreamIntv)
 
-	pingRequest := &pkgtui.PingRequestDescriptor{
-		PreferV4:     pingCLI.IPv4,
-		PreferV6:     pingCLI.IPv6,
-		Sources:      []string{activeLocationCode},
-		Destinations: []string{destination},
-		Count:        pingCLI.Count,
-		Traceroute:   true,
-	}
-	evDataCh := provider.GetEvents(ctx, pingRequest)
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("conversationKey=%q, cancelled", conversationKey.String())
-			return
-		case ev, ok := <-evDataCh:
-			if !ok {
-				// Answer the callback query to remove the loading state (only once, after all updates)
-				_, err = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
-					CallbackQueryID: update.CallbackQuery.ID,
-				})
-				if err != nil {
-					log.Printf("failed to answer callback query: %v", err)
-				}
-				return
-			}
-			statsWriter.WriteEvent(ev)
-			txt := statsWriter.GetHumanReadableText()
-			// Edit the original message with the statistics
-			if err := doEditMsg(chatId, msgId, txt); err != nil {
-				log.Printf("failed to edit message: %v", err)
-			}
-			<-time.After(streamInterval)
-		}
-	}
+	handler.doHandleTraceroute(ctx, tracerouteCLI, activeLocationCode, func(msg string) error { return doEditMsg(chatId, msgId, msg) })
 }
