@@ -74,7 +74,7 @@ func (handler *ProbeHandler) GetUsage() string {
 
 func (handler *ProbeHandler) parseCLIString(cliString string) (*ProbeCLI, *kong.Context, error) {
 
-	cliSegs := pkgutils.SplitBySpace(cliString)
+	cliSegs := strings.Fields(cliString)
 	if len(cliSegs) == 0 {
 		return nil, nil, errors.New("no arguments provided")
 	}
@@ -131,7 +131,6 @@ func (handler *ProbeHandler) HandleProbeCancelQueryCallback(ctx context.Context,
 	conversationKey := &pkgbot.ConversationKey{
 		ChatId: chatId,
 		MsgId:  msgId,
-		FromId: update.CallbackQuery.From.ID,
 	}
 	ctx, canceller := context.WithCancel(ctx)
 	defer canceller()
@@ -386,7 +385,6 @@ func (handler *ProbeHandler) HandleProbe(ctx context.Context, b *bot.Bot, update
 	if lastMsgId != nil {
 		conversationKey := &pkgbot.ConversationKey{
 			ChatId: chatId,
-			FromId: update.Message.From.ID,
 			MsgId:  *lastMsgId,
 		}
 

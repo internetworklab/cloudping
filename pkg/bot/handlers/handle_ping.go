@@ -14,7 +14,6 @@ import (
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgtuiping "github.com/internetworklab/cloudping/pkg/tui/ping"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type PingCLI struct {
@@ -31,7 +30,7 @@ func (handler *PingCommandHandler) GetUsage() string {
 }
 
 func (handler *PingCommandHandler) parseCLIString(cliString string) (*PingCLI, *kong.Context, error) {
-	cliSegs := pkgutils.SplitBySpace(cliString)
+	cliSegs := strings.Fields(cliString)
 	if len(cliSegs) == 0 {
 		return nil, nil, errors.New("no arguments provided")
 	}
@@ -62,12 +61,18 @@ func (handler *PingCommandHandler) parseCallbackQuery(pingCallbackData string) s
 }
 
 func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, update *models.Update) {
+
 	provider := ctx.Value(CtxKeyPingEVProvider).(pkgtui.PingEventsProvider)
 	statsWriter := &pkgtuiping.PingStatisticsBuilder{}
 	streamInterval := ctx.Value(CtxKeyTxtStreamIntv).(time.Duration)
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
 	if update.Message != nil {
+		replyParams := &models.ReplyParameters{
+			ChatID:    update.Message.Chat.ID,
+			MessageID: update.Message.ID,
+		}
+
 		cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
 		pingCLI, _, err := handler.parseCLIString(cliString)
 		if err != nil {
@@ -105,14 +110,14 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: buttons,
+			ReplyMarkup:     buttons,
+			ReplyParameters: replyParams,
 		})
 		if err != nil {
 			log.Printf("failed to send message: %v", err)
 		}
 		conversationKey := &pkgbot.ConversationKey{
 			ChatId: update.Message.Chat.ID,
-			FromId: update.Message.From.ID,
 			MsgId:  msg.ID,
 		}
 
@@ -125,8 +130,7 @@ func (handler *PingCommandHandler) HandlePing(ctx context.Context, b *bot.Bot, u
 			log.Printf("failed to checkin, conversationKey=%q", conversationKey.String())
 		}
 
-		// Emulate network latency and middleware overhead
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(streamInterval)
 
 		pingRequest := &pkgtui.PingRequestDescriptor{
 			PreferV4:     pingCLI.IPv4,
@@ -188,7 +192,6 @@ func (handler *PingCommandHandler) HandlePingQueryCallback(ctx context.Context, 
 	conversationKey := pkgbot.ConversationKey{
 		ChatId: chatId,
 		MsgId:  msgId,
-		FromId: update.CallbackQuery.From.ID,
 	}
 	ctx, canceller := context.WithCancel(ctx)
 	defer canceller()

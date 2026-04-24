@@ -14,7 +14,6 @@ import (
 	pkgbot "github.com/internetworklab/cloudping/pkg/bot"
 	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
 	pkgtuitraceroute "github.com/internetworklab/cloudping/pkg/tui/traceroute"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type TracerouteCLI struct {
@@ -31,7 +30,7 @@ func (handler *TracerouteCommandHandler) GetUsage() string {
 }
 
 func (handler *TracerouteCommandHandler) parseCLIString(cliString string) (*TracerouteCLI, *kong.Context, error) {
-	cliSegs := pkgutils.SplitBySpace(cliString)
+	cliSegs := strings.Fields(cliString)
 	if len(cliSegs) == 0 {
 		return nil, nil, errors.New("no arguments provided")
 	}
@@ -68,6 +67,11 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 	conversationMng := ctx.Value(CtxKeyConversationManager).(*pkgbot.ConversationManager)
 
 	if update.Message != nil {
+		replyParams := &models.ReplyParameters{
+			ChatID:    update.Message.Chat.ID,
+			MessageID: update.Message.ID,
+		}
+
 		cliString := pkgbot.TrimCommandPrefix(update.Message.Text)
 		pingCLI, _, err := handler.parseCLIString(cliString)
 		if err != nil {
@@ -105,14 +109,14 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 					Length: len(txt),
 				},
 			},
-			ReplyMarkup: buttons,
+			ReplyMarkup:     buttons,
+			ReplyParameters: replyParams,
 		})
 		if err != nil {
 			log.Printf("failed to send message: %v", err)
 		}
 		conversationKey := &pkgbot.ConversationKey{
 			ChatId: update.Message.Chat.ID,
-			FromId: update.Message.From.ID,
 			MsgId:  msg.ID,
 		}
 
@@ -125,8 +129,7 @@ func (handler *TracerouteCommandHandler) HandleTraceroute(ctx context.Context, b
 			log.Printf("failed to checkin, conversationKey=%q", conversationKey.String())
 		}
 
-		// Emulate network latency and middleware overhead
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(streamInterval)
 
 		pingRequest := &pkgtui.PingRequestDescriptor{
 			PreferV4:     pingCLI.IPv4,
@@ -189,8 +192,8 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 	conversationKey := pkgbot.ConversationKey{
 		ChatId: chatId,
 		MsgId:  msgId,
-		FromId: update.CallbackQuery.From.ID,
 	}
+
 	ctx, canceller := context.WithCancel(ctx)
 	defer canceller()
 	histMsgs, err := convMngr.CutIn(ctx, &conversationKey, canceller)
