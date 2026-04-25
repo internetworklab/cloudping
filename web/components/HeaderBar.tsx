@@ -7,9 +7,12 @@ import TelegramIcon from "@mui/icons-material/Telegram";
 import { ModeSelector } from "@/components/ModeSelector";
 import { About } from "./about";
 import { Fragment, useState } from "react";
+import { GiveUsAStar } from "./GiveUsAStar";
 
 export function HeaderBar() {
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
+  const repoOwner = process.env["NEXT_PUBLIC_REPO_OWNER"];
+  const repoName = process.env["NEXT_PUBLIC_REPO_NAME"];
   const tgInviteLink = process.env["NEXT_PUBLIC_TG_INVITE_LINK"];
   const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
@@ -47,6 +50,9 @@ export function HeaderBar() {
                 Project
               </Link>
             </Tooltip>
+          )}
+          {repoOwner && repoName && (
+            <GiveUsAStar repoOwner={repoOwner} repoName={repoName} />
           )}
           {!!tgInviteLink && (
             <Tooltip title={"Join our Telegram group"}>

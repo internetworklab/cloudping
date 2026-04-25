@@ -230,6 +230,8 @@ The Web UI is built with Next.js and supports the following build-time environme
 | `NEXT_PUBLIC_API_ENDPOINT`     | API endpoint to use (prefix prepended to every request path) | `/api`                                                                    |
 | `NEXT_PUBLIC_GITHUB_REPO`      | Link to the repository website                               | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
 | `NEXT_PUBLIC_TG_INVITE_LINK`   | Invite link for the Telegram discussion group                | Just a URL                                                                |
+| `NEXT_PUBLIC_REPO_OWNER`       | For display count of stargazers of the repo in the page      | `internetworklab`                                                         |
+| `NEXT_PUBLIC_REPO_NAME`        | For display count of stargazers of the repo in the page      | `cloudping`                                                               |
 | `NEXT_PUBLIC_SITE_NAME`        | WebUI title for self-hosted deployments                      | `CloudPing`                                                               |
 | `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend   | `127.0.0.11:53`                                                           |
 
