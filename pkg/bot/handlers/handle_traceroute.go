@@ -284,12 +284,11 @@ func (handler *TracerouteCommandHandler) HandleTraceQueryCallback(ctx context.Co
 		return
 	}
 
-	cliString := histMsgs[0].Content
-	tracerouteCLI, err := handler.parseCLIString(cliString)
-	if err != nil {
+	tracerouteCLI, ok := histMsgs[0].InitialCommand.(*TracerouteCLI)
+	if !ok {
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatId,
-			Text:   fmt.Sprintf("Error: %v. Usage: %s", err, handler.GetUsage()),
+			Text:   "Missing history context, please start a new conversation",
 		})
 		return
 	}
