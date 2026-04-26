@@ -4,6 +4,8 @@
 
 CloudPing is a web-based ping and traceroute tool that provides an easy-to-use interface, giving users an intuitive view of network information such as how IP packets are routed and what the round-trip latency looks like. We believe that making these network tracing and diagnostic capabilities available via the cloud is a great idea — hence the name "CloudPing".
 
+![main screenshot](docs/screenshots/screenshot_main.png)
+
 ## Features
 
 - Ping, Traceroute (UDP flavor or ICMP flavor)
@@ -17,6 +19,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - JWT authentication
 - Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
 - Email Interface (Interact via Email)
+- Multiple GeoIP/IPInfo provider support (IPInfo.io, IP2Location.io, and IPRegistry.co)
 - Prometheus Metrics
 
 ## Architecture
