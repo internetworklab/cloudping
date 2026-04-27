@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/internetworklab/cloudping/pkg/session"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 const defaultJWTCookieKey = "jwt"
@@ -121,9 +121,11 @@ type JWTIssuer interface {
 	IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error)
 
 	RefreshToken(ctx context.Context, w http.ResponseWriter, r *http.Request, currentToken string) (renewed bool, token string, err error)
+
+	ValidateToken(ctx context.Context, token string) (valid bool, reason string, err error)
 }
 
-func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
+func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer, allowAnonymous bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenString := extractJWTFromRequest(r)
 
@@ -131,6 +133,11 @@ func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
 
 		var err error
 		if tokenString == "" {
+			if !allowAnonymous {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("No valid token is present and allowAnonymous is set to %v", allowAnonymous)})
+				return
+			}
 			tokenString, err = issuer.IssueToken(ctx, w, r)
 			if err != nil {
 				log.Printf("WithJWTCookieIssue: remote %s failed to issue token: %v", pkgutils.GetRemoteAddr(r), err)
@@ -141,6 +148,17 @@ func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
 			ctx = context.WithValue(ctx, pkgutils.CtxKeyJustIssuedJWTToken, tokenString)
 			log.Printf("WithJWTCookieIssue: remote %s issued token", pkgutils.GetRemoteAddr(r))
 		} else {
+			valid, reason, err := issuer.ValidateToken(ctx, tokenString)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("Can not validate token, internal error: %v", err)})
+				return
+			}
+			if !valid && !allowAnonymous {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("No valid token is present and allowAnonymous is set to %v, details: %s", allowAnonymous, reason)})
+				return
+			}
 			var renewed bool
 			renewed, tokenString, err = issuer.RefreshToken(ctx, w, r, tokenString)
 			if err != nil {
@@ -214,6 +232,27 @@ func (s *SessionBasedJWTIssuer) IssueToken(ctx context.Context, w http.ResponseW
 
 	s.setJWTCookie(w, tokenString)
 	return tokenString, nil
+}
+
+// returns: (valid, reason, error)
+func (s *SessionBasedJWTIssuer) ValidateToken(ctx context.Context, tokenString string) (bool, string, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
+		return s.secret, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil {
+		return false, "Invalid token", nil
+	}
+
+	claims, ok := token.Claims.(*jwt.RegisteredClaims)
+	if !ok || claims.ID == "" {
+		return false, "Invalid token, not a *jwt.RegisteredClaims", nil
+	}
+
+	if !s.sessionManager.ValidateSession(ctx, claims.ID) {
+		return false, "Session is expired", nil
+	}
+
+	return true, "", nil
 }
 
 func (s *SessionBasedJWTIssuer) RefreshToken(ctx context.Context, w http.ResponseWriter, r *http.Request, currentToken string) (bool, string, error) {

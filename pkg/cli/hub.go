@@ -56,6 +56,7 @@ type HubCmd struct {
 	JWTAuthSecretFromFile string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
 	JWTIssuerId           string        `name:"jwt-issuer-id" help:"The issuer ID to use when issuing JWT tokens" default:"cloudping-hub"`
 	SessionTTL            time.Duration `name:"session-ttl" help:"The time-to-live for issued sessions" default:"1h"`
+	AllowAnonymous        bool          `name:"allow-anonymous" help:"Set this to true to allow anonymous visitor (i.e. those who can not present a valid token in their request)" default:"true"`
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
@@ -227,9 +228,9 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	jwtIssuer := pkgauth.NewSessionBasedJWTIssuer(sessionManager, jwtSec, hubCmd.JWTIssuerId, nil)
 
 	// the middlewares would be triggered in the reverse order of how they were chained,
-	// the last chained middleware would get call first.
+	// for each request, the last chained middleware would get traversed first, then the 2nd last, then the 3rd, etc..
 	publicHandler = pkgauth.WithJWTAuth(publicHandler, jwtSec, false)
-	publicHandler = pkgauth.WithJWTCookieIssue(publicHandler, jwtIssuer)
+	publicHandler = pkgauth.WithJWTCookieIssue(publicHandler, jwtIssuer, hubCmd.AllowAnonymous)
 	publicHandler = pkghandler.WithSlidingWindowRatelimit(publicHandler, hubCmd.PublicSlidingWindowRateLimitWindowLength, hubCmd.PublicSlidingWindowRateLimitNumRequests, pkgutils.GetRemoteAddr)
 
 	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {
