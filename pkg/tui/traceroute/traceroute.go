@@ -16,7 +16,9 @@ type PeerStats struct {
 	ISP           string
 	City          string
 	CountryAlpha2 string
-	Events        []pkgtui.PingEvent // sorted by seq
+
+	// sorted by seq
+	Events []pkgtui.PingEvent `json:"-"`
 
 	// Calculated stats
 	ReceivedCount int

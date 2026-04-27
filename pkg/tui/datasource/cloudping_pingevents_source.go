@@ -31,6 +31,7 @@ type CloudPingEventsProvider struct {
 }
 
 const defaultPingIntv time.Duration = 1000 * time.Millisecond
+const minPktIntvAllowed time.Duration = 50 * time.Millisecond
 const defaultProbeIntv time.Duration = 50 * time.Millisecond
 const defaultPktTiemoutMs int = 3000
 const defaultIPInfoProviderName string = "auto"
@@ -58,6 +59,12 @@ func (provider *CloudPingEventsProvider) getPingURL(pingRequestDesc *pkgtui.Ping
 		From:             pingRequestDesc.Sources,
 		Targets:          pingRequestDesc.Destinations,
 		IntvMilliseconds: int(defaultPingIntv.Milliseconds()),
+	}
+	if pingRequestDesc.PingIntv != 0 {
+		pingRequest.IntvMilliseconds = max(
+			int(minPktIntvAllowed.Milliseconds()),
+			int(pingRequestDesc.PingIntv.Milliseconds()),
+		)
 	}
 
 	if pingRequestDesc.ICMP {

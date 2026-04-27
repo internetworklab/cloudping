@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 )
@@ -91,6 +92,7 @@ type PingRequestDescriptor struct {
 	ICMP         bool
 	UDP          bool
 	TCP          bool
+	PingIntv     time.Duration
 }
 
 type LocationDescriptor struct {

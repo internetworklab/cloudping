@@ -11,6 +11,7 @@ const (
 	CtxKeyJustIssuedJWTToken      = CtxKey("just_issued_jwt_token")
 	CtxKeySessionId               = CtxKey("session_id")
 	CtxKeySubjectId               = CtxKey("subject_id") // it's basically the globally unique user id
+	CtxKeyRealIP                  = CtxKey("real_ip")
 )
 
 type GlobalSharedContext struct {

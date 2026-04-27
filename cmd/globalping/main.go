@@ -17,11 +17,13 @@ import (
 var buildVersionText []byte
 
 var CLI struct {
-	Agent pkgcli.AgentCmd   `cmd:"agent"`
-	Hub   pkgcli.HubCmd     `cmd:"hub"`
-	Bot   pkgcli.BotCmd     `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
-	Jwt   pkgcli.JWTCommand `cmd:"jwt" help:"Manage JWT tokens"`
-	Tui   pkgcli.TUICmd     `cmd:"tui" help:"Text-based UI HTTP Handler"`
+	Agent pkgcli.AgentCmd        `cmd:"agent"`
+	Hub   pkgcli.HubCmd          `cmd:"hub"`
+	Bot   pkgcli.BotCmd          `cmd:"bot" help:"Serve as a Telegram bot to respond user's requests"`
+	Jwt   pkgcli.JWTCommand      `cmd:"jwt" help:"Manage JWT tokens"`
+	Tui   pkgcli.TUICmd          `cmd:"tui" help:"Text-based UI HTTP Handler"`
+	MCP   pkgcli.MCPServerCmd    `cmd:"mcp" help:"Serve as an MCP server"`
+	Web   pkgcli.WebAuthProxyCmd `cmd:"web" help:"Serve as an HTTP auth proxy that transparently pass the request to the upstream or redirect the user back to the login page"`
 }
 
 func main() {

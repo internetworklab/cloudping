@@ -2,120 +2,14 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"slices"
-	"strings"
+	"time"
 
-	"github.com/internetworklab/cloudping/pkg/session"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
-
-const defaultJWTCookieKey = "jwt"
-
-func extractJWTFromRequest(r *http.Request) string {
-	tokenFromCtx := r.Context().Value(pkgutils.CtxKeyJustIssuedJWTToken)
-	if tokenFromCtx != nil {
-		return tokenFromCtx.(string)
-	}
-
-	tokenString := r.Header.Get("Authorization")
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-	tokenString = strings.TrimPrefix(tokenString, "bearer ")
-
-	if tokenString != "" {
-		return tokenString
-	}
-
-	if cookie, err := r.Cookie(defaultJWTCookieKey); err == nil {
-		return cookie.Value
-	}
-
-	return ""
-}
-
-func QuicValidateJWT(tokenString *string, secret []byte) (bool, *jwt.Token, error) {
-	if tokenString == nil {
-		return false, nil, fmt.Errorf("token string is nil")
-	}
-	token, err := jwt.ParseWithClaims(*tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
-		// in future, one should determine which key to use base on the 'kid' (key ID) claim of the token
-		// for now, return a fixed key is enough, becuase the people who use our service can be counted on one hand.
-		return secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to parse JWT: %v", err)
-	}
-
-	if token == nil {
-		return false, nil, fmt.Errorf("couldn't get JWT token")
-	}
-
-	if !token.Valid {
-		return false, nil, fmt.Errorf("invalid JWT")
-	}
-
-	return true, token, nil
-}
-
-func WithJWTAuth(handler http.Handler, secret []byte, rejectInvalid bool) http.Handler {
-	if secret == nil {
-		panic("WithJWTAuth: JWT secret must not be nil")
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := extractJWTFromRequest(r)
-
-		rejectWithErr := func(nextHandler http.Handler, rejectInvalid bool) {
-			if rejectInvalid {
-				unAuthErr := pkgutils.ErrorResponse{Error: "Unauthorized"}
-				remote := pkgutils.GetRemoteAddr(r)
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(unAuthErr)
-				log.Printf("Remote peer %s is rejected by JWT middleware", remote)
-			} else {
-				nextHandler.ServeHTTP(w, r)
-			}
-		}
-
-		if tokenString == "" {
-			rejectWithErr(handler, rejectInvalid)
-			return
-		}
-
-		if len(secret) < 4 {
-			log.Printf("WARN: JWT middleware is applied but JWT secret is too short, is that reliable ? (")
-		}
-
-		valid, token, err := QuicValidateJWT(&tokenString, secret)
-		if err != nil || !valid || token == nil {
-			rejectWithErr(handler, rejectInvalid)
-			return
-		}
-
-		ctx := r.Context()
-		if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok {
-			if claims.ID != "" {
-				ctx = context.WithValue(ctx, pkgutils.CtxKeySessionId, claims.ID)
-			}
-			if claims.Subject != "" {
-				ctx = context.WithValue(ctx, pkgutils.CtxKeySubjectId, claims.Subject)
-			}
-		} else {
-			// if the user is authenticated, and the type of claims map isn't like what is expected,
-			// it's definitely something wrong with the code, so it's a unrecoverable error.
-			log.Panicf("the token claims map wasn't parsed as *jwt.RegisteredClaims! it's %T", token.Claims)
-		}
-
-		r = r.WithContext(ctx)
-
-		handler.ServeHTTP(w, r)
-	})
-}
 
 type JWTIssuer interface {
 	IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error)
@@ -123,72 +17,132 @@ type JWTIssuer interface {
 	RefreshToken(ctx context.Context, w http.ResponseWriter, r *http.Request, currentToken string) (renewed bool, token string, err error)
 }
 
-func WithJWTCookieIssue(handler http.Handler, issuer JWTIssuer) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := extractJWTFromRequest(r)
+type JWTValidator interface {
+	ValidateToken(ctx context.Context, token string) (valid bool, reason string, err error)
 
-		ctx := r.Context()
-
-		var err error
-		if tokenString == "" {
-			tokenString, err = issuer.IssueToken(ctx, w, r)
-			if err != nil {
-				log.Printf("WithJWTCookieIssue: remote %s failed to issue token: %v", pkgutils.GetRemoteAddr(r), err)
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "failed to issue token"})
-				return
-			}
-			ctx = context.WithValue(ctx, pkgutils.CtxKeyJustIssuedJWTToken, tokenString)
-			log.Printf("WithJWTCookieIssue: remote %s issued token", pkgutils.GetRemoteAddr(r))
-		} else {
-			var renewed bool
-			renewed, tokenString, err = issuer.RefreshToken(ctx, w, r, tokenString)
-			if err != nil {
-				log.Printf("WithJWTCookieIssue: remote %s failed to refresh token: %v", pkgutils.GetRemoteAddr(r), err)
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "failed to renew token"})
-				return
-			}
-			if renewed {
-				ctx = context.WithValue(ctx, pkgutils.CtxKeyJustIssuedJWTToken, tokenString)
-				log.Printf("WithJWTCookieIssue: remote %s renewed token", pkgutils.GetRemoteAddr(r))
-			}
-		}
-
-		handler.ServeHTTP(w, r.WithContext(ctx))
-	})
+	ParseToken(ctx context.Context, token string) (*jwt.RegisteredClaims, error)
 }
 
-type SessionBasedJWTIssuer struct {
-	sessionManager session.SessionManager
-	secret         []byte
+type StaticKeyJWTValidator struct {
+	secretProvider SecretProvider
+}
+
+func NewStaticKeyJWTValidator(secretProvider SecretProvider) *StaticKeyJWTValidator {
+	return &StaticKeyJWTValidator{
+		secretProvider: secretProvider,
+	}
+}
+
+func (s *StaticKeyJWTValidator) ParseToken(ctx context.Context, tokenString string) (*jwt.RegisteredClaims, error) {
+	_, claims, _, err := s.doValidateToken(ctx, tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("internal error, can not parse token: %w", err)
+	}
+	if claims == nil {
+		return nil, fmt.Errorf("token is nil or invalid")
+	}
+	return claims, nil
+}
+
+// returns: (valid, claims, reason, error)
+func (s *StaticKeyJWTValidator) doValidateToken(_ context.Context, tokenString string) (*jwt.Token, *jwt.RegisteredClaims, string, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, s.secretProvider.GetSecret, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil {
+		return nil, nil, fmt.Sprintf("Invalid token: %s", err.Error()), nil
+	}
+	if token == nil || !token.Valid {
+		return nil, nil, "Invalid token: token is nil or invalid", nil
+	}
+
+	claims, ok := token.Claims.(*jwt.RegisteredClaims)
+	if !ok || claims.ID == "" {
+		return nil, nil, "Invalid token, can not parse a *jwt.RegisteredClaims", nil
+	}
+
+	return token, claims, "", nil
+}
+
+// returns: (valid, reason, error)
+func (s *StaticKeyJWTValidator) ValidateToken(ctx context.Context, tokenString string) (bool, string, error) {
+	token, _, reason, err := s.doValidateToken(ctx, tokenString)
+	if err != nil {
+		return false, "", fmt.Errorf("internal error, can not validate token: %w", err)
+	}
+	if token == nil {
+		return false, reason, nil
+	}
+	return true, "", nil
+}
+
+type SecretProvider interface {
+	// `GetSecret` returns the signing key for the given token.
+	// Implementations must handle `token` being `nil` (used during signing).
+	GetSecret(token *jwt.Token) (any, error)
+}
+
+type StaticSecretProvider struct {
+	secret []byte
+}
+
+func NewStaticSecretProvider(secret []byte) *StaticSecretProvider {
+	return &StaticSecretProvider{secret: secret}
+}
+
+func (provider *StaticSecretProvider) GetSecret(_ *jwt.Token) (any, error) {
+	return provider.secret, nil
+}
+
+const defaultValidity time.Duration = 7 * 24 * 60 * 60 * time.Second
+
+type StaticKeyJWTIssuer struct {
 	issuer         string
 	cookieModifier func(*http.Cookie) *http.Cookie
+	validator      JWTValidator
+	secretProvider SecretProvider
+	validity       time.Duration
 }
 
-func NewSessionBasedJWTIssuer(sessionManager session.SessionManager, secret []byte, issuer string, cookieModifier func(*http.Cookie) *http.Cookie) *SessionBasedJWTIssuer {
-	return &SessionBasedJWTIssuer{
-		sessionManager: sessionManager,
-		secret:         secret,
+// pass a validity of 0 to use default validity
+func NewStaticKeyJWTIssuer(secretProvider SecretProvider, validity time.Duration, issuer string, cookieModifier func(*http.Cookie) *http.Cookie) *StaticKeyJWTIssuer {
+	if validity == 0 {
+		validity = defaultValidity
+	}
+	return &StaticKeyJWTIssuer{
 		issuer:         issuer,
 		cookieModifier: cookieModifier,
+		validator:      NewStaticKeyJWTValidator(secretProvider),
+		secretProvider: secretProvider,
+		validity:       validity,
 	}
 }
 
 const AudSession string = "session"
 
-func (s *SessionBasedJWTIssuer) signTokenFromDescriptor(descriptor *session.SessionDescriptor) (string, error) {
+func (s *StaticKeyJWTIssuer) signShortLiveToken(notBefore time.Time, notAfter time.Time) (string, error) {
+	if s.issuer == "" {
+		return "", errors.New("issuer is not specified, can not sign token")
+	}
+
+	secret, err := s.secretProvider.GetSecret(nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret to sign the token: %w", err)
+	}
+
+	randomId := uuid.NewString()
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
 		Issuer:    s.issuer,
-		IssuedAt:  jwt.NewNumericDate(descriptor.StartedAt),
-		ExpiresAt: jwt.NewNumericDate(descriptor.ExpiredAt),
-		ID:        descriptor.Id,
+		IssuedAt:  jwt.NewNumericDate(notBefore),
+		ExpiresAt: jwt.NewNumericDate(notAfter),
+		ID:        randomId,
 		Audience:  jwt.ClaimStrings{AudSession},
 	})
-	return token.SignedString(s.secret)
+	return token.SignedString(secret)
 }
 
-func (s *SessionBasedJWTIssuer) setJWTCookie(w http.ResponseWriter, tokenString string) {
+const defaultJWTCookieKey = "jwt"
+
+func (s *StaticKeyJWTIssuer) setJWTCookie(w http.ResponseWriter, tokenString string) {
 	cookie := &http.Cookie{
 		Name:     defaultJWTCookieKey,
 		Value:    tokenString,
@@ -201,13 +155,14 @@ func (s *SessionBasedJWTIssuer) setJWTCookie(w http.ResponseWriter, tokenString 
 	http.SetCookie(w, cookie)
 }
 
-func (s *SessionBasedJWTIssuer) IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error) {
-	descriptor, err := s.sessionManager.CreateSession(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to create session: %v", err)
+func (s *StaticKeyJWTIssuer) IssueToken(ctx context.Context, w http.ResponseWriter, r *http.Request) (string, error) {
+	now := time.Now()
+
+	if s.validity == 0 {
+		return "", fmt.Errorf("validity is 0, cannot issue token")
 	}
 
-	tokenString, err := s.signTokenFromDescriptor(descriptor)
+	tokenString, err := s.signShortLiveToken(now, now.Add(s.validity))
 	if err != nil {
 		return "", fmt.Errorf("failed to sign token: %v", err)
 	}
@@ -216,26 +171,14 @@ func (s *SessionBasedJWTIssuer) IssueToken(ctx context.Context, w http.ResponseW
 	return tokenString, nil
 }
 
-func (s *SessionBasedJWTIssuer) RefreshToken(ctx context.Context, w http.ResponseWriter, r *http.Request, currentToken string) (bool, string, error) {
-	token, err := jwt.ParseWithClaims(currentToken, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
-		return s.secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+// the token will be refreshed only when it's deemed to be invalid
+func (s *StaticKeyJWTIssuer) RefreshToken(ctx context.Context, w http.ResponseWriter, r *http.Request, currentToken string) (bool, string, error) {
+	valid, _, err := s.validator.ValidateToken(ctx, currentToken)
 	if err != nil {
-		token, err := s.IssueToken(ctx, w, r)
-		return true, token, err
+		return false, "", fmt.Errorf("failed to refresh token, invalid error: %w", err)
 	}
 
-	claims, ok := token.Claims.(*jwt.RegisteredClaims)
-	if !ok || claims.ID == "" {
-		token, err := s.IssueToken(ctx, w, r)
-		return true, token, err
-	}
-
-	if slices.Index([]string(claims.Audience), AudSession) == -1 {
-		return false, currentToken, nil
-	}
-
-	if !s.sessionManager.ValidateSession(ctx, claims.ID) {
+	if !valid {
 		token, err := s.IssueToken(ctx, w, r)
 		return true, token, err
 	}

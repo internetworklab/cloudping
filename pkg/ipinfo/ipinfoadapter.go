@@ -29,6 +29,14 @@ func (reg *IPInfoProviderRegistry) GetAdapter(name string) (GeneralIPInfoAdapter
 	return nil, nil
 }
 
+func (reg *IPInfoProviderRegistry) GetRegisteredAdapterNames() []string {
+	names := make([]string, 0)
+	for name := range reg.registeredAdapters {
+		names = append(names, name)
+	}
+	return names
+}
+
 type ExactLocation struct {
 	Longitude, Latitude float64
 }

@@ -8,12 +8,8 @@ import (
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
 	pkgtuidatasource "github.com/internetworklab/cloudping/pkg/tui/datasource"
 	pkgtuihandler "github.com/internetworklab/cloudping/pkg/tui/handler"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
-
-type AuthenticationMethod string
-
-const AuthenticationMethodCloudflare AuthenticationMethod = "cloudflare"
-const AuthenticationMethodNone AuthenticationMethod = "none"
 
 type TUICmd struct {
 	ListenAddress            string               `name:"listen-address" help:"Address to listen on." type:"string" default:":8084"`
@@ -25,7 +21,7 @@ type TUICmd struct {
 	CloudflareAUDEnv         string               `name:"cloudflare-aud-env" help:"The name of the environment variable of the Application Audience (AUD) tag for your application, it must be specified when using --authentication=cloudflare, see https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag"`
 }
 
-func (tuiCmd *TUICmd) Run() error {
+func (tuiCmd *TUICmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	pingEVProvider := &pkgtuidatasource.CloudPingEventsProvider{
 		APIPrefix: tuiCmd.UpstreamAPIPrefix,
 		JWTToken:  os.Getenv(tuiCmd.UpstreamJWTSecretFromEnv),
@@ -34,8 +30,9 @@ func (tuiCmd *TUICmd) Run() error {
 
 	mux := http.NewServeMux()
 	cliHTTPHandler := &pkgtuihandler.CLIHandler{
-		LocationsProvider:  pingEVProvider,
-		PingEventsProvider: pingEVProvider,
+		LocationsProvider:   pingEVProvider,
+		PingEventsProvider:  pingEVProvider,
+		GlobalSharedContext: sharedCtx,
 	}
 	emailCLIHTTPHandler := &pkgtuihandler.WithEmailHandler{
 		Next: cliHTTPHandler,

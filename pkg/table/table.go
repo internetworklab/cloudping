@@ -20,6 +20,8 @@ type StyledTable struct {
 	Cells [][]StyledCell
 }
 
+// `maxColWidth` take effect only when it's been set to a positive integer, 
+// the overflow chars will be replaced with "..."
 func (tb *StyledTable) GetHumanReadableText(colGap int, rowGap int, maxColWidth int) string {
 	if len(tb.Cells) == 0 {
 		return "(No data)"

@@ -8,11 +8,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
 	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	quicGo "github.com/quic-go/quic-go"
 )
 
@@ -20,11 +20,11 @@ type QUICHandler struct {
 	Cr                *pkgconnreg.ConnRegistry
 	Timeout           time.Duration
 	Listener          *quicGo.Listener
-	JWTSecret         []byte
 	ShouldValidateJWT bool
+	JWTValidator      pkgauth.JWTValidator
 }
 
-func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg []byte) error {
+func (handler *QUICHandler) handleMessage(ctx context.Context, key string, stream *quicGo.Stream, msg []byte) error {
 	cr := handler.Cr
 	var payload pkgframing.MessagePayload
 	err := json.Unmarshal(msg, &payload)
@@ -35,23 +35,13 @@ func (handler *QUICHandler) handleMessage(key string, stream *quicGo.Stream, msg
 	if payload.Register != nil {
 		var registeredClaims *jwt.RegisteredClaims = nil
 		if handler.ShouldValidateJWT {
-			valid, token, err := pkgauth.QuicValidateJWT(payload.Register.Token, handler.JWTSecret)
+			tokenString := payload.Register.Token
+			if tokenString == nil {
+				return fmt.Errorf("token string is nil")
+			}
+			registeredClaims, err = handler.JWTValidator.ParseToken(ctx, *tokenString)
 			if err != nil {
 				return fmt.Errorf("failed to validate JWT of peer %s: %v", key, err)
-			}
-
-			if !valid {
-				return fmt.Errorf("invalid JWT of peer %s", key)
-			}
-
-			if token == nil {
-				return fmt.Errorf("couldn't get JWT token of peer %s", key)
-			}
-
-			var ok bool
-			registeredClaims, ok = token.Claims.(*jwt.RegisteredClaims)
-			if !ok {
-				return fmt.Errorf("couldn't convert JWT claims to registered claims of peer %s", key)
 			}
 		}
 
@@ -99,6 +89,7 @@ func (h *QUICHandler) Serve() {
 
 func (h *QUICHandler) Handle(conn *quicGo.Conn, remoteKey string) {
 	cr := h.Cr
+	ctx := conn.Context()
 
 	cr.OpenConnection(remoteKey, conn)
 	log.Printf("Connection opened for %s, total connections: %d", remoteKey, cr.Count())
@@ -144,7 +135,7 @@ func (h *QUICHandler) Handle(conn *quicGo.Conn, remoteKey string) {
 				scanner := bufio.NewScanner(stream)
 				for scanner.Scan() {
 					line := scanner.Bytes()
-					if err := h.handleMessage(remoteKey, stream, line); err != nil {
+					if err := h.handleMessage(ctx, remoteKey, stream, line); err != nil {
 						connErrCh <- fmt.Errorf("failed to handle text message from %s: %v", remoteKey, err)
 						return
 					}

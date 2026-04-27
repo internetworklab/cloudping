@@ -20,7 +20,6 @@ import (
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 	pkgproxy "github.com/internetworklab/cloudping/pkg/proxy"
 	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
-	pkgsession "github.com/internetworklab/cloudping/pkg/session"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	quicGo "github.com/quic-go/quic-go"
 )
@@ -56,6 +55,7 @@ type HubCmd struct {
 	JWTAuthSecretFromFile string        `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
 	JWTIssuerId           string        `name:"jwt-issuer-id" help:"The issuer ID to use when issuing JWT tokens" default:"cloudping-hub"`
 	SessionTTL            time.Duration `name:"session-ttl" help:"The time-to-live for issued sessions" default:"1h"`
+	AllowAnonymous        bool          `name:"allow-anonymous" help:"Set this to true to allow anonymous visitor (i.e. those who can not present a valid token in their request)" default:"true"`
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
@@ -223,13 +223,17 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/profile", &pkghandler.ProfileHandler{})
 
 	var publicHandler http.Handler = muxerPublic
-	sessionManager := pkgsession.NewInMemorySessionManager(hubCmd.SessionTTL)
-	jwtIssuer := pkgauth.NewSessionBasedJWTIssuer(sessionManager, jwtSec, hubCmd.JWTIssuerId, nil)
+
+	keyProvider := pkgauth.NewStaticSecretProvider(jwtSec)
+	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider)
 
 	// the middlewares would be triggered in the reverse order of how they were chained,
-	// the last chained middleware would get call first.
-	publicHandler = pkgauth.WithJWTAuth(publicHandler, jwtSec, false)
-	publicHandler = pkgauth.WithJWTCookieIssue(publicHandler, jwtIssuer)
+	publicHandler = pkghandler.WithLog(publicHandler)
+	var authRejectHandler http.Handler = nil
+	if hubCmd.AllowAnonymous {
+		authRejectHandler = publicHandler
+	}
+	publicHandler = pkghandler.WithJWTAuth(publicHandler, jwtValidator, authRejectHandler)
 	publicHandler = pkghandler.WithSlidingWindowRatelimit(publicHandler, hubCmd.PublicSlidingWindowRateLimitWindowLength, hubCmd.PublicSlidingWindowRateLimitNumRequests, pkgutils.GetRemoteAddr)
 
 	if listenAddress := hubCmd.WebSocketListenAddress; listenAddress != "" {
@@ -286,8 +290,8 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			Cr:                cr,
 			Timeout:           wsTimeout,
 			Listener:          quicListener,
-			JWTSecret:         jwtSec,
 			ShouldValidateJWT: true,
+			JWTValidator:      jwtValidator,
 		}
 		go quicHandler.Serve()
 		log.Printf("Listening and serving on UDP address %s for JWT-authenticated handlers", quicListener.Addr())

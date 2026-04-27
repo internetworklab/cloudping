@@ -27,20 +27,20 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 CloudPing is designed with a three-layer architecture that separates user-facing interfaces, control logic, and actual probe execution.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Access Layer                                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                       │
-│  │  Web Client  │  │ Telegram Bot │  │ Email Client │                       │
-│  │  (Next.js)   │  │   (@bot)     │  │  (SMTP/IMAP) │                       │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                       │
-└─────────┼─────────────────┼─────────────────┼─────────────────────────────-─┘
-          │                 │                 │
-          │                 │                 ▼
-          │                 │      ┌────────────────────┐
-          │                 │      │   Email Gateway    │
-          │                 │      │(Cloudflare Email)  │
-          │                 │      └─────────┬──────────┘
-          ▼                 ▼                ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                           Access Layer                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │  Web Client  │  │ Telegram Bot │  │ Email Client │  │    MCP Server     │  │
+│  │  (Next.js)   │  │   (@bot)     │  │ (SMTP/IMAP)  │  │ (Streamable HTTP) │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬────────────┘  │
+└─────────┼─────────────────┼─────────────────┼─────────────────┼───────────────┘
+          │                 │                 │                 │
+          │                 │                 ▼                 │
+          │                 │      ┌────────────────────┐       │
+          │                 │      │   Email Gateway    │       │
+          │                 │      │(Cloudflare Email)  │       │
+          │                 │      └─────────┬──────────┘       │
+          ▼                 ▼                ▼                  ▼                  
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           Control Layer                                     │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -61,7 +61,7 @@ CloudPing is designed with a three-layer architecture that separates user-facing
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Access Layer**: End-user interfaces including the web UI, Telegram bot, and email interface.
+- **Access Layer**: End-user interfaces including the web UI, Telegram bot, email interface, and MCP server.
 - **Email Gateway**: Sits between the Email Client and the Hub. Currently, the only supported email gateway is **Cloudflare Email Service**.
 - **Control Layer**: The Hub acts as the central coordinator — it exposes the public API, authenticates requests, and routes probe tasks to the appropriate agents.
 - **Execution Layer**: Distributed agents running at various geographical locations that perform the actual network measurements (ping, traceroute, DNS, HTTP probes) and stream results back to the hub.

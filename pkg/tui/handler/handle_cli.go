@@ -10,24 +10,28 @@ import (
 
 	"github.com/alecthomas/kong"
 	pkgtui "github.com/internetworklab/cloudping/pkg/tui"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 )
 
 type CLICtx struct {
-	ResponseWriter     http.ResponseWriter
-	Request            *http.Request
-	LocationsProvider  pkgtui.LocationsProvider
-	PingEventsProvider pkgtui.PingEventsProvider
+	ResponseWriter      http.ResponseWriter
+	Request             *http.Request
+	LocationsProvider   pkgtui.LocationsProvider
+	PingEventsProvider  pkgtui.PingEventsProvider
+	GlobalSharedContext *pkgutils.GlobalSharedContext
 }
 
 type CLI struct {
 	List       ListCMD       `cmd:"" name:"list" help:"List all available nodes"`
 	Ping       PingCMD       `cmd:"" name:"ping" help:"Ping"`
+	Version    VersionCMD    `cmd:"" name:"version" help:"Show the build version of the instance"`
 	Traceroute TracerouteCMD `cmd:"" name:"traceroute" help:"Traceroute"`
 }
 
 type CLIHandler struct {
-	LocationsProvider  pkgtui.LocationsProvider
-	PingEventsProvider pkgtui.PingEventsProvider
+	LocationsProvider   pkgtui.LocationsProvider
+	PingEventsProvider  pkgtui.PingEventsProvider
+	GlobalSharedContext *pkgutils.GlobalSharedContext
 }
 
 func (handler *CLIHandler) getCLIArgsFromRawBody(r *http.Request) ([]string, error) {
@@ -66,10 +70,11 @@ func (handler *CLIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	globalCtx := &CLICtx{
-		ResponseWriter:     w,
-		Request:            r,
-		LocationsProvider:  handler.LocationsProvider,
-		PingEventsProvider: handler.PingEventsProvider,
+		ResponseWriter:      w,
+		Request:             r,
+		LocationsProvider:   handler.LocationsProvider,
+		PingEventsProvider:  handler.PingEventsProvider,
+		GlobalSharedContext: handler.GlobalSharedContext,
 	}
 
 	cli := &CLI{}
