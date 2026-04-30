@@ -11,10 +11,10 @@ import (
 	"slices"
 	"time"
 
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
-	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	quicGo "github.com/quic-go/quic-go"
 	quicHttp3 "github.com/quic-go/quic-go/http3"
 )
@@ -39,6 +39,7 @@ const (
 	AttributeKeySupportPMTU         = "SupportPMTU"
 	AttributeKeySupportTCP          = "SupportTCP"
 	AttributeKeyVersion             = "Version"
+	AttributeKeyLivenessCheck       = "LivenessCheck"
 )
 
 type NodeRegistrationAgent struct {
@@ -52,7 +53,7 @@ type NodeRegistrationAgent struct {
 	SeqID             *uint64
 	TickInterval      time.Duration
 	intialized        bool
-	NodeAttributes    pkgconnreg.ConnectionAttributes
+	NodeAttributes    ConnectionAttributes
 	LogEchoReplies    bool
 	ServerName        string
 	CustomCertPool    *x509.CertPool
@@ -100,7 +101,7 @@ func (agent *NodeRegistrationAgent) runReceiver() error {
 
 		if payload != nil && payload.Echo != nil &&
 			payload.Echo.CorrelationID == *agent.CorrelationID &&
-			payload.Echo.Direction == pkgconnreg.EchoDirectionS2C {
+			payload.Echo.Direction == EchoDirectionS2C {
 
 			rtt, onTrip, backTrip := payload.Echo.CalculateDelays(time.Now())
 			if agent.LogEchoReplies {
@@ -162,26 +163,26 @@ func (agent *NodeRegistrationAgent) connectWs(tlsConfig *tls.Config) (*websocket
 	return c, nil
 }
 
-func (agent *NodeRegistrationAgent) getRegisterPayload() pkgframing.MessagePayload {
-	registerPayload := pkgconnreg.RegisterPayload{
+func (agent *NodeRegistrationAgent) getRegisterPayload() MessagePayload {
+	registerPayload := RegisterPayload{
 		NodeName: agent.NodeName,
 		Token:    agent.Token,
 	}
-	registerMsg := pkgframing.MessagePayload{
+	registerMsg := MessagePayload{
 		Register: &registerPayload,
 	}
 	if agent.NodeAttributes != nil {
-		registerMsg.AttributesAnnouncement = &pkgconnreg.AttributesAnnouncementPayload{
+		registerMsg.AttributesAnnouncement = &AttributesAnnouncementPayload{
 			Attributes: agent.NodeAttributes,
 		}
 	}
 	return registerMsg
 }
 
-func (agent *NodeRegistrationAgent) getTickMsg() (pkgframing.MessagePayload, uint64) {
-	msg := pkgframing.MessagePayload{
-		Echo: &pkgconnreg.EchoPayload{
-			Direction:     pkgconnreg.EchoDirectionC2S,
+func (agent *NodeRegistrationAgent) getTickMsg() (MessagePayload, uint64) {
+	msg := MessagePayload{
+		Echo: &EchoPayload{
+			Direction:     EchoDirectionC2S,
 			CorrelationID: *agent.CorrelationID,
 			Timestamp:     uint64(time.Now().UnixMilli()),
 			SeqID:         *agent.SeqID,
@@ -297,7 +298,7 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 				errCh <- err
 				return
 			case <-ticker.C:
-				var msg pkgframing.MessagePayload
+				var msg MessagePayload
 				msg, *agent.SeqID = agent.getTickMsg()
 				if err := agent.sendMsgPayload(&msg); err != nil {
 					errCh <- fmt.Errorf("failed to send echo message: %v", err)
@@ -310,7 +311,7 @@ func (agent *NodeRegistrationAgent) doRun(ctx context.Context) error {
 	return <-errCh
 }
 
-func (agent *NodeRegistrationAgent) sendMsgPayload(payload *pkgframing.MessagePayload) error {
+func (agent *NodeRegistrationAgent) sendMsgPayload(payload *MessagePayload) error {
 	if agent.UseQUIC {
 		if agent.quicStream == nil {
 			panic("quic stream shouldn't be nil when using QUIC")
@@ -325,8 +326,8 @@ func (agent *NodeRegistrationAgent) sendMsgPayload(payload *pkgframing.MessagePa
 	return agent.wsConn.WriteJSON(payload)
 }
 
-func (agent *NodeRegistrationAgent) recvMsgPayload() (*pkgframing.MessagePayload, error) {
-	var payload pkgframing.MessagePayload
+func (agent *NodeRegistrationAgent) recvMsgPayload() (*MessagePayload, error) {
+	var payload MessagePayload
 	if agent.UseQUIC {
 		if agent.quicStream == nil {
 			panic("quic stream shouldn't be nil when using QUIC")
@@ -349,4 +350,260 @@ func (agent *NodeRegistrationAgent) recvMsgPayload() (*pkgframing.MessagePayload
 	}
 
 	return &payload, nil
+}
+
+type MessagePayload struct {
+	Register               *RegisterPayload               `json:"register,omitempty"`
+	Echo                   *EchoPayload                   `json:"echo,omitempty"`
+	AttributesAnnouncement *AttributesAnnouncementPayload `json:"attributes_announcement,omitempty"`
+}
+
+type RegisterPayload struct {
+	NodeName string  `json:"node_name"`
+	Token    *string `json:"token,omitempty"`
+}
+
+type EchoDirection string
+
+const (
+	EchoDirectionC2S EchoDirection = "ping"
+	EchoDirectionS2C EchoDirection = "pong"
+)
+
+type EchoPayload struct {
+	Direction       EchoDirection `json:"direction"`
+	CorrelationID   string        `json:"correlation_id"`
+	ServerTimestamp uint64        `json:"server_timestamp"`
+	Timestamp       uint64        `json:"timestamp"`
+	SeqID           uint64        `json:"seq_id"`
+}
+
+type AttributesAnnouncementPayload struct {
+	Attributes  ConnectionAttributes `json:"attributes,omitempty"`
+	Withdrawals []string             `json:"withdrawals,omitempty"`
+}
+
+func (echopayload *EchoPayload) CalculateDelays(now time.Time) (rtt time.Duration, onTrip time.Duration, backTrip time.Duration) {
+	rtt = now.Sub(time.UnixMilli(int64(echopayload.Timestamp)))
+	onTrip = time.UnixMilli(int64(echopayload.ServerTimestamp)).Sub(time.UnixMilli(int64(echopayload.Timestamp)))
+	backTrip = now.Sub(time.UnixMilli(int64(echopayload.ServerTimestamp)))
+
+	return rtt, onTrip, backTrip
+}
+
+type ConnectionAttributes map[string]string
+
+type AuthenticationType string
+
+const (
+	AuthenticationTypeJWT  AuthenticationType = "jwt"
+	AuthenticationTypeMTLS AuthenticationType = "mtls"
+)
+
+type ConnRegistryData struct {
+	NodeName       *string               `json:"node_name,omitempty"`
+	ConnectedAt    uint64                `json:"connected_at"`
+	RegisteredAt   *uint64               `json:"registered_at,omitempty"`
+	LastHeartbeat  *uint64               `json:"last_heartbeat,omitempty"`
+	Attributes     ConnectionAttributes  `json:"attributes,omitempty"`
+	QUICConn       *quicGo.Conn          `json:"-"`
+	Claims         *jwt.RegisteredClaims `json:"-"`
+	Authentication AuthenticationType    `json:"authentication"`
+}
+
+func (regData *ConnRegistryData) Clone() *ConnRegistryData {
+	return cloneConnRegistryData(regData).(*ConnRegistryData)
+}
+
+func cloneConnRegistryData(dataany interface{}) interface{} {
+	data, ok := dataany.(*ConnRegistryData)
+	if !ok {
+		panic(fmt.Errorf("failed to convert dataany to *ConnRegistryData"))
+	}
+
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Failed to marshal connection registry data: %v", err)
+		panic(err)
+	}
+
+	var cloned *ConnRegistryData
+	err = json.Unmarshal(bytes, &cloned)
+	if err != nil {
+		panic(err)
+	}
+	if data.QUICConn != nil {
+		cloned.QUICConn = data.QUICConn
+	}
+	return cloned
+}
+
+type ConnRegistry struct {
+	datastore pkgsafemap.DataStore
+}
+
+func (cr *ConnRegistry) OpenConnection(key string, quicConn *quicGo.Conn) {
+	now := uint64(time.Now().Unix())
+	connRegData := &ConnRegistryData{
+		ConnectedAt: now,
+		Attributes:  make(ConnectionAttributes),
+		QUICConn:    quicConn,
+	}
+	cr.datastore.Set(key, connRegData)
+}
+
+func (cr *ConnRegistry) CloseConnection(key string) {
+	cr.datastore.Delete(key)
+}
+
+func (cr *ConnRegistry) Register(key string, payload RegisterPayload, claims *jwt.RegisteredClaims) error {
+	log.Printf("Registering connection from %s, node name: %s", key, payload.NodeName)
+
+	_, found := cr.datastore.Get(key, func(valany interface{}) error {
+		entry := valany.(*ConnRegistryData)
+		now := uint64(time.Now().Unix())
+		if entry == nil {
+			return fmt.Errorf("connection from %s not found in registry", key)
+		}
+		entry.NodeName = &payload.NodeName
+		entry.RegisteredAt = &now
+
+		if claims != nil {
+			entry.Claims = claims
+			entry.Authentication = AuthenticationTypeJWT
+		} else {
+			entry.Authentication = AuthenticationTypeMTLS
+		}
+
+		return nil
+	})
+
+	if !found {
+		return fmt.Errorf("connection from %s not found in registry", key)
+	}
+	return nil
+}
+
+func (cr *ConnRegistry) UpdateHeartbeat(key string) error {
+	_, found := cr.datastore.Get(key, func(valany interface{}) error {
+		entry := valany.(*ConnRegistryData)
+		now := uint64(time.Now().Unix())
+		entry.LastHeartbeat = &now
+
+		return nil
+	})
+
+	if !found {
+		return fmt.Errorf("connection from %s not found in registry", key)
+	}
+	return nil
+}
+
+func (cr *ConnRegistry) SetAttributes(connkey string, announcement *AttributesAnnouncementPayload) error {
+	_, found := cr.datastore.Get(connkey, func(valany interface{}) error {
+		entry := valany.(*ConnRegistryData)
+		attrs := make(ConnectionAttributes)
+		for k, v := range entry.Attributes {
+			attrs[k] = v
+		}
+		for _, withdrawal := range announcement.Withdrawals {
+			delete(attrs, withdrawal)
+		}
+		for k, v := range announcement.Attributes {
+			attrs[k] = v
+		}
+		entry.Attributes = attrs
+		return nil
+	})
+	if !found {
+		return fmt.Errorf("connection from %s not found in registry", connkey)
+	}
+	return nil
+}
+
+type NodeTesterFunc func(nodeKey string, nodeData *ConnRegistryData) bool
+
+func (cr *ConnRegistry) DumpFunc(tester NodeTesterFunc) map[string]*ConnRegistryData {
+	dummped := cr.datastore.Dump(cloneConnRegistryData)
+	result := make(map[string]*ConnRegistryData)
+	for k, v := range dummped {
+		if v == nil {
+			continue
+		}
+		nodeData := v.(*ConnRegistryData)
+		if tester != nil && !tester(k, nodeData) {
+			continue
+		}
+		result[k] = nodeData
+	}
+	return result
+}
+
+func IsLiveNode(_ string, nodeData *ConnRegistryData) bool {
+	if nodeData != nil {
+		if attributes := nodeData.Attributes; attributes != nil {
+			if val, hit := attributes[AttributeKeyLivenessCheck]; hit && val == "true" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (cr *ConnRegistry) DumpLive() map[string]*ConnRegistryData {
+	return cr.DumpFunc(IsLiveNode)
+}
+
+func (cr *ConnRegistry) Dump() map[string]*ConnRegistryData {
+	return cr.DumpFunc(nil)
+}
+
+func (cr *ConnRegistry) Count() int {
+	return cr.datastore.Len()
+}
+
+func NewConnRegistry(datastore pkgsafemap.DataStore) *ConnRegistry {
+	connReg := &ConnRegistry{
+		datastore: datastore,
+	}
+	return connReg
+}
+
+// If all matches, return true, otherwise return false
+func (regData *ConnRegistryData) TestAgainstAttributes(expected ConnectionAttributes) (allMatch bool) {
+	allMatch = true
+	for k, v := range expected {
+		actual, ok := regData.Attributes[k]
+		if !ok {
+			allMatch = false
+			break
+		}
+		if actual != v {
+			allMatch = false
+			break
+		}
+	}
+	return allMatch
+}
+
+func (cr *ConnRegistry) SearchByAttributes(expected ConnectionAttributes) (data *ConnRegistryData, err error) {
+	err = cr.datastore.Walk(func(key string, value interface{}) (keepgoing bool, err error) {
+		entry, ok := value.(*ConnRegistryData)
+		if !ok {
+			return false, fmt.Errorf("failed to convert value to *ConnRegistryData")
+		}
+
+		keepgoing = !entry.TestAgainstAttributes(expected)
+		if !keepgoing {
+			data = cloneConnRegistryData(entry).(*ConnRegistryData)
+		}
+
+		return keepgoing, nil
+	})
+
+	return data, err
+}
+
+func (cr *ConnRegistry) Shutdown(ctx context.Context) error {
+	return nil
 }

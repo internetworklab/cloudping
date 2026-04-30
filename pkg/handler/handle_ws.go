@@ -7,19 +7,18 @@ import (
 	"net/http"
 	"time"
 
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
-	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 )
 
 type WebsocketHandler struct {
 	upgrader *websocket.Upgrader
-	cr       *pkgconnreg.ConnRegistry
+	cr       *pkgnodereg.ConnRegistry
 	timeout  time.Duration
 }
 
-func NewWebsocketHandler(upgrader *websocket.Upgrader, cr *pkgconnreg.ConnRegistry, timeout time.Duration) *WebsocketHandler {
+func NewWebsocketHandler(upgrader *websocket.Upgrader, cr *pkgnodereg.ConnRegistry, timeout time.Duration) *WebsocketHandler {
 	return &WebsocketHandler{
 		upgrader: upgrader,
 		cr:       cr,
@@ -33,7 +32,7 @@ func (handler *WebsocketHandler) handleTextMessage(key string, conn *websocket.C
 		return fmt.Errorf("connection registry is not set")
 	}
 
-	var payload pkgframing.MessagePayload
+	var payload pkgnodereg.MessagePayload
 	err := json.Unmarshal(msg, &payload)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal message from %s: %v", key, err)
@@ -43,11 +42,11 @@ func (handler *WebsocketHandler) handleTextMessage(key string, conn *websocket.C
 		cr.Register(key, *payload.Register, nil)
 	}
 	if payload.Echo != nil {
-		if payload.Echo.Direction == pkgconnreg.EchoDirectionC2S {
+		if payload.Echo.Direction == pkgnodereg.EchoDirectionC2S {
 			cr.UpdateHeartbeat(key)
-			responsePayload := pkgframing.MessagePayload{
-				Echo: &pkgconnreg.EchoPayload{
-					Direction:       pkgconnreg.EchoDirectionS2C,
+			responsePayload := pkgnodereg.MessagePayload{
+				Echo: &pkgnodereg.EchoPayload{
+					Direction:       pkgnodereg.EchoDirectionS2C,
 					CorrelationID:   payload.Echo.CorrelationID,
 					ServerTimestamp: uint64(time.Now().UnixMilli()),
 					Timestamp:       payload.Echo.Timestamp,

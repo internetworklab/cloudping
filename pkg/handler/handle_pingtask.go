@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
@@ -27,7 +26,7 @@ const (
 )
 
 type PingTaskHandler struct {
-	ConnRegistry            *pkgconnreg.ConnRegistry
+	ConnRegistry            *pkgnodereg.ConnRegistry
 	ClientTLSConfig         *tls.Config
 	Resolver                *net.Resolver
 	OutOfRespondRangePolicy OutOfRespondRangePolicy
@@ -41,12 +40,12 @@ const (
 	defaultRemotePingerPath = "/simpleping"
 )
 
-func getConnWithCapability(connRegistry *pkgconnreg.ConnRegistry, from string, capability string) *pkgconnreg.ConnRegistryData {
+func getConnWithCapability(connRegistry *pkgnodereg.ConnRegistry, from string, capability string) *pkgnodereg.ConnRegistryData {
 	if connRegistry == nil {
 		return nil
 	}
 
-	regData, err := connRegistry.SearchByAttributes(pkgconnreg.ConnectionAttributes{
+	regData, err := connRegistry.SearchByAttributes(pkgnodereg.ConnectionAttributes{
 		pkgnodereg.AttributeKeyPingCapability: "true",
 		pkgnodereg.AttributeKeyNodeName:       from,
 	})
@@ -71,7 +70,7 @@ func tryStripPort(addrport string) string {
 	return addrport
 }
 
-func getTransport(regData *pkgconnreg.ConnRegistryData) (*string, *http.Client) {
+func getTransport(regData *pkgnodereg.ConnRegistryData) (*string, *http.Client) {
 	if regData.QUICConn != nil {
 		tr := &quicHttp3.Transport{}
 		httpClient := &http.Client{
@@ -98,7 +97,7 @@ func getTransport(regData *pkgconnreg.ConnRegistryData) (*string, *http.Client) 
 	return nil, nil
 }
 
-func checkRemotePingerPolicy(ctx context.Context, regData *pkgconnreg.ConnRegistryData, target string, resolver *net.Resolver, outOfRangePolicy OutOfRespondRangePolicy) bool {
+func checkRemotePingerPolicy(ctx context.Context, regData *pkgnodereg.ConnRegistryData, target string, resolver *net.Resolver, outOfRangePolicy OutOfRespondRangePolicy) bool {
 	// When OutOfRange policy is 'deny', the hub will carefully consider the RespondRange attribute announced by the agent,
 	// and make sure the ping request won't be distributed to whom that are not desired.
 	if outOfRangePolicy == ORPolicyDeny && regData.Attributes[pkgnodereg.AttributeKeyRespondRange] != "" {

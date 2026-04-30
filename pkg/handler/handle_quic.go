@@ -11,13 +11,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
-	pkgframing "github.com/internetworklab/cloudping/pkg/framing"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	quicGo "github.com/quic-go/quic-go"
 )
 
 type QUICHandler struct {
-	Cr                *pkgconnreg.ConnRegistry
+	Cr                *pkgnodereg.ConnRegistry
 	Timeout           time.Duration
 	Listener          *quicGo.Listener
 	ShouldValidateJWT bool
@@ -26,7 +25,7 @@ type QUICHandler struct {
 
 func (handler *QUICHandler) handleMessage(ctx context.Context, key string, stream *quicGo.Stream, msg []byte) error {
 	cr := handler.Cr
-	var payload pkgframing.MessagePayload
+	var payload pkgnodereg.MessagePayload
 	err := json.Unmarshal(msg, &payload)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal message from %s: %v", key, err)
@@ -50,11 +49,11 @@ func (handler *QUICHandler) handleMessage(ctx context.Context, key string, strea
 		}
 	}
 	if payload.Echo != nil {
-		if payload.Echo.Direction == pkgconnreg.EchoDirectionC2S {
+		if payload.Echo.Direction == pkgnodereg.EchoDirectionC2S {
 			cr.UpdateHeartbeat(key)
-			responsePayload := pkgframing.MessagePayload{
-				Echo: &pkgconnreg.EchoPayload{
-					Direction:       pkgconnreg.EchoDirectionS2C,
+			responsePayload := pkgnodereg.MessagePayload{
+				Echo: &pkgnodereg.EchoPayload{
+					Direction:       pkgnodereg.EchoDirectionS2C,
 					CorrelationID:   payload.Echo.CorrelationID,
 					ServerTimestamp: uint64(time.Now().UnixMilli()),
 					Timestamp:       payload.Echo.Timestamp,

@@ -15,9 +15,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgproxy "github.com/internetworklab/cloudping/pkg/proxy"
 	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
@@ -65,6 +65,8 @@ type HubCmd struct {
 
 	PublicSlidingWindowRateLimitWindowLength time.Duration `name:"public-sw-rl-window-len" help:"The window length for the public sliding window rate limiter" default:"15s"`
 	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"300"`
+
+	RequireLivenessCheck bool `name:"require-liveness-check" help:"Require agent to support liveness check for being allowed to show up in the API" default:"true"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -109,7 +111,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	sm := pkgsafemap.NewSafeMap()
-	cr := pkgconnreg.NewConnRegistry(sm)
+	cr := pkgnodereg.NewConnRegistry(sm)
 
 	wsTimeout := defaultWebSocketTimeout
 	if timeout, err := time.ParseDuration(hubCmd.WebSocketTimeout); err == nil && int64(timeout) >= 0 {
@@ -158,7 +160,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	}
 
 	wsHandler := pkghandler.NewWebsocketHandler(&upgrader, cr, wsTimeout)
-	connsHandler := pkghandler.NewConnsHandler(cr)
+	connsHandler := pkghandler.NewConnsHandler(cr, hubCmd.RequireLivenessCheck)
 	var clientTLSConfig *tls.Config = &tls.Config{}
 	if customCAs != nil {
 		clientTLSConfig.RootCAs = customCAs

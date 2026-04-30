@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 	pkgmyprom "github.com/internetworklab/cloudping/pkg/myprom"
@@ -117,6 +116,8 @@ type AgentCmd struct {
 	SharedOutboundRateLimitRefreshInterval string   `name:"shared-outbound-ratelimit-refresh-interval" help:"The refresh interval of the shared outbound rate limit" default:"1s"`
 	RespondRange                           []string `help:"A list of CIDR ranges defining what queries this agent will respond to, by default, all queries will be responded."`
 	DomainRespondRange                     []string `help:"A domain respond range, when present, is a list of domain patterns that defines what queries will be responded in terms of domain name."`
+
+	SupportLivenessCheck bool `name:"support-liveness-check" help:"Declare its ability of doing livenss check from the hub-to-agent communication channel" default:"true"`
 }
 
 func (agentCmd *AgentCmd) getJWTToken() string {
@@ -461,9 +462,13 @@ func (agentCmd *AgentCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			if quicServer := agentCmd.QUICServerAddress; quicServer != "" {
 				log.Printf("Hub's QUIC server: %s", quicServer)
 			}
-			attributes := make(pkgconnreg.ConnectionAttributes)
+			attributes := make(pkgnodereg.ConnectionAttributes)
 			attributes[pkgnodereg.AttributeKeyPingCapability] = "true"
 			attributes[pkgnodereg.AttributeKeyNodeName] = nodeName
+
+			if agentCmd.SupportLivenessCheck {
+				attributes[pkgnodereg.AttributeKeyLivenessCheck] = "true"
+			}
 
 			if httpEndpoint := agentCmd.HttpEndpoint; httpEndpoint != "" {
 				log.Printf("Advertising HTTP endpoint: %s", httpEndpoint)

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	pkgconnreg "github.com/internetworklab/cloudping/pkg/connreg"
 	pkgnodereg "github.com/internetworklab/cloudping/pkg/nodereg"
 	pkgpinger "github.com/internetworklab/cloudping/pkg/pinger"
 	pkgraw "github.com/internetworklab/cloudping/pkg/raw"
@@ -499,7 +498,7 @@ func (provider *CloudPingEventsProvider) GetAllLocations(ctx context.Context) ([
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var conns map[string]*pkgconnreg.ConnRegistryData
+	var conns map[string]*pkgnodereg.ConnRegistryData
 	if err := json.Unmarshal(body, &conns); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
