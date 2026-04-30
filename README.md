@@ -19,6 +19,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - JWT authentication
 - Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
 - Email Interface (Interact via Email)
+- MCP Server (StreamableHTTP + JWT)
 - Multiple GeoIP/IPInfo provider support (IPInfo.io, IP2Location.io, and IPRegistry.co)
 - Prometheus Metrics
 
@@ -149,6 +150,10 @@ Help sent back from the Email interface (screenshot):
 
 ![Help from email reply](docs/screenshots/8.png)
 
+Use tools exposed from the MCP server:
+
+![Use MCP](docs/screenshots/9.png)
+
 ## API Design
 
 ### Endpoints Overview
@@ -221,6 +226,29 @@ Send email to [cli at ping2.sh](mailto:cli@ping2.sh) to interact with it. To dis
 | `list`       | List all available probe nodes with their network (ASN/ISP) and location information.                                                     | `list`                              |
 | `ping`       | Ping one or more destinations from specified source nodes. Supports IPv4/IPv6 preference and protocol selection (ICMP/UDP/TCP).           | `ping example.com`                  |
 | `traceroute` | Traceroute to a destination from a specified source node with hop-by-hop latency details. Supports IPv4/IPv6 preference and packet count. | `traceroute -s lax1 -c example.com` |
+
+## Connect to the MCP server
+
+First, grab a JWT token by sending a `/token` command to the bot [@as4242421771_bot](http://t.me/as4242421771_bot).
+
+Our MCP server: `https://mcp.ping2.sh/mcp` .
+
+Authentication: JWT.
+
+Example MCP server config on Warp.dev terminal's MCP server setting page:
+
+```json
+{
+  "cloudping": {
+    "headers": {
+      "Authorization": "bearer the_token_here"
+    },
+    "url": "https://mcp.ping2.sh/mcp"
+  }
+}
+```
+
+And the MCP client have to be able to use StreamableHTTP as transport.
 
 ## Deployment
 
