@@ -67,6 +67,8 @@ type HubCmd struct {
 	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"300"`
 
 	RequireLivenessCheck bool `name:"require-liveness-check" help:"Require agent to support liveness check for being allowed to show up in the API" default:"true"`
+
+	SubjectBlacklistTxtPath string `name:"subj-blacklist-path" help:"Path to the blacklist text file, one subject id per a line"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -227,7 +229,18 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	var publicHandler http.Handler = muxerPublic
 
 	keyProvider := pkgauth.NewStaticSecretProvider(jwtSec)
-	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider)
+	var blProvider pkgauth.BlackListProvider
+	if hubCmd.SubjectBlacklistTxtPath != "" {
+		txtblProvider, err := pkgauth.NewTextBasedBlackListProvider(hubCmd.SubjectBlacklistTxtPath)
+		if err != nil {
+			log.Panicf("failed to load blacklist file: %v", err)
+			return err
+		}
+		blProvider = txtblProvider
+	} else {
+		blProvider = pkgauth.NewNullBlackListProvider()
+	}
+	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, blProvider)
 
 	// the middlewares would be triggered in the reverse order of how they were chained,
 	publicHandler = pkghandler.WithLog(publicHandler)

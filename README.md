@@ -41,7 +41,7 @@ CloudPing is designed with a three-layer architecture that separates user-facing
           │                 │      │   Email Gateway    │       │
           │                 │      │(Cloudflare Email)  │       │
           │                 │      └─────────┬──────────┘       │
-          ▼                 ▼                ▼                  ▼                  
+          ▼                 ▼                ▼                  ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           Control Layer                                     │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -260,13 +260,15 @@ The Web UI is built with Next.js and supports the following build-time environme
 | ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_API_ENDPOINT`     | API endpoint to use (prefix prepended to every request path) | `/api`                                                                    |
 | `NEXT_PUBLIC_GITHUB_REPO`      | Link to the repository website                               | [internetworklab/cloudping](https://github.com/internetworklab/cloudping) |
-| `NEXT_PUBLIC_TG_INVITE_LINK`   | Invite link for the Telegram discussion group                | Just a URL                                                                |
 | `NEXT_PUBLIC_REPO_OWNER`       | For display count of stargazers of the repo in the page      | `internetworklab`                                                         |
 | `NEXT_PUBLIC_REPO_NAME`        | For display count of stargazers of the repo in the page      | `cloudping`                                                               |
 | `NEXT_PUBLIC_SITE_NAME`        | WebUI title for self-hosted deployments                      | `CloudPing`                                                               |
 | `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend   | `127.0.0.11:53`                                                           |
+| `NEXT_PUBLIC_<NAME>_LOGIN_URL` | URL of <NAME> oauth login page                               | `/login/as/<name>`                                                        |
 
 These variables are evaluated at build time and embedded into the frontend bundle.
+
+For 3rd-parth OAuth2 Login, currently we supports: Github, Google, iEdon, Kioubit, Visitor, available env variables are: `NEXT_PUBLIC_GITHUB_LOGIN_URL`, `NEXT_PUBLIC_GOOGLE_LOGIN_URL`, `NEXT_PUBLIC_IEDON_LOGIN_URL`, `NEXT_PUBLIC_KIOUBIT_LOGIN_URL`, `NEXT_PUBLIC_VISITOR_LOGIN_URL`.
 
 ### Full Deployment (Docker Compose)
 

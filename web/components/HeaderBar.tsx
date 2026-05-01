@@ -8,12 +8,13 @@ import { ModeSelector } from "@/components/ModeSelector";
 import { About } from "./about";
 import { Fragment, useState } from "react";
 import { GiveUsAStar } from "./GiveUsAStar";
+import { AvatarIconMenu } from "./AvatarIconMenu";
 
 export function HeaderBar() {
   const repoAddr = process.env["NEXT_PUBLIC_GITHUB_REPO"];
   const repoOwner = process.env["NEXT_PUBLIC_REPO_OWNER"];
   const repoName = process.env["NEXT_PUBLIC_REPO_NAME"];
-  const tgInviteLink = process.env["NEXT_PUBLIC_TG_INVITE_LINK"];
+
   const [showAboutDialog, setShowAboutDialog] = useState<boolean>(false);
 
   return (
@@ -54,20 +55,7 @@ export function HeaderBar() {
           {repoOwner && repoName && (
             <GiveUsAStar repoOwner={repoOwner} repoName={repoName} />
           )}
-          {!!tgInviteLink && (
-            <Tooltip title={"Join our Telegram group"}>
-              <Link
-                underline="hover"
-                href={tgInviteLink}
-                target={"_blank"}
-                variant="caption"
-                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-              >
-                <TelegramIcon />
-                Chat
-              </Link>
-            </Tooltip>
-          )}
+
           <Tooltip title="More">
             <IconButton size="small" onClick={() => setShowAboutDialog(true)}>
               <MoreHorizIcon fontSize="small" />
@@ -83,6 +71,7 @@ export function HeaderBar() {
           }}
         >
           <ModeSelector />
+          <AvatarIconMenu />
         </Box>
       </Paper>
       <About open={showAboutDialog} onClose={() => setShowAboutDialog(false)} />

@@ -150,7 +150,7 @@ func (cmd *MCPServerCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Panicf("failed to get JWT secret: %v", err)
 		}
 		keyProvider := pkgauth.NewStaticSecretProvider(jwtSec)
-		jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider)
+		jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider())
 		handler = pkghandler.WithJWTAuth(handler, jwtValidator, nil)
 	}
 	handler = pkghandler.WithRealIP(handler)

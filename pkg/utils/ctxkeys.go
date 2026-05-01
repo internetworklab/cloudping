@@ -12,6 +12,7 @@ const (
 	CtxKeySessionId               = CtxKey("session_id")
 	CtxKeySubjectId               = CtxKey("subject_id") // it's basically the globally unique user id
 	CtxKeyRealIP                  = CtxKey("real_ip")
+	CtxKeyUsername                = CtxKey("username")
 )
 
 type GlobalSharedContext struct {

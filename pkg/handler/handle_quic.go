@@ -38,7 +38,7 @@ func (handler *QUICHandler) handleMessage(ctx context.Context, key string, strea
 			if tokenString == nil {
 				return fmt.Errorf("token string is nil")
 			}
-			registeredClaims, err = handler.JWTValidator.ParseToken(ctx, *tokenString)
+			registeredClaims, _, err = handler.JWTValidator.ParseToken(ctx, *tokenString)
 			if err != nil {
 				return fmt.Errorf("failed to validate JWT of peer %s: %v", key, err)
 			}

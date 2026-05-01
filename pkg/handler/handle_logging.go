@@ -24,7 +24,12 @@ func WithLog(next http.Handler) http.Handler {
 			sessId = sessIdAny.(string)
 		}
 
-		log.Printf("request realIp: %s, uri: %q, subj: %q, sessId: %q", realIp, uri, subj, sessId)
+		username := ""
+		if usernameAny := ctx.Value(pkgutils.CtxKeyUsername); usernameAny != nil {
+			username = usernameAny.(string)
+		}
+
+		log.Printf("request realIp: %s, uri: %q, subj: %q, sessId: %q, username: %q", realIp, uri, subj, sessId, username)
 
 		next.ServeHTTP(w, r)
 	})
