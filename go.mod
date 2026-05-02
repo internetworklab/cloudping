@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	codeberg.org/miekg/dns v0.6.70
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.1
 	github.com/alecthomas/kong v1.13.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/go-telegram/bot v1.17.0
@@ -47,6 +48,7 @@ require (
 	github.com/jaytaylor/html2text v0.0.0-20230321000545-74c2419ad056 // indirect
 	github.com/kolesa-team/go-webp v1.0.5 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect

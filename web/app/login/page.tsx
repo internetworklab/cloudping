@@ -10,6 +10,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import MicrosoftIcon from "@mui/icons-material/Microsoft";
 import kioubitLoginSVGDark from "./kioubit-login-dark.svg";
 import kioubitLoginSVGLight from "./kioubit-login-light.svg";
 import iedonLoginSVG from "./iedon-login.svg";
@@ -106,6 +107,12 @@ const loginOptions: LoginOption[] = [
     icon: () => <GoogleIcon />,
     displayName: "Google",
     loginURL: process.env["NEXT_PUBLIC_GOOGLE_LOGIN_URL"] ?? "",
+  },
+  {
+    name: "entra",
+    icon: () => <MicrosoftIcon />,
+    displayName: "Entra ID",
+    loginURL: process.env["NEXT_PUBLIC_ENTRA_LOGIN_URL"] ?? "",
   },
   {
     name: "iedon",

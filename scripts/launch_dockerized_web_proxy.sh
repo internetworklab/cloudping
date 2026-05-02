@@ -32,6 +32,12 @@ docker run \
       --kioubit-oauth-client-id-from-env="KIOUBIT_OAUTH_CLIENT_ID" \
       --kioubit-oauth-client-secret-from-env="KIOUBIT_OAUTH_CLIENT_SECRET" \
       --kioubit-oauth-redir-url="http://localhost:8092/login/as/kioubit/auth" \
+      --entra-id-tenant-id-from-env="ENTRA_ID_TENANT_ID" \
+      --entra-id-client-id-from-env="ENTRA_ID_CLIENT_ID" \
+      --entra-id-client-secret-from-env="ENTRA_ID_CLIENT_SECRET" \
+      --entra-id-redir-url="http://localhost:8092/login/as/entra/auth" \
       --default-backend="http://host.docker.internal:45844" \
       --add-white-list-path="/_next/" \
-      --add-white-list-path="/login/as/"
+      --add-white-list-path="/login/as/" \
+      --add-white-list-path="/login/" \
+      --add-white-list-path="/login"

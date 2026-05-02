@@ -16,7 +16,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - Basic IP information display (like ASN, Country, and probably Lat Lon)
 - API-first design, CLI friendly (can be access through http clients like `curl`)
 - QUIC for hub-agent communication support and NAT-traversal
-- JWT authentication with multi-provider SSO login (GitHub, Google, Generic OIDC, and guest/visitor)
+- JWT authentication with multi-provider SSO login (GitHub, Google, Microsoft Entra ID, Generic OIDC, and guest/visitor)
 - Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
 - Email Interface (Interact via Email)
 - MCP Server (StreamableHTTP + JWT)
@@ -268,7 +268,7 @@ The Web UI is built with Next.js and supports the following build-time environme
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
-For 3rd-parth OAuth2 Login, currently we supports: Github, Google, iEdon, Kioubit, Visitor, available env variables are: `NEXT_PUBLIC_GITHUB_LOGIN_URL`, `NEXT_PUBLIC_GOOGLE_LOGIN_URL`, `NEXT_PUBLIC_IEDON_LOGIN_URL`, `NEXT_PUBLIC_KIOUBIT_LOGIN_URL`, `NEXT_PUBLIC_VISITOR_LOGIN_URL`.
+For 3rd-parth OAuth2 Login, currently we supports: Github, Google, Microsoft Entra ID, iEdon, Kioubit, Visitor, available env variables are: `NEXT_PUBLIC_GITHUB_LOGIN_URL`, `NEXT_PUBLIC_GOOGLE_LOGIN_URL`, `NEXT_PUBLIC_ENTRA_LOGIN_URL`, `NEXT_PUBLIC_IEDON_LOGIN_URL`, `NEXT_PUBLIC_KIOUBIT_LOGIN_URL`, `NEXT_PUBLIC_VISITOR_LOGIN_URL`.
 
 ### Full Deployment (Docker Compose)
 

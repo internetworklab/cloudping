@@ -43,6 +43,10 @@ services:
       - "--kioubit-oauth-client-id-from-env=KIOUBIT_OAUTH_CLIENT_ID"
       - "--kioubit-oauth-client-secret-from-env=KIOUBIT_OAUTH_CLIENT_SECRET"
       - "--kioubit-oauth-redir-url=https://ping2.sh/login/as/kioubit/auth"
+      - "--entra-id-tenant-id-from-env=ENTRA_ID_TENANT_ID"
+      - "--entra-id-client-id-from-env=ENTRA_ID_CLIENT_ID"
+      - "--entra-id-client-secret-from-env=ENTRA_ID_CLIENT_SECRET"
+      - "--entra-id-redir-url=https://ping2.sh/login/as/entra/auth"
       - "--default-backend=http://globalping-web:45844" # this points to the static web server http url
       - "--add-white-list-path=/_next/"
       - "--add-white-list-path=/login/as/"

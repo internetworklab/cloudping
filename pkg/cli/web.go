@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
@@ -52,6 +53,11 @@ type WebAuthProxyCmd struct {
 	KioubitOAuthClientIdFromEnv     string `name:"kioubit-oauth-client-id-from-env" help:"Name of the environment variable that contains the Kioubit OAuth client ID" default:"KIOUBIT_OAUTH_CLIENT_ID"`
 	KioubitOAuthClientSecretFromEnv string `name:"kioubit-oauth-client-secret-from-env" help:"Name of the environment variable that contains the Kioubit OAuth client secret" default:"KIOUBIT_OAUTH_CLIENT_SECRET"`
 	KioubitOAuthRedirURL            string `name:"kioubit-oauth-redir-url" help:"The Kioubit OAuth redirect URL"`
+
+	EntraIDTenantIdFromEnv     string `name:"entra-id-tenant-id-from-env" help:"Name of the environment variable that contains the Microsoft Entra ID tenant ID" default:"ENTRA_ID_TENANT_ID"`
+	EntraIDClientIdFromEnv     string `name:"entra-id-client-id-from-env" help:"Name of the environment variable that contains the Microsoft Entra ID client ID" default:"ENTRA_ID_CLIENT_ID"`
+	EntraIDClientSecretFromEnv string `name:"entra-id-client-secret-from-env" help:"Name of the environment variable that contains the Microsoft Entra ID client secret" default:"ENTRA_ID_CLIENT_SECRET"`
+	EntraIDRedirURL            string `name:"entra-id-redir-url" help:"The Microsoft Entra ID OAuth redirect URL"`
 }
 
 func (cmd *WebAuthProxyCmd) getJWTSecret() ([]byte, error) {
@@ -204,6 +210,34 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 				RedirectURL:             cmd.KioubitOAuthRedirURL,
 			}
 			muxer.Handle("/login/as/kioubit/", kioubitLoginHandler)
+		}
+	}
+
+	if entraTenantID := os.Getenv(cmd.EntraIDTenantIdFromEnv); entraTenantID != "" {
+		if entraCLIId := os.Getenv(cmd.EntraIDClientIdFromEnv); entraCLIId != "" {
+			if entraCLISec := os.Getenv(cmd.EntraIDClientSecretFromEnv); entraCLISec != "" {
+				entraAuthority := fmt.Sprintf("https://login.microsoftonline.com/%s", entraTenantID)
+				entraCred, err := confidential.NewCredFromSecret(entraCLISec)
+				if err != nil {
+					log.Panicf("failed to create Entra ID credential: %v", err)
+				}
+				entraMSALClient, err := confidential.New(entraAuthority, entraCLIId, entraCred)
+				if err != nil {
+					log.Panicf("failed to create Entra ID MSAL client: %v", err)
+				}
+				entraLoginHandler := &pkghandler.EntraIDLoginHandler{
+					NonceIssuer:             nonceIssuer,
+					TokenIssuer:             tokenIssuer,
+					SessionLifespan:         cmd.LoginSessionValidity,
+					LoginSuccessRedirectURL: "/",
+					EntraIDTenantID:         entraTenantID,
+					EntraIDClientID:         entraCLIId,
+					EntraIDClientSecret:     entraCLISec,
+					EntraIDRedirURL:         cmd.EntraIDRedirURL,
+					MSALClient:              entraMSALClient,
+				}
+				muxer.Handle("/login/as/entra/", entraLoginHandler)
+			}
 		}
 	}
 
