@@ -208,9 +208,6 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 	}
 
 	whiteList := make([]string, 0)
-	if loginRedir := cmd.RedirectIfNoAuth; loginRedir != "" {
-		whiteList = append(whiteList, loginRedir)
-	}
 	whiteList = append(whiteList, cmd.WhiteListPaths...)
 
 	log.Printf("White list: %s", strings.Join(whiteList, ", "))

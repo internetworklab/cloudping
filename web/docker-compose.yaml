@@ -6,7 +6,7 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 192.168.252.0/30
+        - subnet: 192.168.252.0/28
   globalpinghub:
     external: true
 volumes:
@@ -15,10 +15,46 @@ volumes:
   globalping_acme_certs:
     external: true
 services:
+  # oauth proxy
+  gateway:
+    container_name: globalping-gateway
+    env_file:
+      - ".env.gateway"
+    pull_policy: always
+    image: ghcr.io/internetworklab/cloudping:latest
+    networks:
+      globalping_web:
+        ipv4_address: 192.168.252.4
+    command:
+      - "/usr/local/bin/globalping"
+      - "web"
+      - "--listen-address=:8092"
+      - "--redirect-if-no-auth=https://ping2.sh/login"
+      - "--jwt-auth-secret-from-env=JWT_SECRET"
+      - "--github-oauth-client-id-from-env=GITHUB_OAUTH_CLIENT_ID"
+      - "--github-oauth-app-secret-from-env=GITHUB_OAUTH_APP_SECRET"
+      - "--github-oauth-redir-url=https://ping2.sh/login/as/github/auth"
+      - "--google-oauth-client-id-from-env=GOOGLE_OAUTH_CLIENT_ID"
+      - "--google-oauth-client-secret-from-env=GOOGLE_OAUTH_CLIENT_SECRET"
+      - "--google-oauth-redir-url=https://ping2.sh/login/as/google/auth"
+      - "--iedon-oauth-client-id-from-env=IEDON_OAUTH_CLIENT_ID"
+      - "--iedon-oauth-client-secret-from-env=IEDON_OAUTH_CLIENT_SECRET"
+      - "--iedon-oauth-redir-url=https://ping2.sh/login/as/iedon/auth"
+      - "--kioubit-oauth-client-id-from-env=KIOUBIT_OAUTH_CLIENT_ID"
+      - "--kioubit-oauth-client-secret-from-env=KIOUBIT_OAUTH_CLIENT_SECRET"
+      - "--kioubit-oauth-redir-url=https://ping2.sh/login/as/kioubit/auth"
+      - "--default-backend=http://globalping-web:45844" # this points to the static web server http url
+      - "--add-white-list-path=/_next/"
+      - "--add-white-list-path=/login/as/"
+      - "--add-white-list-path=/login/"
+      - "--add-white-list-path=/login"
+
   web:
     container_name: globalping-web
     image: cloudping-web:nginx
     pull_policy: never
+    depends_on:
+      - gateway
     ports:
       - "45843:80"
     volumes:

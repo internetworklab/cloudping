@@ -16,7 +16,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - Basic IP information display (like ASN, Country, and probably Lat Lon)
 - API-first design, CLI friendly (can be access through http clients like `curl`)
 - QUIC for hub-agent communication support and NAT-traversal
-- JWT authentication
+- JWT authentication with multi-provider SSO login (GitHub, Google, Generic OIDC, and guest/visitor)
 - Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
 - Email Interface (Interact via Email)
 - MCP Server (StreamableHTTP + JWT)
@@ -264,7 +264,7 @@ The Web UI is built with Next.js and supports the following build-time environme
 | `NEXT_PUBLIC_REPO_NAME`        | For display count of stargazers of the repo in the page      | `cloudping`                                                               |
 | `NEXT_PUBLIC_SITE_NAME`        | WebUI title for self-hosted deployments                      | `CloudPing`                                                               |
 | `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend   | `127.0.0.11:53`                                                           |
-| `NEXT_PUBLIC_<NAME>_LOGIN_URL` | URL of <NAME> oauth login page                               | `/login/as/<name>`                                                        |
+| `NEXT_PUBLIC_<NAME>_LOGIN_URL` | URL of <NAME> oauth login page                               | `/login/as/<name>/start`                                                        |
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
