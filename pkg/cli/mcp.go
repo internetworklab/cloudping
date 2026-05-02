@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	pkgaihandlers "github.com/internetworklab/cloudping/pkg/ai/handlers"
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
@@ -27,10 +26,6 @@ type MCPServerCmd struct {
 	UpstreamJWTSecretFromEnv string               `name:"upstream-jwt-sec-env" help:"Name of the enviornment variable that stores the JWT token use to authenticate with the upstream ping events provider" default:"UPSTREAM_JWT_TOKEN"`
 	UpstreamAPIPrefix        string               `name:"upstream-api-prefix" help:"The API prefix of the upstream server where to get ping events data" default:"https://ping2.sh/api"`
 
-	// For authenticate itself to the hub
-	JWTTokenFromEnvVar string `help:"The environment variable name to read the JWT token from" default:"JWT_TOKEN"`
-	JWTTokenFromFile   string `help:"The file path to read the JWT token from" type:"path"`
-
 	// For authenticate client's request
 	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
 	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
@@ -48,24 +43,6 @@ func (cmd *MCPServerCmd) getJWTSecret() ([]byte, error) {
 	return getJWTSecFromSomewhere(cmd.JWTAuthSecretFromEnv, cmd.JWTAuthSecretFromFile)
 }
 
-func (cmd *MCPServerCmd) getJWTToken() string {
-	if envVar := cmd.JWTTokenFromEnvVar; envVar != "" {
-		if token := os.Getenv(envVar); token != "" {
-			return token
-		}
-	}
-
-	if filePath := cmd.JWTTokenFromFile; filePath != "" {
-		if data, err := os.ReadFile(filePath); err == nil {
-			if token := strings.TrimSpace(string(data)); token != "" {
-				return token
-			}
-		}
-	}
-
-	return ""
-}
-
 func (cmd *MCPServerCmd) registerAllAvailableIPInfoProviders(registry *pkgipinfo.IPInfoProviderRegistry) {
 	// We are just trying to register all available IPInfo/GeoIP providers here.
 
@@ -79,7 +56,9 @@ func (cmd *MCPServerCmd) registerAllAvailableIPInfoProviders(registry *pkgipinfo
 			if ipregistrycoAdapter.AdditionalHeaders == nil {
 				ipregistrycoAdapter.AdditionalHeaders = make(http.Header)
 			}
-			ipregistrycoAdapter.AdditionalHeaders.Set("Authorization", "bearer "+cmd.getJWTToken())
+			if tokenEnv := cmd.UpstreamJWTSecretFromEnv; tokenEnv != "" {
+				ipregistrycoAdapter.AdditionalHeaders.Set("Authorization", "bearer "+os.Getenv(tokenEnv))
+			}
 		}
 		if envName := cmd.IPRegistryCOAPIKeyEnv; envName != "" {
 			ipregistrycoAdapter.APIKey = os.Getenv(envName)
