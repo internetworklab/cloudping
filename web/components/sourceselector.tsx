@@ -1,8 +1,13 @@
 "use client";
 
-import { Autocomplete, Box, TextField } from "@mui/material";
+import { Autocomplete, Box, Chip, TextField } from "@mui/material";
 import { useState, Fragment } from "react";
 import { CircularProgress } from "@mui/material";
+import {
+  MRTEntryProvidersLister,
+  MRTEntriesProvider,
+  ProviderStatus,
+} from "../apis/mrtProviders";
 
 // generated from deepseek
 function getFlagEmoji(countryCode: string): string {
@@ -104,6 +109,109 @@ export function SourcesSelector(props: {
                 {asnIsp.join(" ")}
               </Box>
             )}
+          </Box>
+        );
+      }}
+      multiple
+      options={options}
+      defaultValue={[]}
+      loading={isLoading}
+      loadingText={"Loading..."}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          variant="standard"
+          label="Sources"
+          placeholder={
+            optionsSelected.length > 0
+              ? ""
+              : "Hint: multiple items can be selected at a time"
+          }
+          slotProps={{
+            input: {
+              ...params.InputProps,
+              endAdornment: (
+                <Fragment>
+                  {isLoading ? (
+                    <CircularProgress color="inherit" size={20} />
+                  ) : null}
+                  {params.InputProps.endAdornment}
+                </Fragment>
+              ),
+            },
+          }}
+        />
+      )}
+      disableCloseOnSelect
+    />
+  );
+}
+
+function getProviderStatusLabel(status: ProviderStatus): string {
+  switch (status) {
+    case ProviderStatus.Provisioning:
+      return "Provisioning";
+    case ProviderStatus.Ready:
+      return "Ready";
+    default:
+      return status;
+  }
+}
+
+export function MRTSourceSelector(props: {
+  value: string[];
+  onChange: (value: string[]) => void;
+  lister: MRTEntryProvidersLister;
+}) {
+  const { onChange, lister } = props;
+  const [options, setOptions] = useState<MRTEntriesProvider[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const valSet = new Set(props.value);
+  const optionsSelected = options.filter((opt) => valSet.has(opt.Name));
+
+  return (
+    <Autocomplete
+      fullWidth
+      value={optionsSelected}
+      open={isOpen}
+      onClose={() => setIsOpen(false)}
+      getOptionKey={(opt) => opt.Name}
+      getOptionLabel={(opt) => opt.Name}
+      onOpen={() => {
+        setIsOpen(true);
+        setIsLoading(true);
+        lister
+          .getMRTEntriesProviders()
+          .then((res) => {
+            if (res.data) setOptions(res.data);
+          })
+          .finally(() => setIsLoading(false));
+      }}
+      onChange={(_, value) => onChange(value.map((v) => v.Name))}
+      renderOption={(props, option) => {
+        const { key, ...optionProps } = props;
+
+        return (
+          <Box key={key} component="li" {...optionProps}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <span>{option.Name}</span>
+              <Chip
+                label={getProviderStatusLabel(option.Status)}
+                size="small"
+                color={
+                  option.Status === ProviderStatus.Ready ? "success" : "warning"
+                }
+                variant="outlined"
+              />
+              <Box
+                fontSize="small"
+                sx={{ marginLeft: "auto", color: "text.secondary" }}
+                component="span"
+              >
+                {"Updated: " + option.LastModified}
+              </Box>
+            </Box>
           </Box>
         );
       }}

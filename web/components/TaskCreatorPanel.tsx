@@ -45,6 +45,7 @@ import {
 import { defaultResolver } from "@/apis/resolver";
 import { useAddressClassify } from "@/apis/useAddressClassify";
 import { NetworkDescriptor } from "@/apis/nwdesc";
+import { RouteQueryTaskPanel } from "./RouteQueryTaskPanel";
 
 function TaskTypeSelector(props: {
   pendingTask: PendingTask;
@@ -82,6 +83,7 @@ function TaskTypeSelector(props: {
         />
         <FormControlLabel value="dns" control={<Radio />} label="DNS" />
         <FormControlLabel value="http" control={<Radio />} label="HTTP" />
+        <FormControlLabel value="route" control={<Radio />} label="Route" />
       </RadioGroup>
     </FormControl>
   );
@@ -166,16 +168,16 @@ function expandDNSProbeTask(prev: PendingTask): Promise<PendingTask> {
   // same, it's also safe to expand other probe plans, for example, to also expand HTTP probe plans.
 
   let serverNameMap: Record<string, string> = {};
-  if (prev.dnsProbePlan.serverNameMapInput) {
-    serverNameMap = parseNameMap(prev.dnsProbePlan.serverNameMapInput ?? "");
+  if (prev.dnsProbePlan?.serverNameMapInput) {
+    serverNameMap = parseNameMap(prev.dnsProbePlan?.serverNameMapInput ?? "");
   }
 
   const newDnsProbePlan: DNSProbePlan = {
     ...prev.dnsProbePlan,
-    domains: dedup(prev.dnsProbePlan.domainsInput?.split(",") || [])
+    domains: dedup(prev.dnsProbePlan?.domainsInput?.split(",") || [])
       .map((d) => d.trim())
       .filter((d) => d.length > 0),
-    resolvers: dedup(prev.dnsProbePlan.resolversInput?.split(",") || [])
+    resolvers: dedup(prev.dnsProbePlan?.resolversInput?.split(",") || [])
       .map((r) => r.trim())
       .filter((r) => r.length > 0),
   };
@@ -332,24 +334,26 @@ export function TaskCreatorPanel(props: {
               />
             </Box>
           </Box>
-          <Box sx={{ marginTop: 1 }}>
-            {pendingTask.type === "dns" ? (
-              <DNSProbeTransportSelect
-                pendingTask={pendingTask}
-                setPendingTask={setPendingTask}
-              />
-            ) : pendingTask.type === "http" ? (
-              <HTTPProbeTransportSelect
-                pendingTask={pendingTask}
-                setPendingTask={setPendingTask}
-              />
-            ) : (
-              <PingTaskDefaultTransportOptionsPanel
-                pendingTask={pendingTask}
-                setPendingTask={setPendingTask}
-              />
-            )}
-          </Box>
+          {pendingTask.type !== "route" && (
+            <Box sx={{ marginTop: 1 }}>
+              {pendingTask.type === "dns" ? (
+                <DNSProbeTransportSelect
+                  pendingTask={pendingTask}
+                  setPendingTask={setPendingTask}
+                />
+              ) : pendingTask.type === "http" ? (
+                <HTTPProbeTransportSelect
+                  pendingTask={pendingTask}
+                  setPendingTask={setPendingTask}
+                />
+              ) : (
+                <PingTaskDefaultTransportOptionsPanel
+                  pendingTask={pendingTask}
+                  setPendingTask={setPendingTask}
+                />
+              )}
+            </Box>
+          )}
           <Box sx={{ marginTop: 1 }}>
             <PingTaskSourceSelector
               pendingTask={pendingTask}
@@ -364,6 +368,11 @@ export function TaskCreatorPanel(props: {
               />
             ) : pendingTask.type === "http" ? (
               <HTTPProbeTaskPanel
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
+              />
+            ) : pendingTask.type === "route" ? (
+              <RouteQueryTaskPanel
                 pendingTask={pendingTask}
                 setPendingTask={setPendingTask}
               />

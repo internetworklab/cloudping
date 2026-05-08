@@ -9,7 +9,12 @@ import {
   DialogActions,
 } from "@mui/material";
 import { Fragment } from "react";
-import { defaultHTTPProto, PendingTask } from "@/apis/types";
+import {
+  defaultHTTPProto,
+  defaultRouteQueryType,
+  getQueryTypeLabel,
+  PendingTask,
+} from "@/apis/types";
 
 // Also validating task here, not just for comfirmation and previewing.
 export function TaskConfirmDialog(props: {
@@ -39,6 +44,11 @@ export function TaskConfirmDialog(props: {
     numValidTargets = pendingTask.dnsProbeTargets.length;
   } else if (pendingTask.type === "http" && !!pendingTask.httpProbeTargets) {
     numValidTargets = pendingTask.httpProbeTargets.length;
+  } else if (pendingTask.type === "route" && !!pendingTask.routeQueryTgt) {
+    numValidTargets = pendingTask.routeQueryTgt
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0).length;
   } else {
     numValidTargets = pendingTask.targets.length;
   }
@@ -72,19 +82,19 @@ export function TaskConfirmDialog(props: {
             <Fragment>
               <Typography gutterBottom>
                 {"Domains: "}
-                {pendingTask.dnsProbePlan?.domains.join(", ") ?? "-"}
+                {pendingTask.dnsProbePlan?.domains?.join(", ") ?? "-"}
               </Typography>
               <Typography gutterBottom>
                 {"Resolvers: "}
-                {pendingTask.dnsProbePlan?.resolvers.join(", ") ?? "-"}
+                {pendingTask.dnsProbePlan?.resolvers?.join(", ") ?? "-"}
               </Typography>
               <Typography gutterBottom>
                 {"Transport: "}
-                {pendingTask.dnsProbePlan?.transport.toUpperCase() ?? "-"}
+                {pendingTask.dnsProbePlan?.transport?.toUpperCase() ?? "-"}
               </Typography>
               <Typography gutterBottom>
                 {"Query Type: "}
-                {pendingTask.dnsProbePlan?.type.toUpperCase() ?? "-"}
+                {pendingTask.dnsProbePlan?.type?.toUpperCase() ?? "-"}
               </Typography>
             </Fragment>
           ) : pendingTask.type === "http" ? (
@@ -106,6 +116,19 @@ export function TaskConfirmDialog(props: {
                   {pendingTask.headersInput.split("\n").join("; ")}
                 </Typography>
               )}
+            </Fragment>
+          ) : pendingTask.type === "route" ? (
+            <Fragment>
+              <Typography gutterBottom>
+                {"Query Type: "}
+                {pendingTask.routeQueryType
+                  ? getQueryTypeLabel(pendingTask.routeQueryType)
+                  : getQueryTypeLabel(defaultRouteQueryType)}
+              </Typography>
+              <Typography gutterBottom>
+                {"Query: "}
+                {pendingTask.routeQueryTgt ?? "-"}
+              </Typography>
             </Fragment>
           ) : (
             <Typography>

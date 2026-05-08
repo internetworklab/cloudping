@@ -25,12 +25,12 @@ export function DNSProbeTransportSelect(props: {
       <FormLabel>Transport</FormLabel>
       <RadioGroup
         row
-        value={pendingTask.dnsProbePlan.transport}
+        value={pendingTask.dnsProbePlan?.transport ?? ""}
         onChange={(e) =>
           setPendingTask((prev) => ({
             ...prev,
             dnsProbePlan: {
-              ...prev.dnsProbePlan,
+              ...(prev.dnsProbePlan ?? {}),
               transport: e.target.value as DNSTransport,
             },
           }))
@@ -57,7 +57,7 @@ export function DNSProbeTaskPanel(props: {
         <InputLabel>Type</InputLabel>
         <Select
           label="Type"
-          value={pendingTask.dnsProbePlan.type}
+          value={pendingTask.dnsProbePlan?.type ?? ""}
           onChange={(e) =>
             setPendingTask((prev) => ({
               ...prev,
@@ -83,7 +83,7 @@ export function DNSProbeTaskPanel(props: {
         placeholder="Querying Domains, separated by comma"
         fullWidth
         label="Domains"
-        value={pendingTask.dnsProbePlan.domainsInput || ""}
+        value={pendingTask.dnsProbePlan?.domainsInput || ""}
         onChange={(e) =>
           setPendingTask((prev) => ({
             ...prev,
@@ -126,7 +126,7 @@ export function DNSProbeTaskPanel(props: {
         }
         fullWidth
         label="Resolvers"
-        value={pendingTask.dnsProbePlan.resolversInput || ""}
+        value={pendingTask.dnsProbePlan?.resolversInput || ""}
         onChange={(e) =>
           setPendingTask((prev) => ({
             ...prev,

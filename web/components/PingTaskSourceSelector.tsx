@@ -4,7 +4,12 @@ import {
   NodeAttrISP,
 } from "@/apis/globalping";
 import { PendingTask } from "@/apis/types";
-import { SourceOption, SourcesSelector } from "@/components/sourceselector";
+import {
+  SourceOption,
+  SourcesSelector,
+  MRTSourceSelector,
+} from "@/components/sourceselector";
+import { MockedMRTEntryProvidersLister } from "@/apis/mrtProviders";
 import { Dispatch, SetStateAction } from "react";
 
 const fakeSources: SourceOption[] = [
@@ -37,6 +42,23 @@ export function PingTaskSourceSelector(props: {
   setPendingTask: Dispatch<SetStateAction<PendingTask>>;
 }) {
   const { pendingTask, setPendingTask } = props;
+
+  if (pendingTask.type === "route") {
+    return (
+      <MRTSourceSelector
+        value={pendingTask.sources
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)}
+        onChange={(value) =>
+          setPendingTask((prev) => ({
+            ...prev,
+            sources: value.map((s) => s.trim()).filter((s) => !!s),
+          }))
+        }
+        lister={new MockedMRTEntryProvidersLister()}
+      />
+    );
+  }
 
   return (
     <SourcesSelector

@@ -1,6 +1,12 @@
 import { ISO8601Timestamp } from "./common";
 
-export type PingTaskType = "ping" | "traceroute" | "tcpping" | "dns" | "http";
+export type PingTaskType =
+  | "ping"
+  | "traceroute"
+  | "tcpping"
+  | "dns"
+  | "http"
+  | "route";
 
 export type DNSTransport = "udp" | "tcp" | "tls" | "http/2" | "http/3";
 
@@ -39,10 +45,10 @@ export type DNSResponse = {
 export type AnswersMap = Record<string, Record<string, DNSResponse[]>>;
 
 export type DNSProbePlan = {
-  transport: DNSTransport;
-  type: DNSQueryType;
-  domains: string[];
-  resolvers: string[];
+  transport?: DNSTransport;
+  type?: DNSQueryType;
+  domains?: string[];
+  resolvers?: string[];
   domainsInput?: string;
   resolversInput?: string;
   serverNameMapInput?: string;
@@ -63,7 +69,7 @@ function stripResolver(resolver: string): string {
 
 function getServerName(
   resolver: string,
-  nameMap: Record<string, string>,
+  nameMap: Record<string, string>
 ): string | undefined {
   const addr = stripResolver(resolver);
   let serverName = nameMap[addr];
@@ -78,21 +84,21 @@ function getServerName(
 
 export function expandDNSProbePlan(
   plan: DNSProbePlan,
-  nameMap: Record<string, string>,
+  nameMap: Record<string, string>
 ): {
   targets: DNSTarget[];
   targetsMap: Record<string, DNSTarget>;
 } {
   const targets: DNSTarget[] = [];
   const targetsMap: Record<string, DNSTarget> = {};
-  for (const domain of plan.domains) {
-    for (const resolver of plan.resolvers) {
+  for (const domain of plan.domains ?? []) {
+    for (const resolver of plan.resolvers ?? []) {
       const target: DNSTarget = {
         corrId: targets.length.toString(),
         addrport: resolver,
         target: domain,
         transport: plan.transport,
-        queryType: plan.type,
+        queryType: plan.type ?? "a",
         dotServerName:
           plan.transport === "tls" ||
           plan.transport === "http/2" ||
@@ -128,6 +134,41 @@ export interface HTTPTarget {
   inetFamilyPreference?: IPPref;
 }
 
+export enum RouteQueryType {
+  AS_Path_Segs = "aspath_segs",
+  Neighbor_ASN = "neighbor_asn",
+  Origin_ASN = "origin_asn",
+  IP_Or_CIDR = "ip_or_cidr",
+}
+
+export const defaultRouteQueryType: RouteQueryType =
+  RouteQueryType.AS_Path_Segs;
+
+export function getQueryTypeTextPlaceholder(ty: RouteQueryType): string {
+  switch (ty) {
+    case RouteQueryType.AS_Path_Segs:
+      return "e.g. 65001, 65002, 65003. AS Path separated by comma, no 'AS' prefix";
+    case RouteQueryType.Origin_ASN:
+    case RouteQueryType.Neighbor_ASN:
+      return "e.g. 65001. The autonomous system number.";
+    case RouteQueryType.IP_Or_CIDR:
+      return "e.g. 10.146.7.0/24, 171.148.19.1. Must be an IP address or CIDR.";
+  }
+}
+
+export function getQueryTypeLabel(ty: RouteQueryType): string {
+  switch (ty) {
+    case RouteQueryType.AS_Path_Segs:
+      return "AS Path Overlaps";
+    case RouteQueryType.Origin_ASN:
+      return "Origin ASN";
+    case RouteQueryType.Neighbor_ASN:
+      return "Neighbor ASN";
+    case RouteQueryType.IP_Or_CIDR:
+      return "IP or CIDR";
+  }
+}
+
 export type PendingTask = {
   sources: string[];
   targets: string[];
@@ -137,7 +178,7 @@ export type PendingTask = {
   preferV6?: boolean;
   useUDP?: boolean;
   pmtu?: boolean;
-  dnsProbePlan: DNSProbePlan;
+  dnsProbePlan?: DNSProbePlan;
   dnsProbeTargets?: DNSTarget[];
   httpProbeTargets?: HTTPTarget[];
   targetsInput?: string;
@@ -145,6 +186,8 @@ export type PendingTask = {
   selectingHttpTransport?: HTTPProto;
   selectingIPPref?: IPPref;
   addHeaderSW?: boolean;
+  routeQueryType?: RouteQueryType;
+  routeQueryTgt?: string;
 };
 
 export type ExactLocation = {

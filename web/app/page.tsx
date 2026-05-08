@@ -10,6 +10,8 @@ import { DNSProbeDisplay } from "@/components/dnsprobedisplay";
 import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 import { HeaderBar } from "@/components/HeaderBar";
 import { TaskCreatorPanel } from "@/components/TaskCreatorPanel";
+import { RouteQueryResultDisplay } from "@/components/RouteQueryResultDisplay";
+import { MockedMRTEntriesLister } from "@/apis/mrtProviders";
 
 export default function Home() {
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
@@ -71,6 +73,12 @@ export default function Home() {
                 <HTTPProbeDisplay
                   task={task}
                   onDeleted={() => handleTaskDelete(task.taskId)}
+                />
+              ) : task.type === "route" ? (
+                <RouteQueryResultDisplay
+                  task={task}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
+                  mrtEntriesLister={new MockedMRTEntriesLister()}
                 />
               ) : (
                 <PingResultDisplay
