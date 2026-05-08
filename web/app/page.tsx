@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@mui/material";
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { PendingTask } from "@/apis/types";
 
 import { PingResultDisplay } from "@/components/pingdisplay";
@@ -19,6 +19,8 @@ export default function Home() {
   const handleTaskDelete = useCallback((taskId: string) => {
     setOnGoingTasks((prev) => prev.filter((t) => t.taskId !== taskId));
   }, []);
+
+  const mrtEntriesLister = useMemo(() => new MockedMRTEntriesLister(), []);
 
   return (
     <Box>
@@ -78,7 +80,7 @@ export default function Home() {
                 <RouteQueryResultDisplay
                   task={task}
                   onDeleted={() => handleTaskDelete(task.taskId)}
-                  mrtEntriesLister={new MockedMRTEntriesLister()}
+                  mrtEntriesLister={mrtEntriesLister}
                 />
               ) : (
                 <PingResultDisplay

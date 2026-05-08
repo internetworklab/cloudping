@@ -1,0 +1,54 @@
+[
+  {
+    "Data": {
+      "Prefix": "190.93.240.0/20",
+      "Peer": "10.1.16.48",
+      "PeerAS": 13335,
+      "ASPath": [
+        13335,
+        13340,
+        13353
+      ],
+      "Communities": [],
+      "LargeCommunities": [
+        [
+          64873,
+          67,
+          192
+        ],
+        [
+          64976,
+          68,
+          147
+        ]
+      ],
+      "ExtendedCommunities": [],
+      "NextHop": "172.17.130.48"
+    }
+  },
+  {
+    "Data": {
+      "Prefix": "2803:f800::/32",
+      "Peer": "10.2.116.70",
+      "PeerAS": 13335,
+      "ASPath": [
+        13335,
+        13351,
+        13360,
+        13363,
+        13375,
+        13393
+      ],
+      "Communities": [],
+      "LargeCommunities": [
+        [
+          64891,
+          80,
+          7
+        ]
+      ],
+      "ExtendedCommunities": [],
+      "NextHop": "172.18.132.70"
+    }
+  }
+]

@@ -1,7 +1,11 @@
 import { defaultRouteQueryType, RouteQueryType } from "./types";
-import MockMRTEntriesData from "../public/example_mrt_entries.json";
+import mrtDataFromRirAfrinic from "../public/example_mrt_entries_rir-afrinic.json";
+import mrtDataFromRirApnic from "../public/example_mrt_entries_rir-apnic.json";
+import mrtDataFromRirArin from "../public/example_mrt_entries_rir-arin.json";
+import mrtDataFromRirLacnic from "../public/example_mrt_entries_rir-lacnic.json";
+import mrtDataFromRirRipencc from "../public/example_mrt_entries_rir-ripencc.json";
 import { parse as parseIP, parseCIDR, isValidCIDR, isValid } from "ipaddr.js";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { LineTokenizer, JSONLineDecoder } from "./globalping";
 
 export enum ProviderStatus {
@@ -252,6 +256,23 @@ export class MockedMRTEntriesLister implements MRTEntriesLister {
     );
   }
 
+  private dataForProvider(provider: string): MRTEntryDataEvent[] {
+    switch (provider) {
+      case "rir-afrinic":
+        return mrtDataFromRirAfrinic as unknown as MRTEntryDataEvent[];
+      case "rir-apnic":
+        return mrtDataFromRirApnic as unknown as MRTEntryDataEvent[];
+      case "rir-arin":
+        return mrtDataFromRirArin as unknown as MRTEntryDataEvent[];
+      case "rir-lacnic":
+        return mrtDataFromRirLacnic as unknown as MRTEntryDataEvent[];
+      case "rir-ripencc":
+        return mrtDataFromRirRipencc as unknown as MRTEntryDataEvent[];
+      default:
+        return [];
+    }
+  }
+
   public getMRTEntries(
     _: AbortController,
     provider: string,
@@ -259,7 +280,7 @@ export class MockedMRTEntriesLister implements MRTEntriesLister {
     target: string,
   ): Promise<ReadableStream> {
     return this.filterData(
-      MockMRTEntriesData as unknown as MRTEntryDataEvent[],
+      this.dataForProvider(provider),
       queryType,
       target,
     ).then((data) => {
@@ -292,7 +313,6 @@ export function useMRTEntriesReadByProvider(
   generation: number,
 ): ProviderEntriesMap {
   const [providerMap, setProviderMap] = useState<ProviderEntriesMap>({});
-  const activeReadersRef = useRef(0);
 
   const resumeTick = (
     abortController: AbortController,
@@ -304,6 +324,11 @@ export function useMRTEntriesReadByProvider(
       return;
     }
 
+    // Guard: bail out entirely if already aborted before we even start.
+    if (abortController.signal.aborted) {
+      return;
+    }
+
     // Initialize state for each provider
     const initial: ProviderEntriesMap = {};
     for (const p of providers) {
@@ -311,12 +336,14 @@ export function useMRTEntriesReadByProvider(
     }
     setProviderMap(initial);
 
-    activeReadersRef.current = providers.length;
+    // Helper: only update state when this tick's abort controller is still alive.
+    const alive = () => !abortController.signal.aborted;
 
     providers.forEach((provider) => {
       lister
         .getMRTEntries(abortController, provider, queryType, target)
         .then((stream) => {
+          if (!alive()) return null; // aborted while waiting for getMRTEntries
           return stream
             .pipeThrough(new TextDecoderStream())
             .pipeThrough(new LineTokenizer())
@@ -325,26 +352,31 @@ export function useMRTEntriesReadByProvider(
         })
         .then(async (reader) => {
           if (!reader) {
-            activeReadersRef.current--;
-            setProviderMap((prev) => ({
-              ...prev,
-              [provider]: {
-                ...prev[provider],
-                isRunning: activeReadersRef.current > 0,
-              },
-            }));
+            if (alive()) {
+              setProviderMap((prev) => ({
+                ...prev,
+                [provider]: {
+                  ...prev[provider],
+                  isRunning: false,
+                },
+              }));
+            }
             return;
           }
           while (true) {
             try {
               const { value, done } = await reader.read();
+              if (!alive()) {
+                // Abort detected — stop consuming and discard further updates.
+                reader.cancel().catch(() => {});
+                return;
+              }
               if (done) {
-                activeReadersRef.current--;
                 setProviderMap((prev) => ({
                   ...prev,
                   [provider]: {
                     ...prev[provider],
-                    isRunning: activeReadersRef.current > 0,
+                    isRunning: false,
                   },
                 }));
                 return;
@@ -368,13 +400,13 @@ export function useMRTEntriesReadByProvider(
                 }));
               }
             } catch (err) {
+              if (!alive()) return; // silently discard after abort
               console.error("failed to read:", err);
-              activeReadersRef.current--;
               setProviderMap((prev) => ({
                 ...prev,
                 [provider]: {
                   ...prev[provider],
-                  isRunning: activeReadersRef.current > 0,
+                  isRunning: false,
                 },
               }));
               return;
@@ -384,7 +416,7 @@ export function useMRTEntriesReadByProvider(
         .catch((err) => {
           if (err.name === "AbortError") {
             console.log("Stream stopped by user or component unmount.");
-          } else {
+          } else if (alive()) {
             console.error("Stream error:", err);
             setProviderMap((prev) => {
               if (!prev[provider]) return prev;
@@ -398,12 +430,9 @@ export function useMRTEntriesReadByProvider(
               };
             });
           }
-          activeReadersRef.current--;
         });
     });
   };
-
-  const abortControllerRef = useRef<AbortController>(new AbortController());
 
   useEffect(() => {
     if (!target || target.trim() === "") {
@@ -418,7 +447,6 @@ export function useMRTEntriesReadByProvider(
       queryType ?? defaultRouteQueryType,
       target,
     );
-    abortControllerRef.current = abortController;
 
     return () => {
       abortController.abort();
