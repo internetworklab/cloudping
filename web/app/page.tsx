@@ -11,7 +11,11 @@ import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 import { HeaderBar } from "@/components/HeaderBar";
 import { TaskCreatorPanel } from "@/components/TaskCreatorPanel";
 import { RouteQueryResultDisplay } from "@/components/RouteQueryResultDisplay";
-import { MockedMRTEntriesLister } from "@/apis/mrtProviders";
+import {
+  DBMRTEntriesLister,
+  getMRTEntryServiceAPIPrefix,
+  MockedMRTEntriesLister,
+} from "@/apis/mrtProviders";
 
 export default function Home() {
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
@@ -20,7 +24,10 @@ export default function Home() {
     setOnGoingTasks((prev) => prev.filter((t) => t.taskId !== taskId));
   }, []);
 
-  const mrtEntriesLister = useMemo(() => new MockedMRTEntriesLister(), []);
+  const mrtEntriesLister = useMemo(
+    () => new DBMRTEntriesLister(getMRTEntryServiceAPIPrefix()),
+    [],
+  );
 
   return (
     <Box>

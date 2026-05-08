@@ -9,7 +9,11 @@ import {
   SourcesSelector,
   MRTSourceSelector,
 } from "@/components/sourceselector";
-import { MockedMRTEntryProvidersLister } from "@/apis/mrtProviders";
+import {
+  DBMRTEntryProvidersLister,
+  getMRTEntryServiceAPIPrefix,
+  MockedMRTEntryProvidersLister,
+} from "@/apis/mrtProviders";
 import { Dispatch, SetStateAction } from "react";
 
 const fakeSources: SourceOption[] = [
@@ -55,7 +59,7 @@ export function PingTaskSourceSelector(props: {
             sources: value.map((s) => s.trim()).filter((s) => !!s),
           }))
         }
-        lister={new MockedMRTEntryProvidersLister()}
+        lister={new DBMRTEntryProvidersLister(getMRTEntryServiceAPIPrefix())}
       />
     );
   }

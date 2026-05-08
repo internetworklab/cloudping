@@ -5,8 +5,12 @@ import mrtDataFromRirArin from "../public/example_mrt_entries_rir-arin.json";
 import mrtDataFromRirLacnic from "../public/example_mrt_entries_rir-lacnic.json";
 import mrtDataFromRirRipencc from "../public/example_mrt_entries_rir-ripencc.json";
 import { parse as parseIP, parseCIDR, isValidCIDR, isValid } from "ipaddr.js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { LineTokenizer, JSONLineDecoder } from "./globalping";
+
+export function getMRTEntryServiceAPIPrefix(): string {
+  return process.env["NEXT_PUBLIC_ROUTE_INFO_API_PREFIX"] || "/api/proxy/route";
+}
 
 export enum ProviderStatus {
   Provisioning = "provisioning",
@@ -24,12 +28,11 @@ export interface MRTEntriesServerResponse<T = unknown> {
   error?: string;
 }
 
-export class ServerSideMRTEntriesLister implements MRTEntryProvidersLister {
+export class DBMRTEntryProvidersLister implements MRTEntryProvidersLister {
   public constructor(public readonly apiPrefix: string) {}
 
   private buildURL(apiPrefix: string): string {
-    // todo: to be determined, do not touch
-    const url = `${apiPrefix}/proxy/routes/providers`;
+    const url = `${apiPrefix}/providers`;
     return url;
   }
 
@@ -297,6 +300,74 @@ export class MockedMRTEntriesLister implements MRTEntriesLister {
   }
 }
 
+export class DBMRTEntriesLister implements MRTEntriesLister {
+  public constructor(public readonly apiPrefix: string) {}
+
+  private buildURL(provider: string, searchParams: URLSearchParams): string {
+    return `${this.apiPrefix}/mrt_entries/query/${provider}?${searchParams}`;
+  }
+
+  // Returns an ndjson stream, where each line is a JSON-encoded MRTEntryDataEvent.
+  // think of abortController here like the ctx in golang.
+  public getMRTEntries(
+    abortController: AbortController,
+    provider: string,
+    queryType: RouteQueryType,
+    target: string,
+  ): Promise<ReadableStream> {
+    const searchParams = new URLSearchParams();
+
+    switch (queryType) {
+      case RouteQueryType.Origin_ASN: {
+        const asn = parseInt(target, 10);
+        if (isNaN(asn) || asn < 0 || !Number.isInteger(asn)) {
+          return Promise.reject(new Error(`invalid origin ASN: ${target}`));
+        }
+        searchParams.set("originAsn", target);
+        break;
+      }
+      case RouteQueryType.Neighbor_ASN: {
+        const asn = parseInt(target, 10);
+        if (isNaN(asn) || asn < 0 || !Number.isInteger(asn)) {
+          return Promise.reject(new Error(`invalid neighbor ASN: ${target}`));
+        }
+        searchParams.set("neighborAsn", target);
+        break;
+      }
+      case RouteQueryType.AS_Path_Segs: {
+        const parts = target.split(",").map((s) => s.trim());
+        for (const part of parts) {
+          const asn = parseInt(part, 10);
+          if (part === "" || isNaN(asn) || asn < 0 || !Number.isInteger(asn)) {
+            return Promise.reject(
+              new Error(`invalid AS path segment: ${target}`),
+            );
+          }
+        }
+        searchParams.set("asSegments", parts.join(","));
+        break;
+      }
+      case RouteQueryType.IP_Or_CIDR: {
+        if (isValidCIDR(target)) {
+          searchParams.set("cidr", target);
+        } else if (isValid(target)) {
+          searchParams.set("ip", target);
+        } else {
+          return Promise.reject(new Error(`invalid IP or CIDR: ${target}`));
+        }
+        break;
+      }
+      default:
+        return Promise.reject(new Error(`unknown query type: ${queryType}`));
+    }
+
+    const url = this.buildURL(provider, searchParams);
+    return fetch(url, { signal: abortController.signal }).then(
+      (res) => res.body!,
+    );
+  }
+}
+
 export interface ProviderMRTEntriesState {
   entries: MRTEntry[];
   isRunning: boolean;
@@ -316,16 +387,92 @@ export function useMRTEntriesReadByProvider(
 
   const resumeTick = (
     abortController: AbortController,
-    providers: string[],
+    provider: string,
     queryType: RouteQueryType,
     target: string,
   ) => {
-    if (providers.length === 0) {
+    lister
+      .getMRTEntries(abortController, provider, queryType, target)
+      .then((stream) => {
+        return stream
+          ?.pipeThrough(new TextDecoderStream())
+          .pipeThrough(new LineTokenizer())
+          .pipeThrough(new JSONLineDecoder())
+          .getReader();
+      })
+      .then(async (reader) => {
+        if (!reader) {
+          return;
+        }
+        while (true) {
+          try {
+            const { value, done } = await reader.read();
+            if (done) {
+              setProviderMap((prev) => {
+                if (!prev[provider]) return prev;
+                return {
+                  ...prev,
+                  [provider]: { ...prev[provider], isRunning: false },
+                };
+              });
+              return;
+            }
+            const event = value as MRTEntryDataEvent;
+            if (event.Err) {
+              setProviderMap((prev) => {
+                if (!prev[provider]) return prev;
+                return {
+                  ...prev,
+                  [provider]: { ...prev[provider], error: event.Err },
+                };
+              });
+            } else if (event.Data) {
+              setProviderMap((prev) => {
+                if (!prev[provider]) return prev;
+                return {
+                  ...prev,
+                  [provider]: {
+                    ...prev[provider],
+                    entries: [...prev[provider].entries, event.Data!],
+                  },
+                };
+              });
+            }
+          } catch (err) {
+            console.error("failed to read:", err);
+            return;
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name === "AbortError") {
+          console.log("Stream stopped by user or component unmount.");
+        } else {
+          console.error("Stream error:", err);
+          setProviderMap((prev) => {
+            if (!prev[provider]) return prev;
+            return {
+              ...prev,
+              [provider]: {
+                ...prev[provider],
+                error: err.message,
+                isRunning: false,
+              },
+            };
+          });
+        }
+      });
+  };
+
+  const abortControllerRef = useRef<AbortController>(new AbortController());
+
+  useEffect(() => {
+    if (!target || target.trim() === "") {
+      setProviderMap({});
       return;
     }
 
-    // Guard: bail out entirely if already aborted before we even start.
-    if (abortController.signal.aborted) {
+    if (providers.length === 0) {
       return;
     }
 
@@ -336,124 +483,20 @@ export function useMRTEntriesReadByProvider(
     }
     setProviderMap(initial);
 
-    // Helper: only update state when this tick's abort controller is still alive.
-    const alive = () => !abortController.signal.aborted;
-
-    providers.forEach((provider) => {
-      lister
-        .getMRTEntries(abortController, provider, queryType, target)
-        .then((stream) => {
-          if (!alive()) return null; // aborted while waiting for getMRTEntries
-          return stream
-            .pipeThrough(new TextDecoderStream())
-            .pipeThrough(new LineTokenizer())
-            .pipeThrough(new JSONLineDecoder())
-            .getReader();
-        })
-        .then(async (reader) => {
-          if (!reader) {
-            if (alive()) {
-              setProviderMap((prev) => ({
-                ...prev,
-                [provider]: {
-                  ...prev[provider],
-                  isRunning: false,
-                },
-              }));
-            }
-            return;
-          }
-          while (true) {
-            try {
-              const { value, done } = await reader.read();
-              if (!alive()) {
-                // Abort detected — stop consuming and discard further updates.
-                reader.cancel().catch(() => {});
-                return;
-              }
-              if (done) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: {
-                    ...prev[provider],
-                    isRunning: false,
-                  },
-                }));
-                return;
-              }
-              const event = value as MRTEntryDataEvent;
-              if (event.Err) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: {
-                    ...prev[provider],
-                    error: event.Err,
-                  },
-                }));
-              } else if (event.Data) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: {
-                    ...prev[provider],
-                    entries: [...prev[provider].entries, event.Data!],
-                  },
-                }));
-              }
-            } catch (err) {
-              if (!alive()) return; // silently discard after abort
-              console.error("failed to read:", err);
-              setProviderMap((prev) => ({
-                ...prev,
-                [provider]: {
-                  ...prev[provider],
-                  isRunning: false,
-                },
-              }));
-              return;
-            }
-          }
-        })
-        .catch((err) => {
-          if (err.name === "AbortError") {
-            console.log("Stream stopped by user or component unmount.");
-          } else if (alive()) {
-            console.error("Stream error:", err);
-            setProviderMap((prev) => {
-              if (!prev[provider]) return prev;
-              return {
-                ...prev,
-                [provider]: {
-                  ...prev[provider],
-                  error: err.message,
-                  isRunning: false,
-                },
-              };
-            });
-          }
-        });
-    });
-  };
-
-  useEffect(() => {
-    if (!target || target.trim() === "") {
-      setProviderMap({});
-      return;
-    }
-
     const abortController = new AbortController();
-    resumeTick(
-      abortController,
-      providers,
-      queryType ?? defaultRouteQueryType,
-      target,
-    );
+    abortControllerRef.current = abortController;
+
+    const qt = queryType ?? defaultRouteQueryType;
+    for (const provider of providers) {
+      resumeTick(abortController, provider, qt, target);
+    }
 
     return () => {
       abortController.abort();
       setProviderMap({});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lister, providers, queryType, target, generation]);
+  }, [lister, providers.join(","), queryType, target, generation]);
 
   return providerMap;
 }
