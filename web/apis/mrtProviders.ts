@@ -5,7 +5,7 @@ import mrtDataFromRirArin from "../public/example_mrt_entries_rir-arin.json";
 import mrtDataFromRirLacnic from "../public/example_mrt_entries_rir-lacnic.json";
 import mrtDataFromRirRipencc from "../public/example_mrt_entries_rir-ripencc.json";
 import { parse as parseIP, parseCIDR, isValidCIDR, isValid } from "ipaddr.js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { LineTokenizer, JSONLineDecoder } from "./globalping";
 
 export function getMRTEntryServiceAPIPrefix(): string {
@@ -102,14 +102,26 @@ export interface MRTEntryDataEvent {
   Err?: string;
 }
 
+/** Wire format for the backend's paginated ndjson stream. */
+export interface ResumableResponseStreamEvent {
+  data: MRTEntryDataEvent;
+  cursor_id?: string;
+}
+
 export interface MRTEntriesLister {
-  // Returns an ndjson stream, where each line is a JSON-encoded MRTEntryDataEvent.
-  // think of abortController here like the ctx in golang.
+  // Returns an ndjson stream, where each line is a JSON-encoded ResumableResponseStreamEvent.
   getMRTEntries(
     abortController: AbortController,
     provider: string,
     queryType: RouteQueryType,
     target: string,
+  ): Promise<ReadableStream>;
+
+  // Resume a paginated stream from the given cursor.
+  getMRTEntriesByCursor(
+    abortController: AbortController,
+    provider: string,
+    cursorId: string,
   ): Promise<ReadableStream>;
 }
 
@@ -287,7 +299,9 @@ export class MockedMRTEntriesLister implements MRTEntriesLister {
       queryType,
       target,
     ).then((data) => {
-      const ndjson = data.map((e) => JSON.stringify(e)).join("\n");
+      const ndjson = data
+        .map((e) => JSON.stringify({ data: e } as ResumableResponseStreamEvent))
+        .join("\n");
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
         start(controller) {
@@ -298,17 +312,34 @@ export class MockedMRTEntriesLister implements MRTEntriesLister {
       return readable;
     });
   }
+
+  public getMRTEntriesByCursor(
+    _ac: AbortController,
+    _provider: string,
+    _cursorId: string,
+  ): Promise<ReadableStream> {
+    // Mocked lister does not support cursor-based pagination.
+    return Promise.resolve(
+      new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    );
+  }
 }
 
 export class DBMRTEntriesLister implements MRTEntriesLister {
   public constructor(public readonly apiPrefix: string) {}
 
+  private static readonly DEFAULT_PAGE_SIZE = 50;
+
   private buildURL(provider: string, searchParams: URLSearchParams): string {
+    searchParams.set("page_size", String(DBMRTEntriesLister.DEFAULT_PAGE_SIZE));
     return `${this.apiPrefix}/mrt_entries/query/${provider}?${searchParams}`;
   }
 
-  // Returns an ndjson stream, where each line is a JSON-encoded MRTEntryDataEvent.
-  // think of abortController here like the ctx in golang.
+  // Returns an ndjson stream, where each line is a JSON-encoded ResumableResponseStreamEvent.
   public getMRTEntries(
     abortController: AbortController,
     provider: string,
@@ -366,15 +397,128 @@ export class DBMRTEntriesLister implements MRTEntriesLister {
       (res) => res.body!,
     );
   }
+
+  public getMRTEntriesByCursor(
+    abortController: AbortController,
+    provider: string,
+    cursorId: string,
+  ): Promise<ReadableStream> {
+    const url =
+      `${this.apiPrefix}/mrt_entries/query/${provider}` +
+      `?cursor_id=${encodeURIComponent(cursorId)}` +
+      `&page_size=${DBMRTEntriesLister.DEFAULT_PAGE_SIZE}`;
+    return fetch(url, { signal: abortController.signal }).then(
+      (res) => res.body!,
+    );
+  }
 }
 
 export interface ProviderMRTEntriesState {
   entries: MRTEntry[];
   isRunning: boolean;
   error: string | undefined;
+  cursorId: string | undefined;
+  pageEvents: ResumableResponseStreamEvent[];
 }
 
 export type ProviderEntriesMap = Record<string, ProviderMRTEntriesState>;
+
+// --- Stream consumer shared between initial fetch and loadMore ---
+
+function processMRTStream(
+  streamPromise: Promise<ReadableStream>,
+  signal: AbortSignal,
+  provider: string,
+  setProviderMap: React.Dispatch<React.SetStateAction<ProviderEntriesMap>>,
+): void {
+  const alive = () => !signal.aborted;
+
+  streamPromise
+    .then((stream) => {
+      if (!alive()) return null;
+      return stream
+        .pipeThrough(new TextDecoderStream())
+        .pipeThrough(new LineTokenizer())
+        .pipeThrough(new JSONLineDecoder())
+        .getReader();
+    })
+    .then(async (reader) => {
+      if (!reader) {
+        if (alive()) {
+          setProviderMap((prev) => {
+            const cur = prev[provider];
+            if (!cur) return prev;
+            return { ...prev, [provider]: { ...cur, isRunning: false } };
+          });
+        }
+        return;
+      }
+      while (true) {
+        try {
+          const { value, done } = await reader.read();
+          if (!alive()) {
+            reader.cancel().catch(() => {});
+            return;
+          }
+          if (done) {
+            setProviderMap((prev) => {
+              const cur = prev[provider];
+              if (!cur) return prev;
+              return { ...prev, [provider]: { ...cur, isRunning: false } };
+            });
+            return;
+          }
+          const event = value as ResumableResponseStreamEvent;
+          const inner = event.data;
+          setProviderMap((prev) => {
+            const cur = prev[provider];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [provider]: {
+                ...cur,
+                entries: inner.Data
+                  ? [...cur.entries, inner.Data]
+                  : cur.entries,
+                error: inner.Err ?? cur.error,
+                cursorId: event.cursor_id ?? cur.cursorId,
+                pageEvents: [...cur.pageEvents, event],
+              },
+            };
+          });
+        } catch (err) {
+          if (!alive()) return;
+          console.error("failed to read:", err);
+          setProviderMap((prev) => {
+            const cur = prev[provider];
+            if (!cur) return prev;
+            return { ...prev, [provider]: { ...cur, isRunning: false } };
+          });
+          return;
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name === "AbortError") {
+        console.debug("Stream stopped by user or component unmount.");
+      } else if (alive()) {
+        console.error("Stream error:", err);
+        setProviderMap((prev) => {
+          if (!prev[provider]) return prev;
+          return {
+            ...prev,
+            [provider]: {
+              ...prev[provider],
+              error: err.message,
+              isRunning: false,
+            },
+          };
+        });
+      }
+    });
+}
+
+// --- Hook ---
 
 export function useMRTEntriesReadByProvider(
   lister: MRTEntriesLister,
@@ -382,8 +526,14 @@ export function useMRTEntriesReadByProvider(
   queryType: RouteQueryType | undefined,
   target: string | undefined,
   generation: number,
-): ProviderEntriesMap {
+): {
+  providerMap: ProviderEntriesMap;
+  loadMore: (provider: string) => void;
+} {
   const [providerMap, setProviderMap] = useState<ProviderEntriesMap>({});
+  const providerMapRef = useRef(providerMap);
+  providerMapRef.current = providerMap;
+  const loadMoreAcRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!target || target.trim() === "") {
@@ -395,107 +545,75 @@ export function useMRTEntriesReadByProvider(
       return;
     }
 
+    // Cancel any pending loadMore when the main query restarts.
+    loadMoreAcRef.current?.abort();
+    loadMoreAcRef.current = null;
+
     // Initialize state for each provider
     const initial: ProviderEntriesMap = {};
     for (const p of providers) {
-      initial[p] = { entries: [], isRunning: true, error: undefined };
+      initial[p] = {
+        entries: [],
+        isRunning: true,
+        error: undefined,
+        cursorId: undefined,
+        pageEvents: [],
+      };
     }
     setProviderMap(initial);
 
     const abortController = new AbortController();
     const { signal } = abortController;
-    // alive() returns true only while this effect tick is still current.
-    const alive = () => !signal.aborted;
-
     const qt = queryType ?? defaultRouteQueryType;
 
     for (const provider of providers) {
-      lister
-        .getMRTEntries(abortController, provider, qt, target)
-        .then((stream) => {
-          if (!alive()) return null;
-          return stream
-            .pipeThrough(new TextDecoderStream())
-            .pipeThrough(new LineTokenizer())
-            .pipeThrough(new JSONLineDecoder())
-            .getReader();
-        })
-        .then(async (reader) => {
-          if (!reader) {
-            if (alive()) {
-              setProviderMap((prev) => ({
-                ...prev,
-                [provider]: { ...prev[provider], isRunning: false },
-              }));
-            }
-            return;
-          }
-          while (true) {
-            try {
-              const { value, done } = await reader.read();
-              if (!alive()) {
-                reader.cancel().catch(() => {});
-                return;
-              }
-              if (done) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: { ...prev[provider], isRunning: false },
-                }));
-                return;
-              }
-              const event = value as MRTEntryDataEvent;
-              if (event.Err) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: { ...prev[provider], error: event.Err },
-                }));
-              } else if (event.Data) {
-                setProviderMap((prev) => ({
-                  ...prev,
-                  [provider]: {
-                    ...prev[provider],
-                    entries: [...prev[provider].entries, event.Data!],
-                  },
-                }));
-              }
-            } catch (err) {
-              if (!alive()) return;
-              console.error("failed to read:", err);
-              setProviderMap((prev) => ({
-                ...prev,
-                [provider]: { ...prev[provider], isRunning: false },
-              }));
-              return;
-            }
-          }
-        })
-        .catch((err) => {
-          if (err.name === "AbortError") {
-            console.debug("Stream stopped by user or component unmount.");
-          } else if (alive()) {
-            console.error("Stream error:", err);
-            setProviderMap((prev) => {
-              if (!prev[provider]) return prev;
-              return {
-                ...prev,
-                [provider]: {
-                  ...prev[provider],
-                  error: err.message,
-                  isRunning: false,
-                },
-              };
-            });
-          }
-        });
+      processMRTStream(
+        lister.getMRTEntries(abortController, provider, qt, target),
+        signal,
+        provider,
+        setProviderMap,
+      );
     }
 
     return () => {
       abortController.abort();
-      setProviderMap({});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lister, providers.join(","), queryType, target, generation]);
 
-  return providerMap;
+  const loadMore = useCallback(
+    (provider: string) => {
+      const state = providerMapRef.current[provider];
+      if (!state?.cursorId || state.isRunning) return;
+
+      loadMoreAcRef.current?.abort();
+      const ac = new AbortController();
+      loadMoreAcRef.current = ac;
+
+      const cursorId = state.cursorId;
+
+      // Clear current page state for this provider (entries are already
+      // saved by the caller into loadedPagesData before invoking this).
+      setProviderMap((prev) => ({
+        ...prev,
+        [provider]: {
+          entries: [],
+          isRunning: true,
+          error: undefined,
+          cursorId: undefined,
+          pageEvents: [],
+        },
+      }));
+
+      processMRTStream(
+        lister.getMRTEntriesByCursor(ac, provider, cursorId),
+        ac.signal,
+        provider,
+        setProviderMap,
+      );
+    },
+    [lister],
+  );
+
+  return { providerMap, loadMore };
 }

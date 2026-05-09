@@ -9,12 +9,15 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  Button,
 } from "@mui/material";
 import StorageIcon from "@mui/icons-material/Storage";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 import {
   MRTEntriesLister,
+  MRTEntry,
+  ResumableResponseStreamEvent,
   useMRTEntriesReadByProvider,
 } from "@/apis/mrtProviders";
 import {
@@ -39,8 +42,11 @@ export function RouteQueryResultDisplay(props: {
   const [activeProvider, setActiveProvider] = useState<string>(
     task.sources[0] ?? "",
   );
+  const [loadedPagesData, setLoadedPagesData] = useState<
+    Record<string, ResumableResponseStreamEvent[][]>
+  >({});
 
-  const providerMap = useMRTEntriesReadByProvider(
+  const { providerMap, loadMore } = useMRTEntriesReadByProvider(
     mrtEntriesLister,
     task.sources,
     task.routeQueryType,
@@ -60,6 +66,16 @@ export function RouteQueryResultDisplay(props: {
   );
   const isRunning = activeState?.isRunning ?? false;
   const error = activeState?.error;
+  const cursorId = activeState?.cursorId;
+
+  // Flatten loaded pages + current page into a single entries list.
+  const allEntries = useMemo(() => {
+    const loadedEntries = (loadedPagesData[validProvider] ?? [])
+      .flat()
+      .map((e) => e.data?.Data)
+      .filter((e): e is MRTEntry => e != null);
+    return [...loadedEntries, ...mrtEntries];
+  }, [loadedPagesData, validProvider, mrtEntries]);
 
   // Aggregate "any running" across all providers (for the global spinner)
   const anyRunning = Object.values(providerMap).some((s) => s.isRunning);
@@ -69,7 +85,7 @@ export function RouteQueryResultDisplay(props: {
     const peerASs = new Set<number>();
     let maxPathLen = 0;
     let minPathLen = Infinity;
-    for (const e of mrtEntries) {
+    for (const e of allEntries) {
       if (e.ASPath && e.ASPath.length > 0) {
         origins.add(e.ASPath[e.ASPath.length - 1]);
         maxPathLen = Math.max(maxPathLen, e.ASPath.length);
@@ -78,13 +94,13 @@ export function RouteQueryResultDisplay(props: {
       if (e.PeerAS !== undefined) peerASs.add(e.PeerAS);
     }
     return {
-      count: mrtEntries.length,
+      count: allEntries.length,
       origins: origins.size,
       peers: peerASs.size,
       maxPathLen,
       minPathLen,
     };
-  }, [mrtEntries]);
+  }, [allEntries]);
 
   const queryLabel = getQueryTypeLabel(
     task.routeQueryType ?? defaultRouteQueryType,
@@ -120,6 +136,7 @@ export function RouteQueryResultDisplay(props: {
           <Tooltip title="Refresh">
             <IconButton
               onClick={() => {
+                setLoadedPagesData({});
                 setGeneration((gen) => gen + 1);
               }}
             >
@@ -216,7 +233,7 @@ export function RouteQueryResultDisplay(props: {
           </Box>
         )}
 
-        {!isRunning && mrtEntries.length === 0 && !error && (
+        {!isRunning && allEntries.length === 0 && !error && (
           <Box sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" sx={{ color: "text.secondary" }}>
               No MRT entries found.
@@ -224,7 +241,7 @@ export function RouteQueryResultDisplay(props: {
           </Box>
         )}
 
-        {mrtEntries.map((entry, idx) => (
+        {allEntries.map((entry, idx) => (
           <MRTEntryCard
             key={`${entry.Prefix}:${idx}`}
             entry={entry}
@@ -232,6 +249,27 @@ export function RouteQueryResultDisplay(props: {
             defaultExpanded
           />
         ))}
+
+        {cursorId && !isRunning && (
+          <Box sx={{ textAlign: "center", py: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                const currentPageEvents = activeState?.pageEvents ?? [];
+                setLoadedPagesData((prev) => ({
+                  ...prev,
+                  [validProvider]: [
+                    ...(prev[validProvider] ?? []),
+                    currentPageEvents,
+                  ],
+                }));
+                loadMore(validProvider);
+              }}
+            >
+              Load More
+            </Button>
+          </Box>
+        )}
       </Box>
     </Card>
   );
