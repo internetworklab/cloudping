@@ -69,6 +69,9 @@ type HubCmd struct {
 	RequireLivenessCheck bool `name:"require-liveness-check" help:"Require agent to support liveness check for being allowed to show up in the API" default:"true"`
 
 	SubjectBlacklistTxtPath string `name:"subj-blacklist-path" help:"Path to the blacklist text file, one subject id per a line"`
+
+	MRTQueryServiceBackendURL     string `name:"mrt-query-service-backend-url" help:"URL of the MRT query service backend" default:""`
+	MRTQueryServiceBearerTokenEnv string `name:"mrt-query-service-bearer-token" help:"Env of bearer/JWT token (Authorization: bearer <token>) for the MRT query service backend" default:""`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -221,10 +224,23 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/conns", connsHandler)
 	muxerPublic.Handle("/ping", pingHandler)
 	muxerPublic.Handle("/version", pkghandler.NewVersionHandler(sharedCtx))
-	muxerPublic.Handle("/proxy/ip2location", ip2locProxyHandler)
-	muxerPublic.Handle("/proxy/ipregistry/", ipregistryProxyHandler)
 	muxerPublic.Handle("/count", pkghandler.NewCountHandler(0))
 	muxerPublic.Handle("/profile", &pkghandler.ProfileHandler{})
+
+	muxerPublic.Handle("/proxy/ip2location", ip2locProxyHandler)
+	muxerPublic.Handle("/proxy/ipregistry/", ipregistryProxyHandler)
+	if mrtURL := hubCmd.MRTQueryServiceBackendURL; mrtURL != "" {
+		mrtProxyHandler, err := pkghandler.NewMRTQueryProxyHandler(
+			mrtURL,
+			"/proxy/mrt",
+			os.Getenv(hubCmd.MRTQueryServiceBearerTokenEnv),
+		)
+		if err != nil {
+			log.Panicf("failed to create MRT query proxy handler: %v", err)
+			return err
+		}
+		muxerPublic.Handle("/proxy/mrt/", mrtProxyHandler)
+	}
 
 	var publicHandler http.Handler = muxerPublic
 
