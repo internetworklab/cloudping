@@ -30,3 +30,18 @@ func extractJWTFromRequest(r *http.Request) string {
 
 	return ""
 }
+
+func WithBearerToken(next http.Handler, bearerToken string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+bearerToken)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func WithCFServiceToken(next http.Handler, cfCLIId string, cfSec string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("CF-Access-Client-Id", cfCLIId)
+		r.Header.Set("CF-Access-Client-Secret", cfSec)
+		next.ServeHTTP(w, r)
+	})
+}

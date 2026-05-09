@@ -70,8 +70,10 @@ type HubCmd struct {
 
 	SubjectBlacklistTxtPath string `name:"subj-blacklist-path" help:"Path to the blacklist text file, one subject id per a line"`
 
-	MRTQueryServiceBackendURL     string `name:"mrt-query-service-backend-url" help:"URL of the MRT query service backend" default:""`
-	MRTQueryServiceBearerTokenEnv string `name:"mrt-query-service-bearer-token" help:"Env of bearer/JWT token (Authorization: bearer <token>) for the MRT query service backend" default:""`
+	MRTQueryServiceBackendURL              string `name:"mrt-query-service-backend-url" help:"URL of the MRT query service backend" default:""`
+	MRTQueryServiceBearerTokenEnv          string `name:"mrt-query-service-bearer-token" help:"Env of bearer/JWT token (Authorization: bearer <token>) for the MRT query service backend" default:""`
+	MRTQueryServiceCFAccessClientIdEnv     string `name:"mrt-query-service-cf-access-client-id" help:"Env of the Cloudflare Access client ID for the MRT query service backend, only needed when the backend is secured by Cloudflare ZeroTrust and aceepting Cloudflare Service Token as authentication" default:""`
+	MRTQueryServiceCFAccessClientSecretEnv string `name:"mrt-query-service-cf-access-client-secret" help:"Env of the Cloudflare Access client secret for the MRT query service backend, only needed when the backend is secured by Cloudflare ZeroTrust and aceepting Cloudflare Service Token as authentication" default:""`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -79,6 +81,33 @@ func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
+
+func (hubCmd *HubCmd) tryRegisterMRTProxyService(muxerPublic *http.ServeMux) error {
+	if mrtURL := hubCmd.MRTQueryServiceBackendURL; mrtURL != "" {
+		mrtProxyHandler, err := pkghandler.NewMRTQueryProxyHandler(
+			mrtURL,
+			"/proxy/mrt",
+		)
+
+		if err != nil {
+			log.Panicf("failed to create MRT query proxy handler: %v", err)
+			return err
+		}
+
+		if bearerToken := os.Getenv(hubCmd.MRTQueryServiceBearerTokenEnv); bearerToken != "" {
+			mrtProxyHandler = pkghandler.WithBearerToken(mrtProxyHandler, bearerToken)
+		}
+
+		if cfCliId := os.Getenv(hubCmd.MRTQueryServiceCFAccessClientIdEnv); cfCliId != "" {
+			if cfSec := os.Getenv(hubCmd.MRTQueryServiceCFAccessClientSecretEnv); cfSec != "" {
+				mrtProxyHandler = pkghandler.WithCFServiceToken(mrtProxyHandler, cfCliId, cfSec)
+			}
+		}
+
+		muxerPublic.Handle("/proxy/mrt/", mrtProxyHandler)
+	}
+	return nil
+}
 
 func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	var minPktInterval *time.Duration
@@ -229,17 +258,8 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
 	muxerPublic.Handle("/proxy/ip2location", ip2locProxyHandler)
 	muxerPublic.Handle("/proxy/ipregistry/", ipregistryProxyHandler)
-	if mrtURL := hubCmd.MRTQueryServiceBackendURL; mrtURL != "" {
-		mrtProxyHandler, err := pkghandler.NewMRTQueryProxyHandler(
-			mrtURL,
-			"/proxy/mrt",
-			os.Getenv(hubCmd.MRTQueryServiceBearerTokenEnv),
-		)
-		if err != nil {
-			log.Panicf("failed to create MRT query proxy handler: %v", err)
-			return err
-		}
-		muxerPublic.Handle("/proxy/mrt/", mrtProxyHandler)
+	if err := hubCmd.tryRegisterMRTProxyService(muxerPublic); err != nil {
+		return err
 	}
 
 	var publicHandler http.Handler = muxerPublic

@@ -8,14 +8,7 @@ import (
 	"strings"
 )
 
-func withBearerToken(next http.Handler, bearerToken string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Header.Set("Authorization", "Bearer "+bearerToken)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func NewMRTQueryProxyHandler(backendURL string, stripPrefix string, bearerToken string) (http.Handler, error) {
+func NewMRTQueryProxyHandler(backendURL string, stripPrefix string) (http.Handler, error) {
 	backend, err := url.Parse(backendURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid MRT query service backend URL %q: %w", backendURL, err)
@@ -33,11 +26,5 @@ func NewMRTQueryProxyHandler(backendURL string, stripPrefix string, bearerToken 
 		},
 	}
 
-	var proxyHandler http.Handler = revProxy
-
-	if bearerToken != "" {
-		proxyHandler = withBearerToken(proxyHandler, bearerToken)
-	}
-
-	return proxyHandler, nil
+	return revProxy, nil
 }
