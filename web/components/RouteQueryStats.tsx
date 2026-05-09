@@ -74,7 +74,7 @@ export function RouteQueryStatsDisplay(props: { data: RouteQueryStatsData }) {
           variant="body2"
           sx={{ fontWeight: 700, fontFamily: '"Roboto Mono", monospace' }}
         >
-          {stats.maxPathLen} hops
+          {stats.minPathLen} hops
         </Typography>
       </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
@@ -88,7 +88,7 @@ export function RouteQueryStatsDisplay(props: { data: RouteQueryStatsData }) {
           variant="body2"
           sx={{ fontWeight: 700, fontFamily: '"Roboto Mono", monospace' }}
         >
-          {stats.minPathLen} hops
+          {stats.maxPathLen} hops
         </Typography>
       </Box>
     </Box>
