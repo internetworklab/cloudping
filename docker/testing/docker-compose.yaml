@@ -1,0 +1,96 @@
+name: cloudping-testing
+
+volumes:
+  go-dev-vol:
+    external: true
+    name: go-dev-vol
+
+services:
+  web:
+    container_name: web-dev
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "../../web:/root/projects/globalping/web"
+    working_dir: /root/projects/globalping/web
+    ports:
+      - "45844:45844"
+    image: docker.io/library/node:latest
+    command:
+      - "npm"
+      - "run"
+      - "dev"
+
+  hub:
+    container_name: hub-dev
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - go-dev-vol:/go
+      - ../../:/root/projects/globalping
+      - ./.env:/root/projects/globalping/.env
+    working_dir: /root/projects/globalping
+    ports:
+      - "8084:8084"
+    image: docker.io/library/golang:latest
+    command:
+      - "go"
+      - "run"
+      - "./cmd/globalping"
+      - "hub"
+      - "--upstream-ipregistry-apiendpoint=https://api.ipregistry.co"
+      - "--upstream-ipregistry-apikey-env=IPREGISTRY_API_KEY"
+      - "--server-cert=test/certs/peer.pem"
+      - "--server-cert-key=test/certs/peer-key.pem"
+      - "--public-http-listen-address=:8084"
+      - "--jwt-quic-listen-address=:18449"
+      - "--min-pkt-interval=30ms"
+      - "--max-pkt-timeout=3000ms"
+      - "--jwt-auth-secret-from-env=JWT_SECRET"
+
+  web-proxy-dev:
+    container_name: web-proxy-dev
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - go-dev-vol:/go
+      - ../../:/root/projects/globalping
+      - ./.env:/root/projects/globalping/.env
+    working_dir: /root/projects/globalping
+    ports:
+      - "8092:8092"
+    image: docker.io/library/golang:latest
+    command:
+      - "go"
+      - "run"
+      - "./cmd/globalping"
+      - "web"
+      - "--listen-address=:8092"
+      - "--jwt-auth-secret-from-env=JWT_SECRET"
+      - "--github-oauth-client-id-from-env=GITHUB_OAUTH_CLIENT_ID"
+      - "--github-oauth-app-secret-from-env=GITHUB_OAUTH_APP_SECRET"
+      - "--github-oauth-redir-url=http://localhost:8092/login/as/github/auth"
+      - "--google-oauth-client-id-from-env=GOOGLE_OAUTH_CLIENT_ID"
+      - "--google-oauth-client-secret-from-env=GOOGLE_OAUTH_CLIENT_SECRET"
+      - "--google-oauth-redir-url=http://localhost:8092/login/as/google/auth"
+      - "--iedon-oauth-client-id-from-env=IEDON_OAUTH_CLIENT_ID"
+      - "--iedon-oauth-client-secret-from-env=IEDON_OAUTH_CLIENT_SECRET"
+      - "--iedon-oauth-redir-url=http://localhost:8092/login/as/iedon/auth"
+      - "--kioubit-oauth-client-id-from-env=KIOUBIT_OAUTH_CLIENT_ID"
+      - "--kioubit-oauth-client-secret-from-env=KIOUBIT_OAUTH_CLIENT_SECRET"
+      - "--kioubit-oauth-redir-url=http://localhost:8092/login/as/kioubit/auth"
+      - "--entra-id-tenant-id-from-env=ENTRA_ID_TENANT_ID"
+      - "--entra-id-client-id-from-env=ENTRA_ID_CLIENT_ID"
+      - "--entra-id-client-secret-from-env=ENTRA_ID_CLIENT_SECRET"
+      - "--entra-id-redir-url=http://localhost:8092/login/as/entra/auth"
+      - "--default-backend=http://host.docker.internal:45844"
+      - "--add-white-list-path=/_next/"
+      - "--add-white-list-path=/login/as/"
+      - "--add-white-list-path=/login/"
+      - "--add-white-list-path=/login"
