@@ -5,7 +5,7 @@ import mrtDataFromRirArin from "../public/example_mrt_entries_rir-arin.json";
 import mrtDataFromRirLacnic from "../public/example_mrt_entries_rir-lacnic.json";
 import mrtDataFromRirRipencc from "../public/example_mrt_entries_rir-ripencc.json";
 import { parse as parseIP, parseCIDR, isValidCIDR, isValid } from "ipaddr.js";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { LineTokenizer, JSONLineDecoder } from "./globalping";
 
 export function getMRTEntryServiceAPIPrefix(): string {
@@ -385,87 +385,6 @@ export function useMRTEntriesReadByProvider(
 ): ProviderEntriesMap {
   const [providerMap, setProviderMap] = useState<ProviderEntriesMap>({});
 
-  const resumeTick = (
-    abortController: AbortController,
-    provider: string,
-    queryType: RouteQueryType,
-    target: string,
-  ) => {
-    lister
-      .getMRTEntries(abortController, provider, queryType, target)
-      .then((stream) => {
-        return stream
-          ?.pipeThrough(new TextDecoderStream())
-          .pipeThrough(new LineTokenizer())
-          .pipeThrough(new JSONLineDecoder())
-          .getReader();
-      })
-      .then(async (reader) => {
-        if (!reader) {
-          return;
-        }
-        while (true) {
-          try {
-            const { value, done } = await reader.read();
-            if (done) {
-              setProviderMap((prev) => {
-                if (!prev[provider]) return prev;
-                return {
-                  ...prev,
-                  [provider]: { ...prev[provider], isRunning: false },
-                };
-              });
-              return;
-            }
-            const event = value as MRTEntryDataEvent;
-            if (event.Err) {
-              setProviderMap((prev) => {
-                if (!prev[provider]) return prev;
-                return {
-                  ...prev,
-                  [provider]: { ...prev[provider], error: event.Err },
-                };
-              });
-            } else if (event.Data) {
-              setProviderMap((prev) => {
-                if (!prev[provider]) return prev;
-                return {
-                  ...prev,
-                  [provider]: {
-                    ...prev[provider],
-                    entries: [...prev[provider].entries, event.Data!],
-                  },
-                };
-              });
-            }
-          } catch (err) {
-            console.error("failed to read:", err);
-            return;
-          }
-        }
-      })
-      .catch((err) => {
-        if (err.name === "AbortError") {
-          console.log("Stream stopped by user or component unmount.");
-        } else {
-          console.error("Stream error:", err);
-          setProviderMap((prev) => {
-            if (!prev[provider]) return prev;
-            return {
-              ...prev,
-              [provider]: {
-                ...prev[provider],
-                error: err.message,
-                isRunning: false,
-              },
-            };
-          });
-        }
-      });
-  };
-
-  const abortControllerRef = useRef<AbortController>(new AbortController());
-
   useEffect(() => {
     if (!target || target.trim() === "") {
       setProviderMap({});
@@ -484,11 +403,91 @@ export function useMRTEntriesReadByProvider(
     setProviderMap(initial);
 
     const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    const { signal } = abortController;
+    // alive() returns true only while this effect tick is still current.
+    const alive = () => !signal.aborted;
 
     const qt = queryType ?? defaultRouteQueryType;
+
     for (const provider of providers) {
-      resumeTick(abortController, provider, qt, target);
+      lister
+        .getMRTEntries(abortController, provider, qt, target)
+        .then((stream) => {
+          if (!alive()) return null;
+          return stream
+            .pipeThrough(new TextDecoderStream())
+            .pipeThrough(new LineTokenizer())
+            .pipeThrough(new JSONLineDecoder())
+            .getReader();
+        })
+        .then(async (reader) => {
+          if (!reader) {
+            if (alive()) {
+              setProviderMap((prev) => ({
+                ...prev,
+                [provider]: { ...prev[provider], isRunning: false },
+              }));
+            }
+            return;
+          }
+          while (true) {
+            try {
+              const { value, done } = await reader.read();
+              if (!alive()) {
+                reader.cancel().catch(() => {});
+                return;
+              }
+              if (done) {
+                setProviderMap((prev) => ({
+                  ...prev,
+                  [provider]: { ...prev[provider], isRunning: false },
+                }));
+                return;
+              }
+              const event = value as MRTEntryDataEvent;
+              if (event.Err) {
+                setProviderMap((prev) => ({
+                  ...prev,
+                  [provider]: { ...prev[provider], error: event.Err },
+                }));
+              } else if (event.Data) {
+                setProviderMap((prev) => ({
+                  ...prev,
+                  [provider]: {
+                    ...prev[provider],
+                    entries: [...prev[provider].entries, event.Data!],
+                  },
+                }));
+              }
+            } catch (err) {
+              if (!alive()) return;
+              console.error("failed to read:", err);
+              setProviderMap((prev) => ({
+                ...prev,
+                [provider]: { ...prev[provider], isRunning: false },
+              }));
+              return;
+            }
+          }
+        })
+        .catch((err) => {
+          if (err.name === "AbortError") {
+            console.debug("Stream stopped by user or component unmount.");
+          } else if (alive()) {
+            console.error("Stream error:", err);
+            setProviderMap((prev) => {
+              if (!prev[provider]) return prev;
+              return {
+                ...prev,
+                [provider]: {
+                  ...prev[provider],
+                  error: err.message,
+                  isRunning: false,
+                },
+              };
+            });
+          }
+        });
     }
 
     return () => {
