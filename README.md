@@ -51,7 +51,7 @@ CloudPing is designed with a three-layer architecture that separates user-facing
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │
-          │  QUIC / mTLS / WebSocket
+          │  QUIC / mTLS / WebSocket / HTTP(s)
           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Execution Layer                                     │
