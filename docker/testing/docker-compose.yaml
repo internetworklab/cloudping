@@ -2,8 +2,9 @@ name: cloudping-testing
 
 volumes:
   go-dev-vol:
-    external: true
+    external: false
     name: go-dev-vol
+  web-node-modules:
 
 services:
   web:
@@ -14,14 +15,15 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - "../../web:/root/projects/globalping/web"
+      - "web-node-modules:/root/projects/globalping/web/node_modules"
     working_dir: /root/projects/globalping/web
     ports:
       - "45844:45844"
     image: docker.io/library/node:latest
     command:
-      - "npm"
-      - "run"
-      - "dev"
+      - "bash"
+      - "-c"
+      - "npm install && npm run dev"
 
   hub:
     container_name: hub-dev
