@@ -21,6 +21,7 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - Email Interface (Interact via Email)
 - MCP Server (StreamableHTTP + JWT)
 - Multiple GeoIP/IPInfo provider support (IPInfo.io, IP2Location.io, and IPRegistry.co)
+- BGP Route Lookup via MRT data
 - Prometheus Metrics
 
 ## Architecture
@@ -54,18 +55,18 @@ CloudPing is designed with a three-layer architecture that separates user-facing
           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Execution Layer                                     │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐            │
-│  │ Agent 1 │  │ Agent 2 │  │ Agent 3 │  │ Agent N │  │  ...    │            │
-│  │(at-vie1)│  │(us-nyc1)│  │(us-lax1)│  │(jp-tyo1)│  │         │            │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘            │
-│      Ping, Traceroute, DNS Probe, HTTP Probe, TCP Ping                      │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌──────────────┐       │
+│  │ Agent 1 │  │ Agent 2 │  │   ...   │  │ Agent N │  │ MRT Query    │       │
+│  │(at-vie1)│  │(us-nyc1)│  │         │  │(jp-tyo1)│  │ Service      │       │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └──────────────┘       │
+│      Ping, Traceroute, DNS Probe, HTTP Probe, TCP Ping, BGP Route Lookup    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Access Layer**: End-user interfaces including the web UI, Telegram bot, email interface, and MCP server.
 - **Email Gateway**: Sits between the Email Client and the Hub. Currently, the only supported email gateway is **Cloudflare Email Service**.
 - **Control Layer**: The Hub acts as the central coordinator — it exposes the public API, authenticates requests, and routes probe tasks to the appropriate agents.
-- **Execution Layer**: Distributed agents running at various geographical locations that perform the actual network measurements (ping, traceroute, DNS, HTTP probes) and stream results back to the hub.
+- **Execution Layer**: Distributed agents at various geographical locations performing network measurements (ping, traceroute, DNS, HTTP probes), plus the **MRT Query Service** for BGP route lookup.
 
 ## Try
 
