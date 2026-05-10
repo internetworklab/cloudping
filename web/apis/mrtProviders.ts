@@ -6,10 +6,13 @@ import mrtDataFromRirLacnic from "../public/example_mrt_entries_rir-lacnic.json"
 import mrtDataFromRirRipencc from "../public/example_mrt_entries_rir-ripencc.json";
 import { parse as parseIP, parseCIDR, isValidCIDR, isValid } from "ipaddr.js";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { LineTokenizer, JSONLineDecoder } from "./globalping";
+import { LineTokenizer, JSONLineDecoder, getApiEndpoint } from "./globalping";
 
 export function getMRTEntryServiceAPIPrefix(): string {
-  return process.env["NEXT_PUBLIC_ROUTE_INFO_API_PREFIX"] || "/api/proxy/route";
+  return (
+    process.env["NEXT_PUBLIC_ROUTE_INFO_API_PREFIX"] ||
+    getApiEndpoint() + "/proxy/mrt"
+  );
 }
 
 export enum ProviderStatus {

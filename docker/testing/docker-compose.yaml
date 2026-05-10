@@ -6,11 +6,12 @@ volumes:
     name: go-dev-vol
   web-node-modules:
 
+networks:
+  web-dev:
+
 services:
   web:
     container_name: web-dev
-    env_file:
-      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -19,6 +20,8 @@ services:
     working_dir: /root/projects/globalping/web
     ports:
       - "45844:45844"
+    networks:
+      - "web-dev"
     image: docker.io/library/node:latest
     command:
       - "bash"
@@ -38,6 +41,8 @@ services:
     working_dir: /root/projects/globalping
     ports:
       - "8084:8084"
+    networks:
+      - "web-dev"
     image: docker.io/library/golang:latest
     command:
       - "go"
@@ -53,6 +58,8 @@ services:
       - "--min-pkt-interval=30ms"
       - "--max-pkt-timeout=3000ms"
       - "--jwt-auth-secret-from-env=JWT_SECRET"
+      - "--mrt-query-service-backend-url=http://host.docker.internal:8190/providers"
+      - "--mrt-query-service-bearer-token=MRT_QUERY_SVC_JWT"
 
   web-proxy-dev:
     container_name: web-proxy-dev
@@ -67,6 +74,8 @@ services:
     working_dir: /root/projects/globalping
     ports:
       - "8092:8092"
+    networks:
+      - "web-dev"
     image: docker.io/library/golang:latest
     command:
       - "go"

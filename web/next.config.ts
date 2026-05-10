@@ -6,8 +6,8 @@ const nextConfig: NextConfig = {
   rewrites() {
     return [
       {
-        source: "/api/proxy/route/:path*",
-        destination: "http://localhost:8190/:path*",
+        source: "/api/:path*",
+        destination: "http://hub-dev:8084/:path*",
       },
     ];
   },

@@ -9,10 +9,7 @@ import {
 } from "./types";
 
 export function getApiEndpoint(): string {
-  return (
-    process.env.NEXT_PUBLIC_API_ENDPOINT ||
-    "https://globalping-api.netneighbor.me"
-  );
+  return process.env.NEXT_PUBLIC_API_ENDPOINT || "/api";
 }
 
 export const NodeAttrCountryCode = "CountryCode";
