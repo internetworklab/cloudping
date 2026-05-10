@@ -155,6 +155,10 @@ Use tools exposed from the MCP server:
 
 ![Use MCP](docs/screenshots/9.png)
 
+MRT Route Query Service:
+
+![Use MRT Route Query](docs/screenshots/10.png)
+
 ## API Design
 
 ### Endpoints Overview
@@ -203,6 +207,12 @@ Both endpoints return a stream of JSON lines. Use line feed (`\n`) as the delimi
 ### Developer Note
 
 These APIs are intended for developers only. End users should use the Web UI.
+
+## MRT Query Service
+
+The MRT Query Service provides BGP route lookup by streaming MRT (RFC6396, Multi-threaded Routing Toolkit Routing Information Export Format) data entries. Results are delivered as newline-delimited JSON (ndjson) streams, supporting queries by origin ASN, neighbor ASN, AS path segments, and IP/CIDR prefix.
+
+For the data format specification and the reference implementation, see [internetworklab/mrtparse-stream](https://github.com/internetworklab/mrtparse-stream). The reference implementation uses [GoBGP](https://github.com/osrg/gobgp) to parse MRT files and [PostgreSQL](https://www.postgresql.org/) to store and index the resulting entries.
 
 ## Bot Interface
 
