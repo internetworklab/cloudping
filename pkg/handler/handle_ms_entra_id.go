@@ -212,7 +212,7 @@ func (h *EntraIDLoginHandler) handleAuthorizationCode(w http.ResponseWriter, r *
 	email := result.IDToken.Email
 	name := result.IDToken.PreferredUsername
 
-	subjectId := fmt.Sprintf("%s:%s", h.getProviderName(), entraUserID)
+	subjectId := fmt.Sprintf("entraid-%s:%s", h.getProviderName(), entraUserID)
 	username := email
 	if username == "" {
 		username = name

@@ -26,7 +26,7 @@ func (h *VisitorLoginHandler) GetMapClaims(r *http.Request) (jwt.MapClaims, erro
 
 	customClaims := &pkgauth.CustomClaimType{}
 	customClaims.ID = uuid.NewString()
-	customClaims.Subject = uuid.NewString()
+	customClaims.Subject = "visitor:" + uuid.NewString()
 	customClaims.Audience = make([]string, 0)
 	customClaims.Audience = append(customClaims.Audience, pkgauth.AudSession)
 	now := time.Now()
