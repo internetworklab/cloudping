@@ -31,6 +31,7 @@ type WebAuthProxyCmd struct {
 
 	RedirectIfNoAuth string   `name:"redirect-if-no-auth" help:"The URL to redirect user to, when no valid authentication can be found from the request" default:"/login"`
 	WhiteListPaths   []string `name:"add-white-list-path" help:"Additional white list paths, if the request path falls within these paths or any subpath of these paths, request will be passed to the backend directly."`
+	RejectVisitor    bool     `name:"reject-visitor" help:"Reject requests from visitors (subjects with the 'visitor:' prefix)" default:"false"`
 
 	VisitorSessionValidity      time.Duration `name:"validity-of-visitor-session" help:"Validity of visitor session" default:"168h"`
 	VisitorSessionTicketGenIntv time.Duration `name:"visitor-jwt-ticket-gen-intv" help:"We issue visitor token based on some ticket generator, this is the interval of how fast it generate tickets" default:"1s"`
@@ -116,7 +117,7 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 	// todo: impl and use a dynm key provider
 	keyProvider := pkgauth.NewStaticSecretProvider(jwtSec)
 
-	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider())
+	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider(), cmd.RejectVisitor)
 
 	// Create a reverse proxy that forwards requests to the backend
 	var backendHandler http.Handler = httputil.NewSingleHostReverseProxy(backendURL)

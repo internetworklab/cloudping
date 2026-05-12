@@ -56,6 +56,7 @@ type HubCmd struct {
 	JWTIssuerId           string        `name:"jwt-issuer-id" help:"The issuer ID to use when issuing JWT tokens" default:"cloudping-hub"`
 	SessionTTL            time.Duration `name:"session-ttl" help:"The time-to-live for issued sessions" default:"1h"`
 	AllowAnonymous        bool          `name:"allow-anonymous" help:"Set this to true to allow anonymous visitor (i.e. those who can not present a valid token in their request)" default:"true"`
+	RejectVisitor         bool          `name:"reject-visitor" help:"Reject requests from visitors (subjects with the 'visitor:' prefix)" default:"false"`
 
 	UpstreamIP2LocationAPIEndpoint string `name:"upstream-ip2loc-api-endpoint" help:"The upstream IP2Location API endpoint" default:"https://api.ip2location.io/v2/"`
 	UpstreamIP2LocationAPIKeyEnv   string `name:"upstream-ip2loc-apikey-env" help:"Name of the environment variable that contains the IP2Location API key" default:"IP2LOCATION_API_KEY"`
@@ -276,7 +277,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	} else {
 		blProvider = pkgauth.NewNullBlackListProvider()
 	}
-	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, blProvider)
+	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, blProvider, hubCmd.RejectVisitor)
 
 	// the middlewares would be triggered in the reverse order of how they were chained,
 	publicHandler = pkghandler.WithLog(publicHandler)

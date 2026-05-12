@@ -29,6 +29,7 @@ type MCPServerCmd struct {
 	// For authenticate client's request
 	JWTAuthSecretFromEnv  string `name:"jwt-auth-secret-from-env" help:"Name of the environment variable that contains the JWT secret"`
 	JWTAuthSecretFromFile string `name:"jwt-auth-secret-from-file" help:"Path to the file that contains the JWT secret"`
+	RejectVisitor         bool   `name:"reject-visitor" help:"Reject requests from visitors (subjects with the 'visitor:' prefix)" default:"false"`
 
 	// About IPRegistry.co
 	IPRegistryCOAPIEndpoint     string `name:"ipregistry-api-endpoint" help:"APIEndpoint of IPRegistry.co" default:"https://ping2.sh/api/proxy/ipregistry"`
@@ -129,7 +130,7 @@ func (cmd *MCPServerCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			log.Panicf("failed to get JWT secret: %v", err)
 		}
 		keyProvider := pkgauth.NewStaticSecretProvider(jwtSec)
-		jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider())
+		jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider(), cmd.RejectVisitor)
 		handler = pkghandler.WithJWTAuth(handler, jwtValidator, nil)
 	}
 	handler = pkghandler.WithRealIP(handler)
