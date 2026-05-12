@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -30,12 +31,14 @@ type JWTValidator interface {
 type StaticKeyJWTValidator struct {
 	secretProvider SecretProvider
 	blacklist      BlackListProvider
+	rejectVisitor  bool
 }
 
-func NewStaticKeyJWTValidator(secretProvider SecretProvider, blacklist BlackListProvider) *StaticKeyJWTValidator {
+func NewStaticKeyJWTValidator(secretProvider SecretProvider, blacklist BlackListProvider, rejectVisitor bool) *StaticKeyJWTValidator {
 	return &StaticKeyJWTValidator{
 		secretProvider: secretProvider,
 		blacklist:      blacklist,
+		rejectVisitor:  rejectVisitor,
 	}
 }
 
@@ -74,6 +77,9 @@ func (s *StaticKeyJWTValidator) doValidateToken(ctx context.Context, tokenString
 		if s.checkBL(ctx, claims.Subject) {
 			return nil, nil, fmt.Sprintf("Token is blacklisted, subj=%s", claims.Subject), nil
 		}
+		if s.rejectVisitor && strings.HasPrefix(claims.Subject, VisitorSubjectPrefix) {
+			return nil, nil, fmt.Sprintf("Visitor sessions are not allowed, subj=%s", claims.Subject), nil
+		}
 
 		return token, claims, "", nil
 	}
@@ -81,6 +87,9 @@ func (s *StaticKeyJWTValidator) doValidateToken(ctx context.Context, tokenString
 	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && claims != nil {
 		if s.checkBL(ctx, claims.Subject) {
 			return nil, nil, fmt.Sprintf("Token is blacklisted, subj=%s", claims.Subject), nil
+		}
+		if s.rejectVisitor && strings.HasPrefix(claims.Subject, VisitorSubjectPrefix) {
+			return nil, nil, fmt.Sprintf("Visitor sessions are not allowed, subj=%s", claims.Subject), nil
 		}
 
 		return token, &CustomClaimType{RegisteredClaims: *claims}, "", nil
@@ -134,6 +143,8 @@ func NewStaticKeyJWTIssuer(secretProvider SecretProvider, issuer string) *Static
 }
 
 const AudSession string = "session"
+
+const VisitorSubjectPrefix = "visitor:"
 
 func (s *StaticKeyJWTIssuer) IssueToken(ctx context.Context, mapClaims jwt.MapClaims) (string, error) {
 	if s.issuer == "" {
