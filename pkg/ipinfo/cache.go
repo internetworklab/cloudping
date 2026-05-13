@@ -51,13 +51,17 @@ func WithCache(ctx context.Context, upstream GeneralIPInfoAdapter, maxExpireTime
 }
 
 func NewCacheIPInfoProvider(upstream GeneralIPInfoAdapter, maxExpireTime time.Duration, hook RequestLoggerHook) *CacheIPInfoProvider {
-	return &CacheIPInfoProvider{
+	cacheProvider := &CacheIPInfoProvider{
 		Upstream:      upstream,
 		maxExpireTime: maxExpireTime,
 		store:         btree.New(2),
 		serviceChan:   make(chan chan CacheStoreAccess),
-		hook:          hook,
+		hook:          func(ctx context.Context, stats IPInfoRequestStats) {},
 	}
+	if hook != nil {
+		cacheProvider.hook = hook
+	}
+	return cacheProvider
 }
 
 func (ch *CacheIPInfoProvider) Run(ctx context.Context) {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	pkgproxy "github.com/internetworklab/cloudping/pkg/proxy"
 	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
+	"github.com/oschwald/maxminddb-golang/v2"
 	quicGo "github.com/quic-go/quic-go"
 )
 
@@ -64,6 +66,11 @@ type HubCmd struct {
 	UpstreamIPRegistryAPIEndpoint string `name:"upstream-ipregistry-apiendpoint" help:"The upstream IPRegistry APIEndpoint, it's needed when the hub also act as a IPRegistry proxy" default:"https://api.ipregistry.co"`
 	UpstreamIpRegistryAPIKeyEnv   string `name:"upstream-ipregistry-apikey-env" help:"The env that stores the apikey for accessing the upstream IPRegistry API, it's needed when the hub also act as a IPRegistry proxy" default:"IPREGISTRY_API_KEY"`
 
+	DN42IP2LocationAPIEndpoint string `name:"dn42-ip2location-api-endpoint" help:"APIEndpoint of DN42 IP2Location provider, e.g. https://api.example.com/v1/ip2location , note that this has higher priority than DN42IPInfoProvider, so it would be used first once provided." default:"https://regquery.ping2.sh/ip2location/v1/query"`
+
+	MaxMindCityMMDBFile string `name:"maxmind-city-mmdb" help:"Path to the MaxMind GeoLite2-City MMDB file for the MaxMind proxy service"`
+	MaxMindASNMMDBFile  string `name:"maxmind-asn-mmdb" help:"Path to the MaxMind GeoLite2-ASN MMDB file for the MaxMind proxy service"`
+
 	PublicSlidingWindowRateLimitWindowLength time.Duration `name:"public-sw-rl-window-len" help:"The window length for the public sliding window rate limiter" default:"15s"`
 	PublicSlidingWindowRateLimitNumRequests  int           `name:"public-sw-rl-num-reqs" help:"The maximum number of requests per window for the public sliding window rate limiter" default:"300"`
 
@@ -75,6 +82,9 @@ type HubCmd struct {
 	MRTQueryServiceBearerTokenEnv          string `name:"mrt-query-service-bearer-token" help:"Env of bearer/JWT token (Authorization: bearer <token>) for the MRT query service backend" default:""`
 	MRTQueryServiceCFAccessClientIdEnv     string `name:"mrt-query-service-cf-access-client-id" help:"Env of the Cloudflare Access client ID for the MRT query service backend, only needed when the backend is secured by Cloudflare ZeroTrust and aceepting Cloudflare Service Token as authentication" default:""`
 	MRTQueryServiceCFAccessClientSecretEnv string `name:"mrt-query-service-cf-access-client-secret" help:"Env of the Cloudflare Access client secret for the MRT query service backend, only needed when the backend is secured by Cloudflare ZeroTrust and aceepting Cloudflare Service Token as authentication" default:""`
+
+	// General GeoIP/IPInfoLike setting
+	GeneralIPInfoCacheValidity time.Duration `name:"ipinfo-cache-validity-secs" help:"The validity of the IPInfo cache in seconds" default:"600s"`
 }
 
 func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
@@ -82,6 +92,45 @@ func (hubCmd *HubCmd) getJWTSecret() ([]byte, error) {
 }
 
 const defaultWebSocketTimeout = 60 * time.Second
+
+func (hubCmd *HubCmd) getIPInfoProvidersRegistry(ctx context.Context) (*pkgipinfo.IPInfoProviderRegistry, error) {
+	registry := pkgipinfo.NewIPInfoProviderRegistry()
+
+	if endpoint := hubCmd.UpstreamIP2LocationAPIEndpoint; endpoint != "" {
+		apiKey := ""
+		if envName := hubCmd.UpstreamIP2LocationAPIKeyEnv; envName != "" {
+			apiKey = os.Getenv(envName)
+		}
+		adapter := pkgipinfo.NewIP2LocationIPInfoAdapter(endpoint, apiKey, "ip2location", nil)
+		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
+	}
+
+	if endpoint := hubCmd.UpstreamIPRegistryAPIEndpoint; endpoint != "" {
+		adapter := &pkgipinfo.IPRegistryAdapter{
+			APIEndpoint: endpoint,
+			Name:        "ipregistry",
+		}
+		if envName := hubCmd.UpstreamIpRegistryAPIKeyEnv; envName != "" {
+			adapter.APIKey = os.Getenv(envName)
+		}
+		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
+	}
+
+	if hubCmd.MaxMindCityMMDBFile != "" || hubCmd.MaxMindASNMMDBFile != "" {
+		adapter, err := pkgipinfo.NewMaxMindMMDBAdapter("maxmind", hubCmd.MaxMindCityMMDBFile, hubCmd.MaxMindASNMMDBFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create MaxMind MMDB adapter: %w", err)
+		}
+		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
+	}
+
+	if endpoint := hubCmd.DN42IP2LocationAPIEndpoint; endpoint != "" {
+		adapter := pkgipinfo.NewIP2LocationIPInfoAdapter(endpoint, "", "dn42", nil)
+		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
+	}
+
+	return registry, nil
+}
 
 func (hubCmd *HubCmd) tryRegisterMRTProxyService(muxerPublic *http.ServeMux) error {
 	if mrtURL := hubCmd.MRTQueryServiceBackendURL; mrtURL != "" {
@@ -107,6 +156,48 @@ func (hubCmd *HubCmd) tryRegisterMRTProxyService(muxerPublic *http.ServeMux) err
 
 		muxerPublic.Handle("/proxy/mrt/", mrtProxyHandler)
 	}
+	return nil
+}
+
+func (hubCmd *HubCmd) tryRegisterMaxMindMMDBProxyService(muxerPublic *http.ServeMux) error {
+	if hubCmd.MaxMindCityMMDBFile == "" && hubCmd.MaxMindASNMMDBFile == "" {
+		return nil
+	}
+
+	var cityDB *maxminddb.Reader
+	if hubCmd.MaxMindCityMMDBFile != "" {
+		db, err := maxminddb.Open(hubCmd.MaxMindCityMMDBFile)
+		if err != nil {
+			return fmt.Errorf("failed to open MaxMind city MMDB %q: %w", hubCmd.MaxMindCityMMDBFile, err)
+		}
+		cityDB = db
+	}
+
+	var asnDB *maxminddb.Reader
+	if hubCmd.MaxMindASNMMDBFile != "" {
+		db, err := maxminddb.Open(hubCmd.MaxMindASNMMDBFile)
+		if err != nil {
+			if cityDB != nil {
+				cityDB.Close()
+			}
+			return fmt.Errorf("failed to open MaxMind ASN MMDB %q: %w", hubCmd.MaxMindASNMMDBFile, err)
+		}
+		asnDB = db
+	}
+
+	maxmindHandler, err := pkghandler.NewMaxMindProxyHandler(asnDB, cityDB)
+	if err != nil {
+		if cityDB != nil {
+			cityDB.Close()
+		}
+		if asnDB != nil {
+			asnDB.Close()
+		}
+		return fmt.Errorf("failed to create MaxMind proxy handler: %w", err)
+	}
+
+	log.Printf("Registered MaxMind proxy service: city=%s, asn=%s", hubCmd.MaxMindCityMMDBFile, hubCmd.MaxMindASNMMDBFile)
+	muxerPublic.Handle("/proxy/maxmind", maxmindHandler)
 	return nil
 }
 
@@ -257,9 +348,22 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/count", pkghandler.NewCountHandler(0))
 	muxerPublic.Handle("/profile", &pkghandler.ProfileHandler{})
 
+	ctx := context.Background()
+	ipInfoProvidersRegistry, err := hubCmd.getIPInfoProvidersRegistry(ctx)
+	if err != nil {
+		return err
+	}
+	ipQueryDirectoryHandler := &pkgproxy.IPQueryDirectoryHandler{
+		IPInfoProvidersRegistry: ipInfoProvidersRegistry,
+	}
+	muxerPublic.Handle("/ip-query/", ipQueryDirectoryHandler)
+
 	muxerPublic.Handle("/proxy/ip2location", ip2locProxyHandler)
 	muxerPublic.Handle("/proxy/ipregistry/", ipregistryProxyHandler)
 	if err := hubCmd.tryRegisterMRTProxyService(muxerPublic); err != nil {
+		return err
+	}
+	if err := hubCmd.tryRegisterMaxMindMMDBProxyService(muxerPublic); err != nil {
 		return err
 	}
 

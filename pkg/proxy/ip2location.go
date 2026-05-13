@@ -25,7 +25,7 @@ func (h *IP2LocationProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	subjAny := r.Context().Value(pkgutils.CtxKeySubjectId)
 	if subjAny == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("unauthorized, can not get subject context")})
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "unauthorized, can not get subject context"})
 		return
 	}
 

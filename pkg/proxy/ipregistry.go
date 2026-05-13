@@ -46,13 +46,21 @@ func (h *IPRegistryProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	subjAny := r.Context().Value(pkgutils.CtxKeySubjectId)
 	if subjAny == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: fmt.Sprintf("unauthorized, can not get subject context")})
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "unauthorized, can not get subject context"})
 		return
 	}
 
 	subj := subjAny.(string)
 
-	queryingIp := h.getQueryingIPFromRequestURL(r.URL)
+	queryingIp := r.URL.Query().Get("ip")
+	if queryingIp == "" {
+		queryingIp = h.getQueryingIPFromRequestURL(r.URL)
+	}
+	if queryingIp == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(pkgutils.ErrorResponse{Error: "no valid IP address provided, expected ?ip=<address> (the url query string) or /<address> (as last path segment)"})
+		return
+	}
 
 	log.Printf("IPRegistry proxy handle request for %s, remote: %s, query ip: %s", subj, pkgutils.GetRemoteAddr(r), queryingIp)
 

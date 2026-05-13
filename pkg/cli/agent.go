@@ -96,6 +96,11 @@ type AgentCmd struct {
 	IPRegistryAddBearerHeader   bool   `name:"ipregistry-add-bearer-header" help:"Append JWT token to IPRegistry API endpoint, this would be useful when the endpoint also require a 'Authorization: bearer <token>' header" default:"true"`
 	IPRegistryCOAPIProviderName string `name:"ipregistry-provider-name" help:"Name for identifying the clearnet IPRegistry.co-compatible API service provider, useful especially in routing" default:"ipregistry"`
 
+	// About MaxMind MMDB GeoIP source
+	MaxMindCityMMDBFile string `name:"maxmind-city-mmdb" help:"Path to the MaxMind GeoLite2-City MMDB file"`
+	MaxMindASNMMDBFile  string `name:"maxmind-asn-mmdb" help:"Path to the MaxMind GeoLite2-ASN MMDB file"`
+	MaxMindProviderName string `name:"maxmind-provider-name" help:"Name for identifying the MaxMind GeoIP provider, useful especially in routing" default:"maxmind"`
+
 	// Prometheus stuffs
 	MetricsListenAddress string `help:"Address of the listener for exposing prometheus metrics, e.g. :2112"`
 	MetricsPath          string `help:"Path of the Prometheus metrics endpoint, e.g. /metrics" default:"/metrics"`
@@ -170,6 +175,17 @@ func (agentCmd *AgentCmd) registerAllAvailableIPInfoProviders(ctx context.Contex
 		)
 	}
 
+	if agentCmd.MaxMindCityMMDBFile != "" || agentCmd.MaxMindASNMMDBFile != "" {
+		log.Printf("Using MaxMind MMDB: city=%s, asn=%s", agentCmd.MaxMindCityMMDBFile, agentCmd.MaxMindASNMMDBFile)
+		maxmindAdapter, err := pkgipinfo.NewMaxMindMMDBAdapter(agentCmd.MaxMindProviderName, agentCmd.MaxMindCityMMDBFile, agentCmd.MaxMindASNMMDBFile)
+		if err != nil {
+			return fmt.Errorf("failed to create MaxMind MMDB adapter: %v", err)
+		}
+		registry.RegisterAdapter(
+			pkgipinfo.WithCache(ctx, maxmindAdapter, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
+		)
+	}
+
 	if ip2LocationEndpoint := agentCmd.IP2LocationAPIEndpoint; ip2LocationEndpoint != "" {
 		ip2LocationAPIKey := ""
 		if envName := os.Getenv(agentCmd.IP2LocationAPIKeyEnv); envName != "" {
@@ -223,8 +239,9 @@ func getClearnetIPInfoAdapter(agentCmd *AgentCmd, registry *pkgipinfo.IPInfoProv
 		// use user-provided search order to lookup internet geoip/ipinfo provider
 		tryOrder = append(tryOrder, agentCmd.IPInfoProviderSearchOrder...)
 	} else {
-		// use default order: try ipregistry if available, then ip2location, then ipinfo-lite.
+		// use default order: try ipregistry if available, then maxmind, then ip2location, then ipinfo-lite.
 		tryOrder = append(tryOrder, agentCmd.IPRegistryCOAPIProviderName)
+		tryOrder = append(tryOrder, agentCmd.MaxMindProviderName)
 		tryOrder = append(tryOrder, agentCmd.IP2LocationProviderName)
 		tryOrder = append(tryOrder, agentCmd.IPInfoLiteProviderName)
 	}
