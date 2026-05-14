@@ -78,8 +78,18 @@ func (ia *MaxMindMMDBAdapter) Run(ctx context.Context) {
 	go ia.doRun(ctx)
 }
 
-func (ia *MaxMindMMDBAdapter) loadDBs() error {
+func (ia *MaxMindMMDBAdapter) releaseDBs() {
+	if ia.cityDB != nil {
+		ia.cityDB.Close()
+		ia.cityDB = nil
+	}
+	if ia.asnDB != nil {
+		ia.asnDB.Close()
+		ia.asnDB = nil
+	}
+}
 
+func (ia *MaxMindMMDBAdapter) loadDBs() error {
 	var err error
 	ia.cityDB, err = maxminddb.Open(ia.cityDBPath)
 	if err != nil {
@@ -88,6 +98,8 @@ func (ia *MaxMindMMDBAdapter) loadDBs() error {
 
 	ia.asnDB, err = maxminddb.Open(ia.asnDBPath)
 	if err != nil {
+		ia.cityDB.Close()
+		ia.cityDB = nil
 		return fmt.Errorf("maxmind: failed to open asn database %q: %w", ia.asnDBPath, err)
 	}
 
@@ -96,14 +108,7 @@ func (ia *MaxMindMMDBAdapter) loadDBs() error {
 
 func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 
-	defer func() {
-		if ia.cityDB != nil {
-			ia.cityDB.Close()
-		}
-		if ia.asnDB != nil {
-			ia.asnDB.Close()
-		}
-	}()
+	defer ia.releaseDBs()
 
 	defer close(ia.asnDBChan)
 	defer close(ia.cityDBChan)
@@ -141,6 +146,7 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 			}
 			if event.Has(fsnotify.Write) {
 				log.Println("fs watcher modified file:", event.Name)
+				ia.releaseDBs()
 				if err := ia.loadDBs(); err != nil {
 					ia.errChan <- err
 				}
@@ -154,7 +160,8 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 	}
 }
 
-// getASNDB returns the ASN database reader, or nil if not loaded.
+// getASNDB returns the current ASN database reader, blocking until the
+// adapter has loaded one. Returns nil if the adapter has been shut down.
 func (ia *MaxMindMMDBAdapter) getASNDB() *maxminddb.Reader {
 	db, ok := <-ia.asnDBChan
 	if !ok {
@@ -163,7 +170,8 @@ func (ia *MaxMindMMDBAdapter) getASNDB() *maxminddb.Reader {
 	return db
 }
 
-// getCityDB returns the City database reader, or nil if not loaded.
+// getCityDB returns the current City database reader, blocking until the
+// adapter has loaded one. Returns nil if the adapter has been shut down.
 func (ia *MaxMindMMDBAdapter) getCityDB() *maxminddb.Reader {
 	db, ok := <-ia.cityDBChan
 	if !ok {
