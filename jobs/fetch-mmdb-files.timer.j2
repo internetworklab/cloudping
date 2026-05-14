@@ -1,0 +1,9 @@
+[Unit]
+Description=Fetch MaxMind GeoLite2 MMDB files weekly
+
+[Timer]
+OnCalendar=Sat *-*-* 00:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

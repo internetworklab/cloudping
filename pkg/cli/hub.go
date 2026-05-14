@@ -22,7 +22,6 @@ import (
 	pkgproxy "github.com/internetworklab/cloudping/pkg/proxy"
 	pkgsafemap "github.com/internetworklab/cloudping/pkg/safemap"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/oschwald/maxminddb-golang/v2"
 	quicGo "github.com/quic-go/quic-go"
 )
 
@@ -121,6 +120,7 @@ func (hubCmd *HubCmd) getIPInfoProvidersRegistry(ctx context.Context) (*pkgipinf
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MaxMind MMDB adapter: %w", err)
 		}
+		adapter.Run(ctx)
 		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
 	}
 
@@ -159,45 +159,26 @@ func (hubCmd *HubCmd) tryRegisterMRTProxyService(muxerPublic *http.ServeMux) err
 	return nil
 }
 
-func (hubCmd *HubCmd) tryRegisterMaxMindMMDBProxyService(muxerPublic *http.ServeMux) error {
-	if hubCmd.MaxMindCityMMDBFile == "" && hubCmd.MaxMindASNMMDBFile == "" {
-		return nil
-	}
+func (hubCmd *HubCmd) tryRegisterMaxMindMMDBProxyService(ctx context.Context, muxerPublic *http.ServeMux) error {
 
-	var cityDB *maxminddb.Reader
-	if hubCmd.MaxMindCityMMDBFile != "" {
-		db, err := maxminddb.Open(hubCmd.MaxMindCityMMDBFile)
-		if err != nil {
-			return fmt.Errorf("failed to open MaxMind city MMDB %q: %w", hubCmd.MaxMindCityMMDBFile, err)
-		}
-		cityDB = db
-	}
-
-	var asnDB *maxminddb.Reader
-	if hubCmd.MaxMindASNMMDBFile != "" {
-		db, err := maxminddb.Open(hubCmd.MaxMindASNMMDBFile)
-		if err != nil {
-			if cityDB != nil {
-				cityDB.Close()
+	if cityFile := hubCmd.MaxMindCityMMDBFile; cityFile != "" {
+		if asnFile := hubCmd.MaxMindASNMMDBFile; asnFile != "" {
+			maxmindAdapter, err := pkgipinfo.NewMaxMindMMDBAdapter("maxmind-proxy", cityFile, asnFile)
+			if err != nil {
+				return fmt.Errorf("failed to create MaxMind proxy handler: %w", err)
 			}
-			return fmt.Errorf("failed to open MaxMind ASN MMDB %q: %w", hubCmd.MaxMindASNMMDBFile, err)
+			maxmindAdapter.Run(ctx)
+			maxmindHandler, err := pkgproxy.NewMaxMindProxyHandler(maxmindAdapter)
+			if err != nil {
+				return fmt.Errorf("failed to create MaxMind proxy handler: %w", err)
+			}
+			muxerPublic.Handle("/proxy/maxmind", maxmindHandler)
+			log.Printf("Registered MaxMind proxy service: city=%s, asn=%s", cityFile, asnFile)
+			return nil
+
 		}
-		asnDB = db
 	}
 
-	maxmindHandler, err := pkghandler.NewMaxMindProxyHandler(asnDB, cityDB)
-	if err != nil {
-		if cityDB != nil {
-			cityDB.Close()
-		}
-		if asnDB != nil {
-			asnDB.Close()
-		}
-		return fmt.Errorf("failed to create MaxMind proxy handler: %w", err)
-	}
-
-	log.Printf("Registered MaxMind proxy service: city=%s, asn=%s", hubCmd.MaxMindCityMMDBFile, hubCmd.MaxMindASNMMDBFile)
-	muxerPublic.Handle("/proxy/maxmind", maxmindHandler)
 	return nil
 }
 
@@ -349,6 +330,9 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	muxerPublic.Handle("/profile", &pkghandler.ProfileHandler{})
 
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	ipInfoProvidersRegistry, err := hubCmd.getIPInfoProvidersRegistry(ctx)
 	if err != nil {
 		return err
@@ -363,7 +347,7 @@ func (hubCmd HubCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 	if err := hubCmd.tryRegisterMRTProxyService(muxerPublic); err != nil {
 		return err
 	}
-	if err := hubCmd.tryRegisterMaxMindMMDBProxyService(muxerPublic); err != nil {
+	if err := hubCmd.tryRegisterMaxMindMMDBProxyService(ctx, muxerPublic); err != nil {
 		return err
 	}
 
