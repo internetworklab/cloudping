@@ -62,9 +62,47 @@ type ASNRecord struct {
 // MaxMindMMDBAdapter is a GeneralIPInfoAdapter that resolves IP information
 // from local MaxMind GeoLite2 City and ASN MMDB files.
 type MaxMindMMDBAdapter struct {
-	name   string
-	cityDB *maxminddb.Reader
-	asnDB  *maxminddb.Reader
+	name       string
+	cityDB     *maxminddb.Reader
+	asnDB      *maxminddb.Reader
+	cityDBPath string
+	asnDBPath  string
+}
+
+// getASNDB returns the ASN database reader, or nil if not loaded.
+func (ia *MaxMindMMDBAdapter) getASNDB() *maxminddb.Reader {
+	return ia.asnDB
+}
+
+// getCityDB returns the City database reader, or nil if not loaded.
+func (ia *MaxMindMMDBAdapter) getCityDB() *maxminddb.Reader {
+	return ia.cityDB
+}
+
+// getASNRecord looks up the given address in the ASN database.
+func (ia *MaxMindMMDBAdapter) getASNRecord(addr netip.Addr) (*ASNRecord, error) {
+	db := ia.getASNDB()
+	if db == nil {
+		return nil, fmt.Errorf("maxmind: asn database not loaded")
+	}
+	var rec ASNRecord
+	if err := db.Lookup(addr).Decode(&rec); err != nil {
+		return nil, fmt.Errorf("maxmind: asn lookup failed for %s: %w", addr, err)
+	}
+	return &rec, nil
+}
+
+// getCityRecord looks up the given address in the City database.
+func (ia *MaxMindMMDBAdapter) getCityRecord(addr netip.Addr) (*CityRecord, error) {
+	db := ia.getCityDB()
+	if db == nil {
+		return nil, fmt.Errorf("maxmind: city database not loaded")
+	}
+	var rec CityRecord
+	if err := db.Lookup(addr).Decode(&rec); err != nil {
+		return nil, fmt.Errorf("maxmind: city lookup failed for %s: %w", addr, err)
+	}
+	return &rec, nil
 }
 
 // GetIPInfo queries both the City and ASN MMDB files for the given IP and
@@ -84,69 +122,65 @@ func (ia *MaxMindMMDBAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicI
 	basicInfo := new(BasicIPInfo)
 
 	// --- ASN lookup ---
-	if ia.asnDB != nil {
-		var asnRec ASNRecord
-		if err := ia.asnDB.Lookup(addr).Decode(&asnRec); err != nil {
-			return nil, fmt.Errorf("maxmind: asn lookup failed for %s: %w", ip, err)
-		}
-		if asnRec.ASN != 0 {
-			basicInfo.ASN = fmt.Sprintf("AS%d", asnRec.ASN)
-		}
-		if asnRec.Org != "" {
-			basicInfo.ISP = asnRec.Org
-		}
+	asnRec, err := ia.getASNRecord(addr)
+	if err != nil {
+		return nil, err
+	}
+	if asnRec.ASN != 0 {
+		basicInfo.ASN = fmt.Sprintf("AS%d", asnRec.ASN)
+	}
+	if asnRec.Org != "" {
+		basicInfo.ISP = asnRec.Org
 	}
 
 	// --- City lookup ---
-	if ia.cityDB != nil {
-		var cityRec CityRecord
-		if err := ia.cityDB.Lookup(addr).Decode(&cityRec); err != nil {
-			return nil, fmt.Errorf("maxmind: city lookup failed for %s: %w", ip, err)
-		}
+	cityRec, err := ia.getCityRecord(addr)
+	if err != nil {
+		return nil, err
+	}
 
-		// Build a human-readable location string from available components.
-		parts := make([]string, 0, 3)
-		if cityRec.City.Names["en"] != "" {
-			parts = append(parts, cityRec.City.Names["en"])
-		}
-		if len(cityRec.Subdivisions) > 0 && cityRec.Subdivisions[0].Names["en"] != "" {
-			parts = append(parts, cityRec.Subdivisions[0].Names["en"])
-		}
-		if cityRec.Country.Names["en"] != "" {
-			parts = append(parts, cityRec.Country.Names["en"])
-		}
-		if len(parts) > 0 {
-			basicInfo.Location = joinLocation(parts)
-		}
+	// Build a human-readable location string from available components.
+	parts := make([]string, 0, 3)
+	if cityRec.City.Names["en"] != "" {
+		parts = append(parts, cityRec.City.Names["en"])
+	}
+	if len(cityRec.Subdivisions) > 0 && cityRec.Subdivisions[0].Names["en"] != "" {
+		parts = append(parts, cityRec.Subdivisions[0].Names["en"])
+	}
+	if cityRec.Country.Names["en"] != "" {
+		parts = append(parts, cityRec.Country.Names["en"])
+	}
+	if len(parts) > 0 {
+		basicInfo.Location = joinLocation(parts)
+	}
 
-		// Country name.
-		if name := cityRec.Country.Names["en"]; name != "" {
-			basicInfo.Country = &name
-		}
+	// Country name.
+	if name := cityRec.Country.Names["en"]; name != "" {
+		basicInfo.Country = &name
+	}
 
-		// ISO 3166-1 alpha-2 country code.
-		if code := cityRec.Country.ISOCode; code != "" {
-			basicInfo.ISO3166Alpha2 = &code
-		}
+	// ISO 3166-1 alpha-2 country code.
+	if code := cityRec.Country.ISOCode; code != "" {
+		basicInfo.ISO3166Alpha2 = &code
+	}
 
-		// Region (first subdivision).
-		if len(cityRec.Subdivisions) > 0 {
-			if sub := cityRec.Subdivisions[0].Names["en"]; sub != "" {
-				basicInfo.Region = &sub
-			}
+	// Region (first subdivision).
+	if len(cityRec.Subdivisions) > 0 {
+		if sub := cityRec.Subdivisions[0].Names["en"]; sub != "" {
+			basicInfo.Region = &sub
 		}
+	}
 
-		// City.
-		if city := cityRec.City.Names["en"]; city != "" {
-			basicInfo.City = &city
-		}
+	// City.
+	if city := cityRec.City.Names["en"]; city != "" {
+		basicInfo.City = &city
+	}
 
-		// Exact coordinates.
-		if cityRec.Location.Latitude != nil && cityRec.Location.Longitude != nil {
-			basicInfo.Exact = &ExactLocation{
-				Latitude:  *cityRec.Location.Latitude,
-				Longitude: *cityRec.Location.Longitude,
-			}
+	// Exact coordinates.
+	if cityRec.Location.Latitude != nil && cityRec.Location.Longitude != nil {
+		basicInfo.Exact = &ExactLocation{
+			Latitude:  *cityRec.Location.Latitude,
+			Longitude: *cityRec.Location.Longitude,
 		}
 	}
 
@@ -169,7 +203,7 @@ func NewMaxMindMMDBAdapter(name, cityMMDBFile, asnMMDBFile string) (*MaxMindMMDB
 		return nil, fmt.Errorf("maxmind: at least one of cityMMDBFile or asnMMDBFile must be specified")
 	}
 
-	adapter := &MaxMindMMDBAdapter{name: name}
+	adapter := &MaxMindMMDBAdapter{name: name, cityDBPath: cityMMDBFile, asnDBPath: asnMMDBFile}
 
 	if cityMMDBFile != "" {
 		db, err := maxminddb.Open(cityMMDBFile)
