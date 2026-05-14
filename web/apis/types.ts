@@ -6,7 +6,8 @@ export type PingTaskType =
   | "tcpping"
   | "dns"
   | "http"
-  | "route";
+  | "route"
+  | "ip-query";
 
 export type DNSTransport = "udp" | "tcp" | "tls" | "http/2" | "http/3";
 
@@ -69,7 +70,7 @@ function stripResolver(resolver: string): string {
 
 function getServerName(
   resolver: string,
-  nameMap: Record<string, string>
+  nameMap: Record<string, string>,
 ): string | undefined {
   const addr = stripResolver(resolver);
   let serverName = nameMap[addr];
@@ -84,7 +85,7 @@ function getServerName(
 
 export function expandDNSProbePlan(
   plan: DNSProbePlan,
-  nameMap: Record<string, string>
+  nameMap: Record<string, string>,
 ): {
   targets: DNSTarget[];
   targetsMap: Record<string, DNSTarget>;

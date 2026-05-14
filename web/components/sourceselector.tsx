@@ -8,6 +8,7 @@ import {
   MRTEntriesProvider,
   ProviderStatus,
 } from "../apis/mrtProviders";
+import { IPQueryProvidersLister } from "../apis/ip-query";
 
 // generated from deepseek
 function getFlagEmoji(countryCode: string): string {
@@ -211,6 +212,82 @@ export function MRTSourceSelector(props: {
               >
                 {"Updated: " + option.LastModified}
               </Box>
+            </Box>
+          </Box>
+        );
+      }}
+      multiple
+      options={options}
+      defaultValue={[]}
+      loading={isLoading}
+      loadingText={"Loading..."}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          variant="standard"
+          label="Sources"
+          placeholder={
+            optionsSelected.length > 0
+              ? ""
+              : "Hint: multiple items can be selected at a time"
+          }
+          slotProps={{
+            input: {
+              ...params.InputProps,
+              endAdornment: (
+                <Fragment>
+                  {isLoading ? (
+                    <CircularProgress color="inherit" size={20} />
+                  ) : null}
+                  {params.InputProps.endAdornment}
+                </Fragment>
+              ),
+            },
+          }}
+        />
+      )}
+      disableCloseOnSelect
+    />
+  );
+}
+
+export function IPQuerySourceSelector(props: {
+  value: string[];
+  onChange: (value: string[]) => void;
+  lister: IPQueryProvidersLister;
+}) {
+  const { onChange, lister } = props;
+  const [options, setOptions] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const valSet = new Set(props.value);
+  const optionsSelected = options.filter((opt) => valSet.has(opt));
+
+  return (
+    <Autocomplete
+      fullWidth
+      value={optionsSelected}
+      open={isOpen}
+      onClose={() => setIsOpen(false)}
+      getOptionKey={(opt) => opt}
+      getOptionLabel={(opt) => opt}
+      onOpen={() => {
+        setIsOpen(true);
+        setIsLoading(true);
+        lister
+          .getIPQueryProviders()
+          .then((res) => {
+            if (res.data) setOptions(res.data);
+          })
+          .finally(() => setIsLoading(false));
+      }}
+      onChange={(_, value) => onChange(value)}
+      renderOption={(props, option) => {
+        const { key, ...optionProps } = props;
+        return (
+          <Box key={key} component="li" {...optionProps}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <span>{option}</span>
             </Box>
           </Box>
         );

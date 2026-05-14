@@ -60,6 +60,8 @@ services:
       - "--jwt-auth-secret-from-env=JWT_SECRET"
       - "--mrt-query-service-backend-url=http://host.docker.internal:8190/providers"
       - "--mrt-query-service-bearer-token=MRT_QUERY_SVC_JWT"
+      - "--maxmind-city-mmdb=GeoLite2-City.mmdb"
+      - "--maxmind-asn-mmdb=GeoLite2-ASN.mmdb"
 
   web-proxy-dev:
     container_name: web-proxy-dev

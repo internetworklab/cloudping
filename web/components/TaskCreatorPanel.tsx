@@ -46,6 +46,7 @@ import { defaultResolver } from "@/apis/resolver";
 import { useAddressClassify } from "@/apis/useAddressClassify";
 import { NetworkDescriptor } from "@/apis/nwdesc";
 import { RouteQueryTaskPanel } from "./RouteQueryTaskPanel";
+import { IPQueryTaskPanel } from "./IPQueryTaskPanel";
 
 function TaskTypeSelector(props: {
   pendingTask: PendingTask;
@@ -84,6 +85,7 @@ function TaskTypeSelector(props: {
         <FormControlLabel value="dns" control={<Radio />} label="DNS" />
         <FormControlLabel value="http" control={<Radio />} label="HTTP" />
         <FormControlLabel value="route" control={<Radio />} label="Route" />
+        <FormControlLabel value="ip-query" control={<Radio />} label="IP" />
       </RadioGroup>
     </FormControl>
   );
@@ -334,7 +336,7 @@ export function TaskCreatorPanel(props: {
               />
             </Box>
           </Box>
-          {pendingTask.type !== "route" && (
+          {pendingTask.type !== "route" && pendingTask.type !== "ip-query" && (
             <Box sx={{ marginTop: 1 }}>
               {pendingTask.type === "dns" ? (
                 <DNSProbeTransportSelect
@@ -373,6 +375,11 @@ export function TaskCreatorPanel(props: {
               />
             ) : pendingTask.type === "route" ? (
               <RouteQueryTaskPanel
+                pendingTask={pendingTask}
+                setPendingTask={setPendingTask}
+              />
+            ) : pendingTask.type === "ip-query" ? (
+              <IPQueryTaskPanel
                 pendingTask={pendingTask}
                 setPendingTask={setPendingTask}
               />

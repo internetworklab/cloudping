@@ -13,14 +13,13 @@ CloudPing is a web-based ping and traceroute tool that provides an easy-to-use i
 - DNS Probe (UDP, TCP, RFC7858 DoT, RFC8484 DoH)
 - HTTP Probe (HTTP/1.1, HTTP/2 and HTTP/3)
 - DN42 Dual Stack support, Internet support
-- Basic IP information display (like ASN, Country, and probably Lat Lon)
-- API-first design, CLI friendly (can be access through http clients like `curl`)
+- Displaying IP information of many aspects, like ASN, Org name, City, Country, and probably Lat Lon
 - QUIC for hub-agent communication support and NAT-traversal
 - JWT authentication with multi-provider SSO login (GitHub, Google, Microsoft Entra ID, Generic OIDC, and guest/visitor)
 - Telegram Bot (Currently supporting: `/ping`, `/traceroute`, and `/probe`)
 - Email Interface (Interact via Email)
 - MCP Server (StreamableHTTP + JWT)
-- Multiple GeoIP/IPInfo provider support (IPInfo.io, IP2Location.io, and IPRegistry.co)
+- Multiple GeoIP/IPInfo provider support: IPInfo.io, IP2Location.io, IPRegistry.co, and MaxMind MMDB
 - BGP Route Lookup via MRT data
 - Prometheus Metrics
 

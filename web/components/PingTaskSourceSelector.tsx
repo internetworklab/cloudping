@@ -8,12 +8,16 @@ import {
   SourceOption,
   SourcesSelector,
   MRTSourceSelector,
+  IPQuerySourceSelector,
 } from "@/components/sourceselector";
 import {
   DBMRTEntryProvidersLister,
   getMRTEntryServiceAPIPrefix,
-  MockedMRTEntryProvidersLister,
 } from "@/apis/mrtProviders";
+import {
+  DBIPQueryProvidersLister,
+  getIPQueryServiceAPIPrefix,
+} from "@/apis/ip-query";
 import { Dispatch, SetStateAction } from "react";
 
 const fakeSources: SourceOption[] = [
@@ -60,6 +64,23 @@ export function PingTaskSourceSelector(props: {
           }))
         }
         lister={new DBMRTEntryProvidersLister(getMRTEntryServiceAPIPrefix())}
+      />
+    );
+  }
+
+  if (pendingTask.type === "ip-query") {
+    return (
+      <IPQuerySourceSelector
+        value={pendingTask.sources
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)}
+        onChange={(value) =>
+          setPendingTask((prev) => ({
+            ...prev,
+            sources: value.map((s) => s.trim()).filter((s) => !!s),
+          }))
+        }
+        lister={new DBIPQueryProvidersLister(getIPQueryServiceAPIPrefix())}
       />
     );
   }

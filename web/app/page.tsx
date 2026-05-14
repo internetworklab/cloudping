@@ -11,11 +11,13 @@ import { HTTPProbeDisplay } from "@/components/httpprobedisplay";
 import { HeaderBar } from "@/components/HeaderBar";
 import { TaskCreatorPanel } from "@/components/TaskCreatorPanel";
 import { RouteQueryResultDisplay } from "@/components/RouteQueryResultDisplay";
+import { IPQueryResultDisplay } from "@/components/IPQueryResultDisplay";
 import {
   DBMRTEntriesLister,
   getMRTEntryServiceAPIPrefix,
   MockedMRTEntriesLister,
 } from "@/apis/mrtProviders";
+import { DBIPQueryLister, getIPQueryServiceAPIPrefix } from "@/apis/ip-query";
 
 export default function Home() {
   const [onGoingTasks, setOnGoingTasks] = useState<PendingTask[]>([]);
@@ -26,6 +28,11 @@ export default function Home() {
 
   const mrtEntriesLister = useMemo(
     () => new DBMRTEntriesLister(getMRTEntryServiceAPIPrefix()),
+    [],
+  );
+
+  const ipQueryLister = useMemo(
+    () => new DBIPQueryLister(getIPQueryServiceAPIPrefix()),
     [],
   );
 
@@ -88,6 +95,12 @@ export default function Home() {
                   task={task}
                   onDeleted={() => handleTaskDelete(task.taskId)}
                   mrtEntriesLister={mrtEntriesLister}
+                />
+              ) : task.type === "ip-query" ? (
+                <IPQueryResultDisplay
+                  task={task}
+                  onDeleted={() => handleTaskDelete(task.taskId)}
+                  ipQueryLister={ipQueryLister}
                 />
               ) : (
                 <PingResultDisplay
