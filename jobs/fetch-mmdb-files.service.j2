@@ -1,0 +1,10 @@
+[Unit]
+Description=Fetch MaxMind GeoLite2 MMDB files
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ exec_start_path }}
+StandardOutput=journal
+StandardError=journal

@@ -15,3 +15,10 @@ pnpm-lock.yaml
 .env.inside
 .version.txt
 .DS_Store
+
+GeoLite2-ASN.mmdb
+GeoLite2-City.mmdb
+GeoLite2-Country.mmdb
+
+fetch-mmdb-files.service
+fetch-mmdb-files.timer
