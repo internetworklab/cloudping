@@ -3,9 +3,11 @@ package ipinfo
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/netip"
 	"strings"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/oschwald/maxminddb-golang/v2"
 )
 
@@ -67,23 +69,114 @@ type MaxMindMMDBAdapter struct {
 	asnDB      *maxminddb.Reader
 	cityDBPath string
 	asnDBPath  string
+	asnDBChan  chan *maxminddb.Reader
+	cityDBChan chan *maxminddb.Reader
+	errChan    chan error
+}
+
+func (ia *MaxMindMMDBAdapter) Run(ctx context.Context) {
+	go ia.doRun(ctx)
+}
+
+func (ia *MaxMindMMDBAdapter) loadDBs() error {
+
+	var err error
+	ia.cityDB, err = maxminddb.Open(ia.cityDBPath)
+	if err != nil {
+		return fmt.Errorf("maxmind: failed to open city database %q: %w", ia.cityDBPath, err)
+	}
+
+	ia.asnDB, err = maxminddb.Open(ia.asnDBPath)
+	if err != nil {
+		return fmt.Errorf("maxmind: failed to open asn database %q: %w", ia.asnDBPath, err)
+	}
+
+	return nil
+}
+
+func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
+
+	defer func() {
+		if ia.cityDB != nil {
+			ia.cityDB.Close()
+		}
+		if ia.asnDB != nil {
+			ia.asnDB.Close()
+		}
+	}()
+
+	defer close(ia.asnDBChan)
+	defer close(ia.cityDBChan)
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		ia.errChan <- fmt.Errorf("failed to create watcher: %w", err)
+		return
+	}
+	defer watcher.Close()
+
+	if err := watcher.Add(ia.cityDBPath); err != nil {
+		ia.errChan <- fmt.Errorf("failed to watch city database %q: %w", ia.cityDBPath, err)
+		return
+	}
+	if err := watcher.Add(ia.asnDBPath); err != nil {
+		ia.errChan <- fmt.Errorf("failed to watch asn database %q: %w", ia.asnDBPath, err)
+		return
+	}
+
+	if err := ia.loadDBs(); err != nil {
+		ia.errChan <- err
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ia.asnDBChan <- ia.asnDB:
+		case ia.cityDBChan <- ia.cityDB:
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Has(fsnotify.Write) {
+				log.Println("fs watcher modified file:", event.Name)
+				if err := ia.loadDBs(); err != nil {
+					ia.errChan <- err
+				}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Println("fs watcher error:", err)
+		}
+	}
 }
 
 // getASNDB returns the ASN database reader, or nil if not loaded.
 func (ia *MaxMindMMDBAdapter) getASNDB() *maxminddb.Reader {
-	return ia.asnDB
+	db, ok := <-ia.asnDBChan
+	if !ok {
+		return nil
+	}
+	return db
 }
 
 // getCityDB returns the City database reader, or nil if not loaded.
 func (ia *MaxMindMMDBAdapter) getCityDB() *maxminddb.Reader {
-	return ia.cityDB
+	db, ok := <-ia.cityDBChan
+	if !ok {
+		return nil
+	}
+	return db
 }
 
-// getASNRecord looks up the given address in the ASN database.
-func (ia *MaxMindMMDBAdapter) getASNRecord(addr netip.Addr) (*ASNRecord, error) {
+// GetASNRecord looks up the given address in the ASN database.
+func (ia *MaxMindMMDBAdapter) GetASNRecord(addr netip.Addr) (*ASNRecord, error) {
 	db := ia.getASNDB()
 	if db == nil {
-		return nil, fmt.Errorf("maxmind: asn database not loaded")
+		return nil, fmt.Errorf("maxmind: asn database not loaded (or the adapter is likely closed)")
 	}
 	var rec ASNRecord
 	if err := db.Lookup(addr).Decode(&rec); err != nil {
@@ -92,8 +185,8 @@ func (ia *MaxMindMMDBAdapter) getASNRecord(addr netip.Addr) (*ASNRecord, error) 
 	return &rec, nil
 }
 
-// getCityRecord looks up the given address in the City database.
-func (ia *MaxMindMMDBAdapter) getCityRecord(addr netip.Addr) (*CityRecord, error) {
+// GetCityRecord looks up the given address in the City database.
+func (ia *MaxMindMMDBAdapter) GetCityRecord(addr netip.Addr) (*CityRecord, error) {
 	db := ia.getCityDB()
 	if db == nil {
 		return nil, fmt.Errorf("maxmind: city database not loaded")
@@ -122,21 +215,22 @@ func (ia *MaxMindMMDBAdapter) GetIPInfo(ctx context.Context, ip string) (*BasicI
 	basicInfo := new(BasicIPInfo)
 
 	// --- ASN lookup ---
-	asnRec, err := ia.getASNRecord(addr)
+	asnRec, err := ia.GetASNRecord(addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("maxmind: asn lookup failed for %s: %w", addr, err)
 	}
+
+	// --- City lookup ---
+	cityRec, err := ia.GetCityRecord(addr)
+	if err != nil {
+		return nil, fmt.Errorf("maxmind: city lookup failed for %s: %w", addr, err)
+	}
+
 	if asnRec.ASN != 0 {
 		basicInfo.ASN = fmt.Sprintf("AS%d", asnRec.ASN)
 	}
 	if asnRec.Org != "" {
 		basicInfo.ISP = asnRec.Org
-	}
-
-	// --- City lookup ---
-	cityRec, err := ia.getCityRecord(addr)
-	if err != nil {
-		return nil, err
 	}
 
 	// Build a human-readable location string from available components.
@@ -198,31 +292,22 @@ func (ia *MaxMindMMDBAdapter) GetName() string {
 // NewMaxMindMMDBAdapter opens the given City and ASN MMDB files and returns a
 // ready-to-use MaxMindMMDBAdapter. Either cityMMDBFile or asnMMDBFile may be
 // empty if only one database is available, but at least one must be provided.
+// User is required to call Run(ctx) first before using the adapter.
 func NewMaxMindMMDBAdapter(name, cityMMDBFile, asnMMDBFile string) (*MaxMindMMDBAdapter, error) {
-	if cityMMDBFile == "" && asnMMDBFile == "" {
-		return nil, fmt.Errorf("maxmind: at least one of cityMMDBFile or asnMMDBFile must be specified")
+	if cityMMDBFile == "" {
+		return nil, fmt.Errorf("maxmind: cityMMDBFile must be specified")
+	}
+	if asnMMDBFile == "" {
+		return nil, fmt.Errorf("maxmind: asnMMDBFile must be specified")
 	}
 
-	adapter := &MaxMindMMDBAdapter{name: name, cityDBPath: cityMMDBFile, asnDBPath: asnMMDBFile}
-
-	if cityMMDBFile != "" {
-		db, err := maxminddb.Open(cityMMDBFile)
-		if err != nil {
-			return nil, fmt.Errorf("maxmind: failed to open city database %q: %w", cityMMDBFile, err)
-		}
-		adapter.cityDB = db
-	}
-
-	if asnMMDBFile != "" {
-		db, err := maxminddb.Open(asnMMDBFile)
-		if err != nil {
-			// Close cityDB if already opened to avoid leaking the file handle.
-			if adapter.cityDB != nil {
-				adapter.cityDB.Close()
-			}
-			return nil, fmt.Errorf("maxmind: failed to open asn database %q: %w", asnMMDBFile, err)
-		}
-		adapter.asnDB = db
+	adapter := &MaxMindMMDBAdapter{
+		name:       name,
+		cityDBPath: cityMMDBFile,
+		asnDBPath:  asnMMDBFile,
+		asnDBChan:  make(chan *maxminddb.Reader),
+		cityDBChan: make(chan *maxminddb.Reader),
+		errChan:    make(chan error, 1),
 	}
 
 	return adapter, nil
