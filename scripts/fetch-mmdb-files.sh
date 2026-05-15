@@ -17,8 +17,10 @@ while IFS= read -r url; do
     [[ -z "$url" || "$url" =~ ^[[:space:]]*# ]] && continue
 
     filename="$(basename "$url")"
+    tmpfile="${filename}.tmp"
     echo "Downloading ${filename} ..."
-    curl --fail --location --silent --show-error --output "$filename" "$url"
+    curl --fail --location --silent --show-error --output "$tmpfile" "$url"
+    mv "$tmpfile" "$filename"
 done < "$URL_LIST"
 
 echo "All MMDB files fetched successfully."

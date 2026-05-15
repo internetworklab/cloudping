@@ -163,6 +163,9 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 						event.Name+".tmp" == evsBuf[i].Name {
 						log.Printf("move detected: %s -> %s", filepath.Base(evsBuf[i].Name), filepath.Base(event.Name))
 
+						log.Printf("[dbg] event name: %s", event.Name)
+						log.Printf("[dbg] asn db path: %s", ia.asnDBPath)
+						log.Printf("[dbg] city db path: %s", ia.cityDBPath)
 						switch event.Name {
 						case ia.asnDBPath:
 							log.Printf("re-building ASN database")
