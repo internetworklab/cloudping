@@ -129,8 +129,14 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 		return
 	}
 
-	if err := watcher.Add(cityDir); err != nil {
-		ia.errChan <- fmt.Errorf("failed to watch database directory %q: %w", cityDir, err)
+	watchDirAbs, err := filepath.Abs(cityDir)
+	if err != nil {
+		ia.errChan <- fmt.Errorf("maxmind: failed to resolve absolute path for %q: %w", cityDir, err)
+		return
+	}
+
+	if err := watcher.Add(watchDirAbs); err != nil {
+		ia.errChan <- fmt.Errorf("failed to watch database directory %q: %w", watchDirAbs, err)
 		return
 	}
 
@@ -161,13 +167,27 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 				for i := len(evsBuf) - 2; i >= 0; i-- {
 					if evsBuf[i].Op.Has(fsnotify.Rename) &&
 						event.Name+".tmp" == evsBuf[i].Name {
-						log.Printf("move detected: %s -> %s", filepath.Base(evsBuf[i].Name), filepath.Base(event.Name))
+						log.Printf("move detected in %s: %s -> %s", watchDirAbs, filepath.Base(evsBuf[i].Name), filepath.Base(event.Name))
 
-						log.Printf("[dbg] event name: %s", event.Name)
-						log.Printf("[dbg] asn db path: %s", ia.asnDBPath)
-						log.Printf("[dbg] city db path: %s", ia.cityDBPath)
-						switch event.Name {
-						case ia.asnDBPath:
+						eventAbs, err := filepath.Abs(event.Name)
+						if err != nil {
+							log.Printf("failed to resolve absolute path for %q: %v", event.Name, err)
+							break
+						}
+
+						asnAbs, err := filepath.Abs(ia.asnDBPath)
+						if err != nil {
+							ia.errChan <- fmt.Errorf("maxmind: failed to resolve absolute path for %q: %w", ia.asnDBPath, err)
+							return
+						}
+						cityAbs, err := filepath.Abs(ia.cityDBPath)
+						if err != nil {
+							ia.errChan <- fmt.Errorf("maxmind: failed to resolve absolute path for %q: %w", ia.cityDBPath, err)
+							return
+						}
+
+						switch eventAbs {
+						case asnAbs:
 							log.Printf("re-building ASN database")
 							if ia.asnDB != nil {
 								if err := ia.asnDB.Close(); err != nil {
@@ -184,7 +204,7 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 								return
 							}
 
-						case ia.cityDBPath:
+						case cityAbs:
 							log.Printf("re-building city database")
 							if ia.cityDB != nil {
 								if err := ia.cityDB.Close(); err != nil {
