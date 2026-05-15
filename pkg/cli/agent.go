@@ -181,6 +181,7 @@ func (agentCmd *AgentCmd) registerAllAvailableIPInfoProviders(ctx context.Contex
 		if err != nil {
 			return fmt.Errorf("failed to create MaxMind MMDB adapter: %v", err)
 		}
+		maxmindAdapter.Run(ctx)
 		registry.RegisterAdapter(
 			pkgipinfo.WithCache(ctx, maxmindAdapter, agentCmd.GeneralIPInfoCacheValidity, ipinfoCacheHook),
 		)

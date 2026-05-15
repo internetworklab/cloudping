@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
@@ -107,7 +108,7 @@ func (ia *MaxMindMMDBAdapter) loadDBs() error {
 }
 
 func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
-
+	var err error
 	defer ia.releaseDBs()
 
 	defer close(ia.asnDBChan)
@@ -120,12 +121,16 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 	}
 	defer watcher.Close()
 
-	if err := watcher.Add(ia.cityDBPath); err != nil {
-		ia.errChan <- fmt.Errorf("failed to watch city database %q: %w", ia.cityDBPath, err)
+	cityDir := filepath.Dir(ia.cityDBPath)
+	asnDir := filepath.Dir(ia.asnDBPath)
+
+	if cityDir != asnDir {
+		ia.errChan <- fmt.Errorf("maxmind: city database %q and asn database %q are not in the same directory", ia.cityDBPath, ia.asnDBPath)
 		return
 	}
-	if err := watcher.Add(ia.asnDBPath); err != nil {
-		ia.errChan <- fmt.Errorf("failed to watch asn database %q: %w", ia.asnDBPath, err)
+
+	if err := watcher.Add(cityDir); err != nil {
+		ia.errChan <- fmt.Errorf("failed to watch database directory %q: %w", cityDir, err)
 		return
 	}
 
@@ -133,6 +138,9 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 		ia.errChan <- err
 		return
 	}
+
+	const evsBufDepth = 1024
+	evsBuf := make([]fsnotify.Event, evsBufDepth)
 
 	for {
 		select {
@@ -144,13 +152,55 @@ func (ia *MaxMindMMDBAdapter) doRun(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if event.Has(fsnotify.Write) {
-				log.Println("fs watcher modified file:", event.Name)
-				ia.releaseDBs()
-				if err := ia.loadDBs(); err != nil {
-					ia.errChan <- err
+			for i := 0; i < len(evsBuf)-1; i++ {
+				evsBuf[i] = evsBuf[i+1]
+			}
+			evsBuf[len(evsBuf)-1] = event
+
+			if event.Op.Has(fsnotify.Create) {
+				for i := len(evsBuf) - 2; i >= 0; i-- {
+					if evsBuf[i].Op.Has(fsnotify.Rename) &&
+						event.Name+".tmp" == evsBuf[i].Name {
+						log.Printf("move detected: %s -> %s", filepath.Base(evsBuf[i].Name), filepath.Base(event.Name))
+
+						switch event.Name {
+						case ia.asnDBPath:
+							log.Printf("re-building ASN database")
+							if ia.asnDB != nil {
+								if err := ia.asnDB.Close(); err != nil {
+									log.Printf("failed to close ASN database: %v", err)
+								}
+								ia.asnDB = nil
+							}
+
+							ia.asnDB, err = maxminddb.Open(ia.asnDBPath)
+							if err != nil {
+								ia.cityDB.Close()
+								ia.cityDB = nil
+								ia.errChan <- fmt.Errorf("maxmind: failed to open asn database %q: %w", ia.asnDBPath, err)
+								return
+							}
+
+						case ia.cityDBPath:
+							log.Printf("re-building city database")
+							if ia.cityDB != nil {
+								if err := ia.cityDB.Close(); err != nil {
+									log.Printf("failed to close city database: %v", err)
+								}
+								ia.cityDB = nil
+							}
+
+							ia.cityDB, err = maxminddb.Open(ia.cityDBPath)
+							if err != nil {
+								ia.errChan <- fmt.Errorf("maxmind: failed to open city database %q: %w", ia.cityDBPath, err)
+								return
+							}
+						}
+						break
+					}
 				}
 			}
+
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return

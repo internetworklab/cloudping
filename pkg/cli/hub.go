@@ -121,6 +121,7 @@ func (hubCmd *HubCmd) getIPInfoProvidersRegistry(ctx context.Context) (*pkgipinf
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MaxMind MMDB adapter: %w", err)
 		}
+		adapter.Run(ctx)
 		registry.RegisterAdapter(pkgipinfo.WithCache(ctx, adapter, hubCmd.GeneralIPInfoCacheValidity, nil))
 	}
 
