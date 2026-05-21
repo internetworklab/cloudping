@@ -76,11 +76,18 @@ func (cmd *MCPServerCmd) registerAllAvailableIPInfoProviders(registry *pkgipinfo
 
 func (cmd *MCPServerCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 
+	mcpSrvCaps := &mcp.ServerCapabilities{
+		Resources: &mcp.ResourceCapabilities{},
+		Tools:     &mcp.ToolCapabilities{},
+	}
+	mcpSrvOpts := &mcp.ServerOptions{
+		Capabilities: mcpSrvCaps,
+	}
 	mcpsrv := mcp.NewServer(&mcp.Implementation{
 		Name:       cmd.MCPServerName,
 		Title:      cmd.MCPServerTitle,
 		WebsiteURL: cmd.MCPServerWebsiteURL,
-	}, nil)
+	}, mcpSrvOpts)
 
 	ipinfoRegistry := pkgipinfo.NewIPInfoProviderRegistry()
 
@@ -116,7 +123,10 @@ func (cmd *MCPServerCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
 			// returning different mcp server depending on request to achieve multi-tenants and QoS.
 			return mcpsrv
 		},
-		&mcp.StreamableHTTPOptions{Stateless: true},
+		&mcp.StreamableHTTPOptions{
+			Stateless:    true,
+			JSONResponse: true,
+		},
 	)
 
 	mux := http.NewServeMux()
