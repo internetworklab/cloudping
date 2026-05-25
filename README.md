@@ -116,47 +116,23 @@ It's better to use the web UI directly, since it has much richer feature set as 
 
 ## Screenshots
 
-Currently the looking is still rugged, but we are actively iterating it.
+> Currently the UI is still rugged, but we are actively iterating it.
 
-Traceroute screenshot:
+|              Traceroute               |              Ping Matrix               |           MRT Route Query Service           |
+| :-----------------------------------: | :------------------------------------: | :-----------------------------------------: |
+| ![Traceroute](docs/screenshots/1.png) | ![Ping matrix](docs/screenshots/2.png) | ![Use MRT Route Query](docs/screenshots/10.png) |
 
-![Traceroute](docs/screenshots/1.png)
+|                Telegram Bot — Traceroute                |       Telegram Bot — Probe        |               Email — Traceroute                |
+| :-----------------------------------------------------: | :-------------------------------: | :---------------------------------------------: |
+| ![Traceroute from Telegram Bot](docs/screenshots/4.png) | ![Probe](docs/screenshots/5.jpeg) | ![Traceroute via Email](docs/screenshots/6.png) |
 
-Ping screenshot:
+|             Email — Ping Matrix              |                Email — Help Reply                |          MCP Server Tools          |
+| :------------------------------------------: | :----------------------------------------------: | :--------------------------------: |
+| ![Ping matrix reply](docs/screenshots/7.png) | ![Help from email reply](docs/screenshots/8.png) | ![Use MCP](docs/screenshots/9.png) |
 
-![Ping matrix](docs/screenshots/2.png)
-
-Traceroute exported to PNG via HTML5 Canvas:
-
-![Traceroute in Canvas](docs/screenshots/3.png)
-
-Traceroute from Telegram Bot (screenshot):
-
-![Screenshot: Traceroute from Telegram Bot](docs/screenshots/4.png)
-
-Probe (via Telegram Bot):
-
-![Probe](docs/screenshots/5.jpeg)
-
-Traceroute via the Email interface (screenshot):
-
-![Traceroute via the Email interface](docs/screenshots/6.png)
-
-Ping matrix reply from the Email interface (screenshot):
-
-![Ping matrix reply](docs/screenshots/7.png)
-
-Help sent back from the Email interface (screenshot):
-
-![Help from email reply](docs/screenshots/8.png)
-
-Use tools exposed from the MCP server:
-
-![Use MCP](docs/screenshots/9.png)
-
-MRT Route Query Service:
-
-![Use MRT Route Query](docs/screenshots/10.png)
+|           Traceroute Canvas Export            |     |     |
+| :---------------------------------------------: | :-: | :-: |
+| ![Traceroute in Canvas](docs/screenshots/3.png) |     |     |
 
 ## API Design
 
@@ -274,7 +250,7 @@ The Web UI is built with Next.js and supports the following build-time environme
 | `NEXT_PUBLIC_REPO_NAME`        | For display count of stargazers of the repo in the page      | `cloudping`                                                               |
 | `NEXT_PUBLIC_SITE_NAME`        | WebUI title for self-hosted deployments                      | `CloudPing`                                                               |
 | `NEXT_PUBLIC_DEFAULT_RESOLVER` | Resolver to specify in every probe request send to backend   | `127.0.0.11:53`                                                           |
-| `NEXT_PUBLIC_<NAME>_LOGIN_URL` | URL of <NAME> oauth login page                               | `/login/as/<name>/start`                                                        |
+| `NEXT_PUBLIC_<NAME>_LOGIN_URL` | URL of <NAME> oauth login page                               | `/login/as/<name>/start`                                                  |
 
 These variables are evaluated at build time and embedded into the frontend bundle.
 
