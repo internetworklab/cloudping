@@ -336,3 +336,11 @@ Thanks the following GeoIP datasources, in no particular order:
 - [MaxMind](https://github.com/P3TERX/GeoLite.mmdb)
 - [IPRegistry.co](https://ipregistry.co)
 - [dn42-geoip](https://github.com/Xe-iu/dn42-geoip)
+
+## Todos
+
+- introduce text-based cross-session AI memories (like [personal-site](https://github.com/cmpxchg16b-nop/personal-site)), and design-doc (like personal-site)
+- improve planar worldmap to allow infinite panning and infinite zooming
+- add 3d globe / 2d plannar worldmap toggle
+- add dnssec switch toggle
+- add supportness of more dns query types, e.g.: NAPTR
