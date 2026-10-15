@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
-	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
+	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -118,7 +118,7 @@ func (icmp4tr *ICMP4Transceiver) getRawConn() (*ipv4.RawConn, int, error) {
 	listenConfig := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_PROBE); err != nil {
+				if err := setSockOptPMTUProbe(fd, false); err != nil {
 					panic(fmt.Errorf("failed to set IP_MTU_DISCOVER to IP_PMTUDISC_PROBE: %v", err))
 				}
 			})
@@ -243,7 +243,7 @@ func (icmp4tr *ICMP4Transceiver) sendPacket(ctx context.Context, rawConn *ipv4.R
 		}
 
 		payloadData := req.Data
-		maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
+		maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolUDP), req.PMTU, req.MTUCap)
 		if len(payloadData) > maxPayloadLen {
 			payloadData = payloadData[:maxPayloadLen]
 		}
@@ -274,7 +274,7 @@ func (icmp4tr *ICMP4Transceiver) sendPacket(ctx context.Context, rawConn *ipv4.R
 			Seq:  req.Seq,
 			Data: req.Data,
 		}
-		maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolICMPv4), req.PMTU, req.NexthopMTU)
+		maxPayloadLen := GetMaxPayloadLen(ipv4.Version, int(layers.IPProtocolICMPv4), req.PMTU, req.MTUCap)
 		if len(icmpEcho.Data) > maxPayloadLen {
 			icmpEcho.Data = icmpEcho.Data[:maxPayloadLen]
 		}
@@ -494,14 +494,8 @@ func (icmp6tr *ICMP6Transceiver) getSenderAndTraceId() (ipv6PacketConn *ipv6.Pac
 	listenConfig := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_MTU_DISCOVER, syscall.IPV6_PMTUDISC_PROBE); err != nil {
-					panic(fmt.Errorf("failed to set IPV6_MTU_DISCOVER to IPV6_PMTUDISC_PROBE: %v", err))
-				}
-
-				// see rfc3542, section 11.2 "Sending without Fragmentation"
-				const IPV6_DONTFRAG int = 62
-				if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, IPV6_DONTFRAG, 1); err != nil {
-					panic(fmt.Errorf("failed to set IPV6_DONTFRAG (62): %v", err))
+				if err := setSockOptPMTUProbe(fd, true); err != nil {
+					panic(fmt.Errorf("failed to set IPV6_MTU_DISCOVER to IPV6_PMTUDISC_PROBE and IPV6_DONTFRAG: %v", err))
 				}
 			})
 		},
@@ -693,7 +687,7 @@ func (icmp6tr *ICMP6Transceiver) sendPacket6(ctx context.Context, req ICMPSendRe
 			Port: icmp6tr.udpBasePort + req.Seq,
 		}
 
-		maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolUDP), req.PMTU, req.NexthopMTU)
+		maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolUDP), req.PMTU, req.MTUCap)
 		wb = req.Data
 		if len(wb) > maxPayloadLen {
 			wb = wb[:maxPayloadLen]
@@ -704,7 +698,7 @@ func (icmp6tr *ICMP6Transceiver) sendPacket6(ctx context.Context, req ICMPSendRe
 			Seq:  req.Seq,
 			Data: req.Data,
 		}
-		maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolICMPv6), req.PMTU, req.NexthopMTU)
+		maxPayloadLen := GetMaxPayloadLen(ipv6.Version, int(layers.IPProtocolICMPv6), req.PMTU, req.MTUCap)
 		if len(icmpEcho.Data) > maxPayloadLen {
 			icmpEcho.Data = icmpEcho.Data[:maxPayloadLen]
 		}

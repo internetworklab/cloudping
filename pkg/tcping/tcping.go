@@ -15,7 +15,6 @@ import (
 	"github.com/google/gopacket/layers"
 	pkgipinfo "github.com/internetworklab/cloudping/pkg/ipinfo"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -431,23 +430,32 @@ type TCPSYNRequest struct {
 	Window  uint16
 }
 
+// getSrcIP determines the source address the kernel would pick for packets
+// sent to dstIP. It does so by "connecting" a UDP socket to dstIP: no packet
+// is actually sent, the kernel only performs a route lookup and binds the
+// socket to the source address of the selected route.
 func getSrcIP(dstIP net.IP) (net.IP, error) {
-	handle, err := netlink.NewHandle()
+	network := "udp4"
+	if dstIP.To4() == nil {
+		network = "udp6"
+	}
+
+	// the destination port is arbitrary, UDP connect() sends nothing
+	conn, err := net.DialUDP(network, nil, &net.UDPAddr{IP: dstIP, Port: 53})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create netlink handle: %v", err)
+		return nil, fmt.Errorf("failed to determine route to %s: %w", dstIP.String(), err)
 	}
-	defer handle.Close()
+	defer conn.Close()
 
-	routes, err := handle.RouteGet(dstIP)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get routes for %s: %v", dstIP.String(), err)
+	srcAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return nil, fmt.Errorf("unexpected local address type %T for route to %s", conn.LocalAddr(), dstIP.String())
+	}
+	if srcAddr.IP == nil || srcAddr.IP.IsUnspecified() {
+		return nil, fmt.Errorf("no route found for %s", dstIP.String())
 	}
 
-	if len(routes) == 0 {
-		return nil, fmt.Errorf("no routes found for %s", dstIP.String())
-	}
-
-	return routes[0].Src, nil
+	return srcAddr.IP, nil
 }
 
 func buildTCPHdr6(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int, ttl int, syn bool, rst bool, seq uint32, ack uint32) (*ipv6.ControlMessage, []byte, error) {

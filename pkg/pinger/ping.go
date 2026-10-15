@@ -155,8 +155,9 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					payloadLen = *pingRequest.RandomPayloadSize
 				}
 
-				// consider nexthop interface MTU, but not PMTU cache
-				nexthopMTU := pkgutils.GetNexthopMTU(dst.IP, false)
+				// the initial guess of PMTU is the maximum size of an IP (or IPv6) packet
+				// (header included); it will be refined by ICMP feedback as probing goes.
+				initialMTUGuess := pkgutils.MaxIPPacketLen
 				var payload []byte = nil
 				if payloadLen > 0 {
 					ipVersion := ipv4.Version
@@ -168,7 +169,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					if useUDP {
 						ipProtoNum = int(layers.IPProtocolUDP)
 					}
-					maxPayloadLen := pkgraw.GetMaxPayloadLen(ipVersion, ipProtoNum, nil, nexthopMTU)
+					maxPayloadLen := pkgraw.GetMaxPayloadLen(ipVersion, ipProtoNum, nil, initialMTUGuess)
 					if payloadLen > maxPayloadLen {
 						payloadLen = maxPayloadLen
 						log.Printf("truncated payload length to %d bytes", payloadLen)
@@ -203,7 +204,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 					defer log.Printf("ICMP Event-generating goroutine for %s is exitting", dst.String())
 
 					var pmtu *int = new(int)
-					*pmtu = nexthopMTU
+					*pmtu = initialMTUGuess
 
 					for {
 						select {
@@ -225,7 +226,7 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 
 									// after the last hop is met, we reset the probing MTU, allow it
 									// to probe the PMTU of other paths as well as the next packet will start at TTL=1
-									*pmtu = nexthopMTU
+									*pmtu = initialMTUGuess
 								}
 							}
 
@@ -319,12 +320,12 @@ func (sp *SimplePinger) Ping(ctx context.Context) <-chan PingEvent {
 							}
 
 							req := pkgraw.ICMPSendRequest{
-								Seq:        ctrlSignal.Seq,
-								TTL:        ctrlSignal.TTL,
-								Dst:        dst,
-								Data:       payload,
-								PMTU:       ctrlSignal.PMTU,
-								NexthopMTU: nexthopMTU,
+								Seq:    ctrlSignal.Seq,
+								TTL:    ctrlSignal.TTL,
+								Dst:    dst,
+								Data:   payload,
+								PMTU:   ctrlSignal.PMTU,
+								MTUCap: initialMTUGuess,
 							}
 
 							// MarkSent first, then actually send it.

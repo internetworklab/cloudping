@@ -12,8 +12,9 @@ import (
 
 // ipVersion: 4 or 6
 // ipprotoNum: for IPv4, it's the iana ipprotocol number, for IPv6, it's the NextHeader field value
-func GetMaxPayloadLen(ipVersion int, ipprotoNum int, pmtu *int, nexthopMTU int) int {
-	minMTU := nexthopMTU
+// mtuCap: upper bound of the MTU to consider; the effective MTU is min(pmtu, mtuCap)
+func GetMaxPayloadLen(ipVersion int, ipprotoNum int, pmtu *int, mtuCap int) int {
+	minMTU := mtuCap
 	if pmtu != nil {
 		if *pmtu >= 0 && *pmtu < minMTU {
 			minMTU = *pmtu

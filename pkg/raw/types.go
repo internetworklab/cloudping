@@ -9,12 +9,17 @@ import (
 )
 
 type ICMPSendRequest struct {
-	Dst        net.IPAddr
-	Seq        int
-	TTL        int
-	Data       []byte
-	PMTU       *int
-	NexthopMTU int
+	Dst  net.IPAddr
+	Seq  int
+	TTL  int
+	Data []byte
+	PMTU *int
+
+	// MTUCap is the upper bound of the MTU considered when sizing the payload;
+	// the effective MTU is min(PMTU, MTUCap). Callers typically set it to
+	// pkgutils.MaxIPPacketLen, the maximum size of an IP (or IPv6) packet,
+	// header included.
+	MTUCap int
 }
 
 type ICMPReceiveReply struct {

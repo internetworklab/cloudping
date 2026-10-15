@@ -7,6 +7,7 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.1
 	github.com/alecthomas/kong v1.13.0
 	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-telegram/bot v1.17.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/btree v1.1.3
@@ -16,11 +17,11 @@ require (
 	github.com/jhillyerd/enmime v1.3.0
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.5.0
+	github.com/oschwald/maxminddb-golang/v2 v2.2.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/quic-go/quic-go v0.59.0
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/tdewolff/canvas v0.0.0-20260406091912-5d4f7059846e
-	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/net v0.52.0
 )
 
@@ -39,7 +40,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cention-sany/utf7 v0.0.0-20170124080048-26cad61bd60a // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-fonts/latin-modern v0.3.3 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
@@ -53,7 +53,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
-	github.com/oschwald/maxminddb-golang/v2 v2.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
@@ -68,7 +67,6 @@ require (
 	github.com/tdewolff/font v0.0.0-20260314002930-9f995dac393e // indirect
 	github.com/tdewolff/minify/v2 v2.24.11 // indirect
 	github.com/tdewolff/parse/v2 v2.8.11 // indirect
-	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/wcharczuk/go-chart/v2 v2.1.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
