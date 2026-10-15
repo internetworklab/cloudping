@@ -12,3 +12,10 @@ node_modules/*
 # Cloudflared tunnel generated credentials
 **/cfd_tunnel.json
 **/cfd_credentials.json
+
+# Frontend dev/build artifacts (the Go image builds web/out in a dedicated stage)
+web/.env
+web/node_modules
+web/.next
+web/out/*
+!web/out/.gitkeep

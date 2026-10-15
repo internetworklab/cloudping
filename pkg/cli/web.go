@@ -18,11 +18,13 @@ import (
 	pkgauth "github.com/internetworklab/cloudping/pkg/auth"
 	pkghandler "github.com/internetworklab/cloudping/pkg/handler"
 	pkgutils "github.com/internetworklab/cloudping/pkg/utils"
+	"github.com/internetworklab/cloudping/pkg/webstatic"
+	webassets "github.com/internetworklab/cloudping/web"
 )
 
 type WebAuthProxyCmd struct {
 	JWTIssuer            string `help:"The issuer of the JWT token" default:"cloudping-web-proxy"`
-	DefaultBackend       string `name:"default-backend" help:"The host:port pair of the default backend" default:"http://127.0.0.1:8091"`
+	DefaultBackend       string `name:"default-backend" help:"The upstream base URL to reverse-proxy requests to, e.g. http://127.0.0.1:8091. When empty (default), the static web assets embedded into this binary are served directly."`
 	LaunchTestingBackend string `name:"launch-testing-backend" help:"Specify the listen address to launch the backend of testing-purpose, for example: 127.0.0.1:8091. Leave it default (empty) to not launch it."`
 	ListenAddress        string `name:"listen-address" help:"The listen address of the reverse proxy" default:":8092"`
 
@@ -101,13 +103,7 @@ func (cmd *WebAuthProxyCmd) startTestingBackend(listenAddr string) {
 	}()
 }
 
-func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPrefix string) {
-
-	// Parse the backend URL
-	backendURL, err := url.Parse(backendURLPrefix)
-	if err != nil {
-		log.Panic(fmt.Errorf("inproper backend url prefix %s: %w", backendURL, err))
-	}
+func (cmd *WebAuthProxyCmd) startWebServer(ctx context.Context, sharedCtx *pkgutils.GlobalSharedContext) {
 
 	jwtSec, err := cmd.getJWTSecret()
 	if err != nil {
@@ -119,8 +115,37 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 
 	jwtValidator := pkgauth.NewStaticKeyJWTValidator(keyProvider, pkgauth.NewNullBlackListProvider(), cmd.RejectVisitor)
 
-	// Create a reverse proxy that forwards requests to the backend
-	var backendHandler http.Handler = httputil.NewSingleHostReverseProxy(backendURL)
+	// By default the static web assets embedded into this binary are served;
+	// when --default-backend is set, requests are reverse-proxied to that
+	// upstream instead (useful for frontend development).
+	var backendHandler http.Handler
+	backendDesc := "embedded web assets"
+	if cmd.DefaultBackend != "" {
+		backendURL, err := url.Parse(cmd.DefaultBackend)
+		if err != nil {
+			log.Panic(fmt.Errorf("inproper backend url prefix %s: %w", cmd.DefaultBackend, err))
+		}
+		backendHandler = httputil.NewSingleHostReverseProxy(backendURL)
+		backendDesc = fmt.Sprintf("reverse proxy to %s", cmd.DefaultBackend)
+	} else {
+		distFS, err := webassets.DistFS()
+		if err != nil {
+			log.Panic(fmt.Errorf("failed to access embedded web assets: %w", err))
+		}
+		if !webassets.HasDistAssets() {
+			log.Printf("WARNING: no web assets embedded into this binary; " +
+				"build the frontend first (cd web && npm ci && npm run build) before go build")
+		}
+		var versionFallback []byte
+		if sharedCtx != nil && sharedCtx.BuildVersion != nil {
+			versionFallback = sharedCtx.BuildVersion.Raw()
+		}
+		staticHandler, err := webstatic.NewHandler(distFS, webstatic.WithVersionTextFallback(versionFallback))
+		if err != nil {
+			log.Panic(fmt.Errorf("failed to create static web assets handler: %w", err))
+		}
+		backendHandler = staticHandler
+	}
 	backendHandler = pkghandler.WithLog(backendHandler)
 
 	var proxyHandler http.Handler = backendHandler
@@ -261,7 +286,7 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
-	log.Printf("reverse proxy started at: %v, forwarding to: %v", port, backendURLPrefix)
+	log.Printf("web server started at: %v, backend: %s", port, backendDesc)
 
 	// Start serving in a goroutine with the log middleware chained on top of the proxy
 	go func() {
@@ -272,13 +297,15 @@ func (cmd *WebAuthProxyCmd) startReverseProxy(ctx context.Context, backendURLPre
 }
 
 func (cmd *WebAuthProxyCmd) Run(sharedCtx *pkgutils.GlobalSharedContext) error {
-	cmd.startTestingBackend(cmd.LaunchTestingBackend)
+	if cmd.LaunchTestingBackend != "" {
+		cmd.startTestingBackend(cmd.LaunchTestingBackend)
+	}
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cmd.startReverseProxy(ctx, cmd.DefaultBackend)
+	cmd.startWebServer(ctx, sharedCtx)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

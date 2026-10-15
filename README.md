@@ -86,6 +86,15 @@ go build -o bin/globalping ./cmd/globalping
 
 Now the binary `bin/globalping` can serve as an agent or a hub depending on the CLI arguments provided.
 
+Optionally, to embed the web frontend assets into the binary (so that `globalping web` can serve the web UI without an external static file server such as nginx), build the frontend static export first:
+
+```shell
+cd web
+npm ci && npm run build # generates web/out
+cd -
+go build -o bin/globalping ./cmd/globalping
+```
+
 ## Debugging
 
 For how to generate self-signed certs (and CA) for testing, see [Notes.md](./Notes.md).
@@ -118,8 +127,8 @@ It's better to use the web UI directly, since it has much richer feature set as 
 
 > Currently the UI is still rugged, but we are actively iterating it.
 
-|              Traceroute               |              Ping Matrix               |           MRT Route Query Service           |
-| :-----------------------------------: | :------------------------------------: | :-----------------------------------------: |
+|              Traceroute               |              Ping Matrix               |             MRT Route Query Service             |
+| :-----------------------------------: | :------------------------------------: | :---------------------------------------------: |
 | ![Traceroute](docs/screenshots/1.png) | ![Ping matrix](docs/screenshots/2.png) | ![Use MRT Route Query](docs/screenshots/10.png) |
 
 |                Telegram Bot — Traceroute                |       Telegram Bot — Probe        |               Email — Traceroute                |
@@ -130,7 +139,7 @@ It's better to use the web UI directly, since it has much richer feature set as 
 | :------------------------------------------: | :----------------------------------------------: | :--------------------------------: |
 | ![Ping matrix reply](docs/screenshots/7.png) | ![Help from email reply](docs/screenshots/8.png) | ![Use MCP](docs/screenshots/9.png) |
 
-|           Traceroute Canvas Export            |     |     |
+|            Traceroute Canvas Export             |     |     |
 | :---------------------------------------------: | :-: | :-: |
 | ![Traceroute in Canvas](docs/screenshots/3.png) |     |     |
 

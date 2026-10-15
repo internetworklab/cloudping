@@ -22,6 +22,17 @@ type BuildVersion struct {
 	BuildDate *time.Time          `json:"buildDate,omitempty"`
 }
 
+// Raw returns a copy of the raw version metadata text, as embedded at build
+// time (the contents of .version.txt).
+func (bv *BuildVersion) Raw() []byte {
+	if bv == nil {
+		return nil
+	}
+	raw := make([]byte, len(bv.raw))
+	copy(raw, bv.raw)
+	return raw
+}
+
 func NewBuildVersion(rawText []byte) (*BuildVersion, error) {
 
 	bv := new(BuildVersion)
